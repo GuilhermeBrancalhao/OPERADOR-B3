@@ -150,6 +150,11 @@ class _NivelInterno:
     no_heap: bool = False
 
 
+# Piso do teto dos heaps de preço. Abaixo disto compactar não paga o custo.
+# Ver `LivroMBO._compactar_heap` e `InferidorMBP._registrar_preco` (a 5a casa).
+_PISO_TETO_HEAP = 64
+
+
 class LivroMBO:
     """Livro completo por ordem, com fila FIFO por nível de preço."""
 
@@ -170,6 +175,12 @@ class LivroMBO:
         # Heaps com remoção preguiçosa. Bids guardam preço negado (max-heap).
         self._heap_bids: list[int] = []
         self._heap_asks: list[int] = []
+        # Teto amortizado dos heaps. A marca `no_heap` já impede o push
+        # duplicado (onda 4), mas dedup sozinha não é teto: num livro que
+        # CAMINHA, cada preço entra uma vez só e nunca mais sai, porque a poda
+        # de `melhor_bid`/`melhor_ask` só alcança a cabeça. Ver `_compactar_heap`.
+        self._limiar_heap_bid = _PISO_TETO_HEAP
+        self._limiar_heap_ask = _PISO_TETO_HEAP
 
         # Integridade: livro cruzado. Ver `esta_cruzado`.
         # `n_cruzamentos_detectados` conta só o que é problema da FONTE.
@@ -373,10 +384,60 @@ class LivroMBO:
             # o preço sumia do topo de livro permanentemente.
             if side is Side.BUY:
                 heapq.heappush(self._heap_bids, -price)
+                nivel.no_heap = True
+                if len(self._heap_bids) > self._limiar_heap_bid:
+                    self._compactar_heap(Side.BUY)
             else:
                 heapq.heappush(self._heap_asks, price)
-            nivel.no_heap = True
+                nivel.no_heap = True
+                if len(self._heap_asks) > self._limiar_heap_ask:
+                    self._compactar_heap(Side.SELL)
         return nivel
+
+    def _compactar_heap(self, side: Side) -> None:
+        """Descarta do heap TODO nível morto, não só os que estão na cabeça.
+
+        A marca `no_heap` (onda 4) matou o push DUPLICADO — um nível que pisca
+        `0 -> qty -> 0` mil vezes ocupa uma entrada só. O que ela não dá é
+        TETO: num livro que caminha, mil preços distintos entram uma vez cada e
+        nenhum sai, porque `melhor_bid`/`melhor_ask` só podam a cabeça e a
+        cabeça de um livro que sobe nunca é um preço velho. O `len` do heap
+        passa a medir "preços que já existiram no dia" em vez de "níveis
+        vivos" — a mesma forma que produziu a 5a casa do defeito em
+        `inferencia_mbp.py` (ver `InferidorMBP._registrar_preco`).
+
+        Amortizada: só roda acima do limiar, e o limiar é reposto em `2x` o
+        tamanho compactado, então cada compactação exige tantas inserções novas
+        quantas ela removeu. Como o gatilho é a INSERÇÃO, um livro que encolhe
+        e para de receber preço novo segura o tamanho antigo até a próxima —
+        retenção limitada pelos preços do dia, nunca pelo tempo de pregão.
+
+        O nível descartado tem `no_heap` desmarcado, e é isso que garante que
+        ele volte ao heap se receber ordem de novo.
+        """
+        lado = self._lado(side)
+        comprando = side is Side.BUY
+        origem = self._heap_bids if comprando else self._heap_asks
+        # A varredura é sobre o HEAP, nunca sobre o dicionário de níveis: o
+        # dicionário guarda histórico e é muito maior, e varrê-lo aqui trocaria
+        # um vazamento por um custo O(preços do dia) a cada compactação.
+        vivos: list[int] = []
+        for entrada in origem:
+            price = -entrada if comprando else entrada
+            nivel = lado.get(price)
+            if nivel is None:
+                continue
+            if nivel.qty_total > 0:
+                vivos.append(entrada)
+            else:
+                nivel.no_heap = False
+        heapq.heapify(vivos)
+        if comprando:
+            self._heap_bids = vivos
+            self._limiar_heap_bid = max(_PISO_TETO_HEAP, 2 * len(vivos))
+        else:
+            self._heap_asks = vivos
+            self._limiar_heap_ask = max(_PISO_TETO_HEAP, 2 * len(vivos))
 
     def _descartar_nivel_se_vazio(self, nivel: _NivelInterno) -> None:
         if nivel.n_ordens == 0 and nivel.qty_total == 0 and not nivel.fila:

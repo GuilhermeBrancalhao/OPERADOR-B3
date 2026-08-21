@@ -1,0 +1,72 @@
+[
+ {
+  "id": "M01",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "volta ao reservoir que ESQUECE o pico: o topo vira buffer circular das ultimas K magnitudes",
+  "de": "        topo = self._reservatorio\n        if len(topo) < capacidade:\n            heapq.heappush(topo, magnitude)\n        elif capacidade > 0 and magnitude > topo[0]:\n            heapq.heapreplace(topo, magnitude)",
+  "para": "        topo = self._reservatorio\n        if len(topo) < capacidade:\n            topo.append(magnitude)\n        elif capacidade > 0:\n            topo[self._n_visto % capacidade] = magnitude"
+ },
+ {
+  "id": "M02",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "desliga o filtro de negocio unico (o fat finger volta a poder virar a referencia do dia)",
+  "de": "        maior_negocio = self._maiores_qty[0][1] if self._maiores_qty else 0\n        if magnitude <= cfg.fator_dominio_trade_unico * maior_negocio:\n            return",
+  "para": "        maior_negocio = self._maiores_qty[0][1] if self._maiores_qty else 0\n        if False:\n            return"
+ },
+ {
+  "id": "M03",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "desliga o piso de amostras: com amostra curta a referencia passa a ser a K-esima maior (a MENOR das poucas)",
+  "de": "        if self._n_visto < cfg.minimo_amostras_referencia or not self._reservatorio:",
+  "para": "        if not self._reservatorio:"
+ },
+ {
+  "id": "M04",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "inverte a comparacao do gate (bloqueia magnitude GRANDE, libera a pequena)",
+  "de": "        if magnitude_relativa < cfg.magnitude_relativa_minima:",
+  "para": "        if magnitude_relativa > cfg.magnitude_relativa_minima:"
+ },
+ {
+  "id": "M05",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "inverte o criterio do topo: o heap passa a guardar as MENORES magnitudes do dia",
+  "de": "        elif capacidade > 0 and magnitude > topo[0]:",
+  "para": "        elif capacidade > 0 and magnitude < topo[0]:"
+ },
+ {
+  "id": "M06",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "o maior negocio da janela nunca expira: o fat finger da abertura fica 'na janela' o dia inteiro",
+  "de": "        while mono and mono[0][0] < limite:\n            mono.popleft()",
+  "para": "        while False:\n            mono.popleft()"
+ },
+ {
+  "id": "M07",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "virada de sessao NAO zera a cauda de magnitude (o dia 2 herda a calibracao do dia 1)",
+  "de": "        self._reservatorio = []\n        self._n_visto = 0\n        self._max_sessao = 0\n        self._cache_regiao = None",
+  "para": "        self._cache_regiao = None"
+ },
+ {
+  "id": "M08",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "piso de amostras de fabrica vai a zero (o gate nasce calibrado por 1 amostra)",
+  "de": "    minimo_amostras_referencia: int = 32",
+  "para": "    minimo_amostras_referencia: int = 0"
+ },
+ {
+  "id": "M09",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "referencia deixa de ser a K-esima maior e vira o MAXIMO puro da sessao",
+  "de": "        return float(self._reservatorio[0])",
+  "para": "        return float(self._max_sessao)"
+ },
+ {
+  "id": "M10",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "deque de qty deixa de ser monotonico: mono[0] vira o negocio mais ANTIGO da janela, nao o maior",
+  "de": "        while mono and mono[-1][1] <= reg.qty:\n            mono.pop()",
+  "para": "        while False:\n            mono.pop()"
+ }
+]

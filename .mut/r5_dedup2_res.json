@@ -1,0 +1,99 @@
+[
+ {
+  "id": "D03b",
+  "estado": "MORTA",
+  "desc": "despejo volta a ser LRU estrito (menos recentemente alimentada): o penhasco de volta",
+  "linha": "2 failed, 113 passed in 593.85s (0:09:53)",
+  "testes": [
+   "test_a_curva_de_reemissao_nao_tem_penhasco",
+   "test_o_despejo_nao_e_deterministico_na_ordem_das_chaves"
+  ]
+ },
+ {
+  "id": "D07b",
+  "estado": "MORTA",
+  "desc": "Iceberg le o dedup com o relogio do evento ANTERIOR",
+  "linha": "1 failed, 114 passed in 25.23s",
+  "testes": [
+   "test_o_mesmo_nivel_volta_a_emitir_no_iceberg_depois_da_janela"
+  ]
+ },
+ {
+  "id": "D08b",
+  "estado": "MORTA",
+  "desc": "episodio novo herda a mordaca do anterior (reiniciar nao solta sinalizado)",
+  "linha": "1 failed, 114 passed in 26.83s",
+  "testes": [
+   "test_episodio_expirado_reinicia_a_entrada_no_lugar"
+  ]
+ },
+ {
+  "id": "D08c",
+  "estado": "MORTA",
+  "desc": "episodio novo herda a CADEIA do anterior (reiniciar nao zera n_eventos)",
+  "linha": "1 failed, 114 passed in 25.26s",
+  "testes": [
+   "test_episodio_expirado_reinicia_a_entrada_no_lugar"
+  ]
+ },
+ {
+  "id": "D09b",
+  "estado": "MORTA",
+  "desc": "sem varredura amortizada: cadaveres ficam ate o teto (vazamento)",
+  "linha": "1 failed, 114 passed in 24.38s",
+  "testes": [
+   "test_a_varredura_incremental_encolhe_o_mapa_quando_o_mercado_esfria"
+  ]
+ },
+ {
+  "id": "D15",
+  "estado": "MORTA",
+  "desc": "chave de episodio ignora o LADO (bid e ask no mesmo preco viram um episodio so)",
+  "linha": "14 failed, 101 passed in 25.25s",
+  "testes": [
+   "test_a_confianca_publicada_e_a_do_detector_quando_a_cadeia_esta_viva",
+   "test_a_deteccao_de_livro_carrega_a_cadeia_inteira_e_nao_so_o_gatilho",
+   "test_a_ordem_de_chegada_nao_muda_o_resultado",
+   "test_acompanhar_alimenta_a_cadeia_de_ponta_a_ponta",
+   "test_cadeia_so_de_observados_declara_observada",
+   "test_escora_aceita_o_evento_gatilho_pelo_caminho_pull",
+   "test_escora_sobre_livro_inferido_nunca_sai_com_confianca_1",
+   "test_iceberg_propaga_a_cadeia_do_nivel",
+   "test_liquidez_fantasma_propaga_a_cadeia_do_nivel",
+   "test_o_iceberg_atravessa_carga_de_ordens_sinteticas_sem_perder_a_chave",
+   "test_propagacao_e_idempotente",
+   "test_propagacao_e_monotona_juntar_observado_nunca_aumenta",
+   "test_propagacao_usa_o_minimo_e_nao_produto_nem_media",
+   "test_um_elo_fraco_nao_e_mascarado_pelos_fortes"
+  ]
+ },
+ {
+  "id": "D16",
+  "estado": "MORTA",
+  "desc": "fronteira da janela vira >=: no limiar exato a chave ja expira",
+  "linha": "3 failed, 112 passed in 25.92s",
+  "testes": [
+   "test_a_fronteira_da_janela_e_estrita",
+   "test_chave_parada_alem_da_janela_expira_e_a_reemissao_e_correta",
+   "test_janela_zero_e_valida_e_significa_sem_memoria_entre_eventos"
+  ]
+ },
+ {
+  "id": "D17",
+  "estado": "SOBREVIVEU",
+  "desc": "fronteira da janela no caminho quente vira >= (o par do D16, inline em `de`)",
+  "linha": "115 passed in 27.86s",
+  "testes": []
+ },
+ {
+  "id": "D18",
+  "estado": "MORTA",
+  "desc": "de() deixa de renovar o relogio da chave (chave viva envelhece e expira)",
+  "linha": "3 failed, 112 passed in 28.49s",
+  "testes": [
+   "test_a_confianca_publicada_e_a_do_detector_quando_a_cadeia_esta_viva",
+   "test_a_deteccao_de_livro_carrega_a_cadeia_inteira_e_nao_so_o_gatilho",
+   "test_chave_realimentada_atravessa_a_janela"
+  ]
+ }
+]

@@ -1561,3 +1561,264 @@ def test_queda_mais_antiga_paga_primeiro_mesmo_sendo_do_outro_lado() -> None:
     evento = _unico(eventos, TipoEventoOrdem.TRADE)
     assert evento.side is Side.SELL, "a queda mais nova do outro lado furou a fila"
     assert evento.qty == 30
+
+
+# ======================================================================
+# 12. RETENÇÃO DO HEAP DE PREÇOS — a 5a casa do mesmo defeito (auditoria R4)
+# ======================================================================
+# `_registrar_preco` empilhava INCONDICIONALMENTE a cada transição `0 -> qty`
+# de um nível: 2.400.001 entradas de heap para UM nível vivo após 16 min de
+# pregão a 5.000 ev/s, e latência de segundos num único evento — o tick em que
+# o topo do book esvazia, isto é, o rompimento. Nenhum benchmark do repo pegou
+# isso, porque todos mediam VAZÃO, e a vazão MELHORA enquanto o heap infla.
+#
+# Estes testes prendem o eixo que ninguém olhava: o `len` da estrutura contra o
+# número de coisas VIVAS que ela deveria descrever — e o pior evento, nunca a
+# média. A prova é contagem, não relógio, para ser determinística.
+# ----------------------------------------------------------------------
+def _vivos_do_lado(inferidor: InferidorMBP, side: Side) -> int:
+    return sum(
+        1 for (lado, _), q in inferidor._qty_por_nivel.items() if lado is side and q > 0
+    )
+
+
+def _contar_compactacoes(inferidor: InferidorMBP) -> list[int]:
+    """Envolve `_compactar_heap` para contar as chamadas. Devolve o contador.
+
+    Existe porque um teste que mede só o `len` da estrutura não distingue "não
+    cresceu porque nada entrou" de "não cresceu porque foi compactada mil
+    vezes" — e a segunda é trabalho desperdiçado no caminho quente.
+    """
+    contador = [0]
+    original = inferidor._compactar_heap
+
+    def espiao(side: Side) -> None:
+        contador[0] += 1
+        original(side)
+
+    inferidor._compactar_heap = espiao  # type: ignore[method-assign]
+    return contador
+
+
+def _recarregar_nivel(
+    inferidor: InferidorMBP,
+    price: int,
+    ciclos: int,
+    side: Side = Side.BUY,
+    ts0: int = 10_000,
+) -> None:
+    """Faz um nível piscar `0 -> 300 -> 0` `ciclos` vezes. É a RECARGA."""
+    ts = ts0
+    for _ in range(ciclos):
+        inferidor.ao_delta(_delta(ts, side, price, 300, BookAction.ADD))
+        ts += 1
+        inferidor.ao_delta(_delta(ts, side, price, 0, BookAction.DELETE))
+        ts += 1
+
+
+def test_heap_de_precos_nao_cresce_com_recarga_do_mesmo_nivel() -> None:
+    """Mil recargas de UM nível não podem virar mil entradas de heap.
+
+    Sem a dedup, `len(_heap_bids)` sai exatamente igual ao número de recargas —
+    cresce com o TEMPO DE PREGÃO, não com o tamanho do livro.
+    """
+    inferidor, _, _ = _montar()
+    inferidor.ao_snapshot(_snapshot(1_000, bids=[(BID, 500)]))
+
+    _recarregar_nivel(inferidor, BID - 5, ciclos=1_000)
+
+    vivos = _vivos_do_lado(inferidor, Side.BUY)
+    assert len(inferidor._heap_bids) <= max(64, 4 * vivos), (
+        f"heap com {len(inferidor._heap_bids)} entradas para {vivos} niveis vivos:"
+        " o heap voltou a crescer com o tempo de pregao"
+    )
+
+
+def test_heap_de_precos_tem_teto_no_numero_de_niveis_vivos() -> None:
+    """Teto duro: com o topo SEMPRE ocupado, a poda pela cabeça nunca roda.
+
+    É a condição em que a dedup sozinha ainda deixaria o heap crescer com o
+    número de preços DISTINTOS já vistos: aqui o livro caminha para baixo, cada
+    preço é visitado uma vez só, e o topo nunca esvazia — então nenhum
+    `heappop` acontece. Só a compactação segura o teto.
+    """
+    inferidor, _, _ = _montar()
+    inferidor.ao_snapshot(_snapshot(1_000, bids=[(BID, 10**6)]))
+
+    ts = 2_000
+    for i in range(5_000):
+        preco = BID - 1 - i
+        inferidor.ao_delta(_delta(ts, Side.BUY, preco, 100, BookAction.ADD))
+        ts += 1
+        inferidor.ao_delta(_delta(ts, Side.BUY, preco, 0, BookAction.DELETE))
+        ts += 1
+
+    vivos = _vivos_do_lado(inferidor, Side.BUY)
+    assert vivos == 1, "so o topo deveria ter sobrado vivo"
+    assert len(inferidor._heap_bids) <= max(64, 4 * vivos), (
+        f"heap com {len(inferidor._heap_bids)} entradas para {vivos} nivel vivo:"
+        " sem teto, a dedup sozinha nao segura um livro que caminha"
+    )
+
+
+def test_heap_de_asks_tambem_tem_teto() -> None:
+    """O lado da venda é código separado — e mutação separada."""
+    inferidor, _, _ = _montar()
+    inferidor.ao_snapshot(_snapshot(1_000, asks=[(ASK, 10**6)]))
+
+    _recarregar_nivel(inferidor, ASK_FUNDO, ciclos=1_000, side=Side.SELL)
+
+    vivos = _vivos_do_lado(inferidor, Side.SELL)
+    assert len(inferidor._heap_asks) <= max(64, 4 * vivos), (
+        f"heap de asks com {len(inferidor._heap_asks)} entradas para {vivos} vivos"
+    )
+
+
+def test_recarga_do_mesmo_nivel_nao_gera_TRABALHO_no_heap() -> None:
+    """A dedup precisa de teste PRÓPRIO, e o `len` do heap não serve de prova.
+
+    Descoberto pela auto-mutação: com a compactação no lugar, remover a dedup
+    NÃO faz o heap crescer — ele só passa a encher até o teto e ser compactado
+    sem parar, cerca de uma compactação a cada 64 recargas do MESMO preço. O
+    `len` final fica idêntico, o teste de retenção passa verde, e o trabalho
+    desperdiçado (que é justamente o que a dedup existe para eliminar) não
+    aparece em lugar nenhum.
+
+    Então a asserção não é sobre tamanho: é sobre TRABALHO. Um nível que pisca
+    `0 -> 300 -> 0` mil vezes num preço que já está publicado não pode produzir
+    nem um push nem uma compactação.
+    """
+    inferidor, _, _ = _montar()
+    inferidor.ao_snapshot(_snapshot(1_000, bids=[(BID, 500)], asks=[(ASK, 500)]))
+    compactacoes = _contar_compactacoes(inferidor)
+
+    _recarregar_nivel(inferidor, BID - 5, ciclos=1_000)
+    _recarregar_nivel(inferidor, ASK_FUNDO, ciclos=1_000, side=Side.SELL, ts0=500_000)
+
+    assert compactacoes[0] == 0, (
+        f"{compactacoes[0]} compactacoes para recarregar DOIS precos ja publicados:"
+        " a dedup parou de valer e o heap voltou a churnar"
+    )
+    assert len(inferidor._heap_bids) == 2, "um preco publicado, uma entrada"
+    assert len(inferidor._heap_asks) == 2
+
+
+def test_espelho_do_heap_nao_dessincroniza_do_heap() -> None:
+    """O `set` de dedup e o heap descrevem a MESMA coisa — ou o topo mente.
+
+    Se sobrar entrada no espelho (preço marcado como publicado sem estar no
+    heap), o nível nunca mais volta a ser topo: é o bug que a marca `no_heap`
+    do `LivroMBO` já pagou uma vez. Se faltar, a dedup para de valer e o
+    vazamento volta.
+    """
+    inferidor, _, _ = _montar()
+    inferidor.ao_snapshot(_snapshot(1_000, bids=[(BID, 100)], asks=[(ASK, 100)]))
+
+    ts = 2_000
+    for i in range(300):
+        preco = BID - (i % 7)
+        inferidor.ao_delta(_delta(ts, Side.BUY, preco, 50 + i, BookAction.UPDATE))
+        ts += 1
+        inferidor.ao_delta(_delta(ts, Side.BUY, preco, 0, BookAction.DELETE))
+        ts += 1
+        inferidor.melhor_bid()
+
+    assert sorted(-p for p in inferidor._heap_bids) == sorted(inferidor._precos_no_heap_bid)
+    assert sorted(inferidor._heap_asks) == sorted(inferidor._precos_no_heap_ask)
+
+
+def test_topo_continua_correto_depois_de_mil_recargas() -> None:
+    """A dedup não pode custar correção: o topo tem de sobreviver a ela.
+
+    O erro fácil ao deduplicar é marcar o preço como publicado e nunca
+    desmarcá-lo no `heappop`. O heap para de crescer — e o nível que ressuscita
+    some do topo para sempre, em silêncio.
+    """
+    inferidor, _, _ = _montar()
+    inferidor.ao_snapshot(_snapshot(1_000, bids=[(BID - 10, 40)]))
+
+    ts = 2_000
+    for _ in range(1_000):
+        inferidor.ao_delta(_delta(ts, Side.BUY, BID, 300, BookAction.ADD))
+        assert inferidor.melhor_bid() == BID, "o nivel repovoado sumiu do topo"
+        ts += 1
+        inferidor.ao_delta(_delta(ts, Side.BUY, BID, 0, BookAction.DELETE))
+        assert inferidor.melhor_bid() == BID - 10, "o nivel morto continua sendo topo"
+        ts += 1
+
+
+def test_topo_de_ask_continua_correto_depois_de_mil_recargas() -> None:
+    """O mesmo do bid, no lado da venda: é código separado, mutação separada.
+
+    Se o `discard` do espelho sumir do `melhor_ask`, o ask que ressuscita fica
+    exilado do heap para sempre e o topo da venda mente em silêncio — sem erro,
+    sem exceção, só um número errado saindo para o operador.
+    """
+    inferidor, _, _ = _montar()
+    inferidor.ao_snapshot(_snapshot(1_000, asks=[(ASK_FUNDO, 40)]))
+
+    ts = 2_000
+    for _ in range(1_000):
+        inferidor.ao_delta(_delta(ts, Side.SELL, ASK, 300, BookAction.ADD))
+        assert inferidor.melhor_ask() == ASK, "o nivel repovoado sumiu do topo"
+        ts += 1
+        inferidor.ao_delta(_delta(ts, Side.SELL, ASK, 0, BookAction.DELETE))
+        assert inferidor.melhor_ask() == ASK_FUNDO, "o nivel morto continua sendo topo"
+        ts += 1
+
+
+def test_compactacao_do_heap_preserva_todos_os_niveis_vivos() -> None:
+    """Compactar não pode perder nível vivo: o topo sairia errado em silêncio.
+
+    Mantém DOIS níveis vivos permanentes (um deles é o topo) enquanto outros
+    piscam o suficiente para disparar a compactação várias vezes, e confere
+    depois que os dois permanentes continuam lá — e na ordem certa.
+    """
+    inferidor, _, _ = _montar()
+    permanentes = [BID, BID - 3]
+    inferidor.ao_snapshot(_snapshot(1_000, bids=[(p, 500) for p in permanentes]))
+
+    compactacoes = _contar_compactacoes(inferidor)
+
+    # 200 preços distintos, bem acima do piso do teto: é o que garante que a
+    # compactação REALMENTE roda aqui. Com 50 preços ela nunca disparava, e um
+    # teste que não executa o código que pretende cobrir passa verde para
+    # qualquer coisa — foi assim que a mutação "compactar descartando os níveis
+    # VIVOS" sobreviveu à primeira rodada de auto-mutação.
+    ts = 2_000
+    for i in range(4_000):
+        preco = BID - 20 - (i % 200)
+        inferidor.ao_delta(_delta(ts, Side.BUY, preco, 10, BookAction.ADD))
+        ts += 1
+        inferidor.ao_delta(_delta(ts, Side.BUY, preco, 0, BookAction.DELETE))
+        ts += 1
+
+    assert compactacoes[0] > 0, "a compactacao nem chegou a rodar: o teste nao cobre nada"
+    assert inferidor.melhor_bid() == BID
+    inferidor.ao_delta(_delta(ts, Side.BUY, BID, 0, BookAction.DELETE))
+    assert inferidor.melhor_bid() == BID - 3, (
+        "a compactacao engoliu um nivel vivo: o topo passou a mentir"
+    )
+
+
+def test_um_unico_evento_nao_paga_a_divida_de_um_pregao_inteiro() -> None:
+    """Latência de CAUDA, não média: nenhum evento pode custar O(pregão).
+
+    Antes da correção o custo do heap não era cobrado enquanto o topo estivesse
+    ocupado — e vencia INTEIRO no evento em que o topo esvazia, que é o
+    rompimento. A prova aqui não é relógio (não seria determinística): é o
+    tamanho do backlog represado, que é o teto de `heappop` do pior evento.
+    """
+    inferidor, _, _ = _montar()
+    inferidor.ao_snapshot(_snapshot(1_000, bids=[(BID, 10**6)]))
+    _recarregar_nivel(inferidor, BID - 5, ciclos=20_000, ts0=2_000)
+
+    represado = len(inferidor._heap_bids)
+    assert represado <= 64, (
+        f"{represado} entradas represadas: o rompimento vai pagar todas de uma vez"
+    )
+
+    # o rompimento: o topo esvazia e a dívida venceria aqui
+    inferidor.ao_delta(_delta(10**6, Side.BUY, BID, 0, BookAction.DELETE))
+    assert inferidor.melhor_bid() is None
+    assert inferidor._heap_bids == []

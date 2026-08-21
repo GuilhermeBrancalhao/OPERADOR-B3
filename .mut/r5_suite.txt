@@ -1,0 +1,25 @@
+                servidor_ns = falso.ns + offset_ns
+                relogio.observar(servidor_ns)
+                # so amostra que ANDA consome a carencia: o detector so avanca
+                # com tempo de servidor novo (tape parado e tick fora de ordem
+                # nao contam para a convergencia).
+                if carencia:
+                    carencia -= 1
+    
+            erro = _erro_do_derivado_s(relogio, falso, offset_ns)
+            pior_absoluto = max(pior_absoluto, erro)
+            if not carencia:
+                erros_estaveis.append(erro)
+    
+        assert regressoes >= 20, "a sequencia adversarial nao exercitou regressoes"
+        assert pior_absoluto < 30.0, (
+            f"erro do relogio derivado explodiu para {pior_absoluto:.1f} s numa "
+>           "sequencia adversarial — o estimador nao e limitado"
+        )
+E       AssertionError: 21 de 3277 amostras estaveis ficaram fora da janela de 300 ms (pior: 8681 ms)
+E       assert not [2.118649628, 2.118649628, 2.118649628, 0.367314404, 5.476740067, 5.062053264, ...]
+
+tests\test_dados_mt5.py:1205: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/test_dados_mt5.py::test_propriedade_erro_do_relogio_limitado_em_sequencia_adversarial
+1 failed, 552 passed in 174.57s (0:02:54)

@@ -1,0 +1,133 @@
+[
+  {
+    "id": "R01",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "volta ao MAXIMO PURO da onda 7: a janela nunca esquece (catraca do A.4)",
+    "veredito": "MORTA",
+    "linha": "1 failed, 43 passed in 1.61s",
+    "testes_que_pegaram": [
+      "test_regressao_sub_limiar_e_absorvida_pela_janela_deslizante"
+    ]
+  },
+  {
+    "id": "R02",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "volta a ULTIMA AMOSTRA vence: a janela guarda so o ultimo",
+    "veredito": "MORTA",
+    "linha": "4 failed, 40 passed in 1.29s",
+    "testes_que_pegaram": [
+      "test_relogio_esquece_regressao_de_400ms_do_servidor",
+      "test_regressao_do_servidor_vira_falha_captura_no_fluxo",
+      "test_adaptador_atrasado_nao_e_confundido_com_regressao",
+      "test_propriedade_erro_do_relogio_limitado_em_sequencia_adversarial"
+    ]
+  },
+  {
+    "id": "R03",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "desliga a DETECCAO de regressao (so a janela sobra)",
+    "veredito": "MORTA",
+    "linha": "3 failed, 41 passed in 1.32s",
+    "testes_que_pegaram": [
+      "test_relogio_esquece_regressao_de_400ms_do_servidor",
+      "test_regressao_do_servidor_vira_falha_captura_no_fluxo",
+      "test_propriedade_erro_do_relogio_limitado_em_sequencia_adversarial"
+    ]
+  },
+  {
+    "id": "R04",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "inverte o sinal do limiar: deficit PEQUENO passa a contar como regressao",
+    "veredito": "MORTA",
+    "linha": "4 failed, 40 passed in 1.32s",
+    "testes_que_pegaram": [
+      "test_relogio_esquece_regressao_de_400ms_do_servidor",
+      "test_regressao_do_servidor_vira_falha_captura_no_fluxo",
+      "test_regressao_sub_limiar_e_absorvida_pela_janela_deslizante",
+      "test_propriedade_erro_do_relogio_limitado_em_sequencia_adversarial"
+    ]
+  },
+  {
+    "id": "R05",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "regressao detectada mas ENGOLIDA (sem FalhaCaptura, correcao em silencio)",
+    "veredito": "MORTA",
+    "linha": "2 failed, 42 passed in 1.34s",
+    "testes_que_pegaram": [
+      "test_relogio_esquece_regressao_de_400ms_do_servidor",
+      "test_regressao_do_servidor_vira_falha_captura_no_fluxo"
+    ]
+  },
+  {
+    "id": "R06",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "reset NAO baixa o piso monotonico: relogio preso no referencial antigo",
+    "veredito": "MORTA",
+    "linha": "1 failed, 43 passed in 1.29s",
+    "testes_que_pegaram": [
+      "test_propriedade_erro_do_relogio_limitado_em_sequencia_adversarial"
+    ]
+  },
+  {
+    "id": "R07",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "remove o gate de ADMISSAO: tick re-observado (tape parado) entra na janela",
+    "veredito": "MORTA",
+    "linha": "1 failed, 43 passed in 1.33s",
+    "testes_que_pegaram": [
+      "test_tape_parado_por_10_minutos_nao_prende_o_relogio_derivado"
+    ]
+  },
+  {
+    "id": "R08",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "remove o ARMAR: deficit sozinho decide (adaptador atrasado vira 'regressao')",
+    "veredito": "MORTA",
+    "linha": "1 failed, 43 passed in 1.30s",
+    "testes_que_pegaram": [
+      "test_adaptador_atrasado_nao_e_confundido_com_regressao"
+    ]
+  },
+  {
+    "id": "R09",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "K=1: uma amostra so ja declara regressao (pico isolado vira reset)",
+    "veredito": "MORTA",
+    "linha": "1 failed, 43 passed in 1.53s",
+    "testes_que_pegaram": [
+      "test_propriedade_erro_do_relogio_limitado_em_sequencia_adversarial"
+    ]
+  },
+  {
+    "id": "R10",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "limiar zero: qualquer deficit apos um tick fora de ordem reseta o relogio",
+    "veredito": "MORTA",
+    "linha": "1 failed, 43 passed in 1.49s",
+    "testes_que_pegaram": [
+      "test_regressao_sub_limiar_e_absorvida_pela_janela_deslizante"
+    ]
+  },
+  {
+    "id": "R11",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "remove o teto DURO de memoria da janela (vazamento em sessao longa)",
+    "veredito": "MORTA",
+    "linha": "1 failed, 43 passed in 1.52s",
+    "testes_que_pegaram": [
+      "test_janela_do_offset_tem_memoria_limitada"
+    ]
+  },
+  {
+    "id": "R12",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "deficit medido contra a amostra corrente em vez do maximo vigente",
+    "veredito": "MORTA",
+    "linha": "3 failed, 41 passed in 1.50s",
+    "testes_que_pegaram": [
+      "test_relogio_esquece_regressao_de_400ms_do_servidor",
+      "test_regressao_do_servidor_vira_falha_captura_no_fluxo",
+      "test_propriedade_erro_do_relogio_limitado_em_sequencia_adversarial"
+    ]
+  }
+]

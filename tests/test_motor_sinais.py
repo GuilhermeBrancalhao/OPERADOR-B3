@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+import pytest
+
 from fluxopro.analytics.volume_profile import VolumeProfile
 from fluxopro.core.eventos import AgressorSide, Side, Trade
 from fluxopro.motor.sinais import (
@@ -200,7 +202,6 @@ def _config_winfut(**overrides):
         margem_regiao_ticks=0,
         janela_micro_ns=5 * S,
         magnitude_relativa_minima=0.60,
-        percentil_magnitude_referencia=0.95,
         persistencia_minima_trades=3,
         persistencia_minima_ns=S // 2,
         rebaixamento_minimo_trades=3,
@@ -209,15 +210,19 @@ def _config_winfut(**overrides):
     return replace(cfg, **overrides) if overrides else cfg
 
 
-def _tape_winfut():
-    """Fase vendedora de magnitude ALTA seguida de fase compradora de
-    magnitude MENOR — o análogo dos picos -1925 e +915 de 11/02
-    (`pesquisa/ferramenta_componentes.md:97-105`).
+def _tape_winfut(n_lateral=0, qty_repique=9):
+    """Fase vendedora de magnitude ALTA, `n_lateral` trades laterais e miúdos,
+    e depois a fase compradora de magnitude MENOR — o análogo dos picos -1925
+    e +915 de 11/02 (`pesquisa/ferramenta_componentes.md:97-105`).
 
-    Nas duas fases a dominância percentual é IDÊNTICA (0.900): é exatamente
-    isso que a razão percentual não distingue. O que difere é o tamanho do
-    fluxo: qty 20 na fase vendedora contra qty 9 na compradora (0,45 — a
-    mesma ordem do 915/1925 do relato).
+    Nas duas fases direcionais a dominância percentual é IDÊNTICA (0.900): é
+    exatamente isso que a razão percentual não distingue. O que difere é o
+    tamanho do fluxo: qty 20 na fase vendedora contra qty 9 na compradora
+    (0,45 — a mesma ordem do 915/1925 do relato).
+
+    `n_lateral` é o eixo que as auditorias R3 e R4 usaram para furar o gate:
+    o pico do dia continua o mesmo, só o TEMPO de tape morno entre as duas
+    fases muda. Ver `.mut/sonda2_r3.py`, sonda E.
     """
     trades = []
     ts = 0
@@ -225,18 +230,29 @@ def _tape_winfut():
         lado = AgressorSide.BUY if i % 10 == 0 else AgressorSide.SELL
         trades.append(_trade(ts, 5000, 20, lado))
         ts += 100_000_000
-    for i in range(900):  # 90s de fase compradora, 90% BUY, qty 9
+    for i in range(n_lateral):  # o resto do dia: lateral, equilibrado, miúdo
+        lado = AgressorSide.BUY if i % 2 == 0 else AgressorSide.SELL
+        trades.append(_trade(ts, 5000, 2, lado))
+        ts += 100_000_000
+    for i in range(900):  # 90s de fase compradora
         lado = AgressorSide.SELL if i % 10 == 0 else AgressorSide.BUY
-        trades.append(_trade(ts, 5000, 9, lado))
+        trades.append(_trade(ts, 5000, qty_repique, lado))
         ts += 100_000_000
     return trades
 
 
-def _rodar_winfut(cfg):
+def _rodar_winfut(cfg, n_lateral=0, qty_repique=9):
     vp = VolumeProfile()
     _encher_perfil(vp)
     motor = MotorSinais("WDOV26", vp, cfg)
-    return [motor.ao_trade(t) for t in _tape_winfut()], motor
+    return [motor.ao_trade(t) for t in _tape_winfut(n_lateral, qty_repique)], motor
+
+
+def _compras_confirmadas(sinais):
+    return [
+        s for s in sinais
+        if s.estagio is EstagioSinal.CONFIRMADO and s.direcao is Side.BUY
+    ]
 
 
 def test_winfut_nao_emite_confirmado_de_compra_no_repique_de_magnitude_menor():
@@ -287,6 +303,225 @@ def test_magnitude_relativa_alta_nao_barra_movimento_do_tamanho_do_dia():
     assert sinal.evidencia["magnitude_relativa"] >= 0.60
     assert sinal.estagio is EstagioSinal.CONFIRMADO
     assert sinal.direcao is Side.BUY
+
+
+# ---------------------------------------------------------------------------
+# DEFEITO R3/R4 — a variante do WINFUT com tape morno no meio
+#
+# O gate original normalizava pelo percentil 0,95 de um reservoir uniforme do
+# dia. Com 20.000 trades laterais entre o pico e o repique, a massa da amostra
+# vira lateral, o p95 desce e o repique — que continua sendo 45% do pico REAL
+# do dia — passa. R3 mediu 480 `CONFIRMADO` de compra espúrios; R4 remediu o
+# mesmo número, sem mudança. Os testes abaixo são o que faltava: o cenário da
+# falha, o controle que prova que é o gate que barra, o "não é sempre não", o
+# outlier de abertura e a varredura de N laterais.
+# ---------------------------------------------------------------------------
+
+N_LATERAIS_VARREDURA = (0, 1_000, 5_000, 20_000, 50_000)
+
+
+def test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra():
+    """O cenário exato de `criticas/nucleo_r3.md` §A.4 e `nucleo_r4.md` §C.2."""
+    sinais, motor = _rodar_winfut(_config_winfut(), n_lateral=20_000)
+    assert _compras_confirmadas(sinais) == []
+
+    fim = sinais[-1]
+    # a dominância percentual do repique é ALTA — não é ela que barra
+    assert fim.evidencia["dominancia"] >= 0.85
+    assert fim.evidencia["faixa"] == FaixaConviccao.MAXIMA_CONVICCAO.value
+    # o que barra é a magnitude, medida contra o PICO do dia (não contra a
+    # distribuição recente, que os 20.000 laterais tinham derrubado)
+    assert fim.evidencia["bloqueio"] == "magnitude_relativa"
+    assert fim.evidencia["magnitude_relativa"] < 0.60
+    assert fim.estagio is EstagioSinal.NENHUM
+    assert motor.estagio_atual is EstagioSinal.NENHUM
+    # a referência continua na ordem do pico do dia, não na do tape morno
+    assert fim.evidencia["magnitude_referencia"] >= 0.5 * fim.evidencia["magnitude_pico_sessao"]
+
+
+def test_winfut_com_20000_laterais_controle_sem_o_gate_cai_no_modo_de_falha():
+    """Controle do cenário da R3/R4: desligado o gate, o motor emite os
+    `CONFIRMADO` de compra espúrios. Prova que o tape é mesmo um modo de falha
+    e que é o gate — não outro efeito colateral dos 20.000 laterais — que o
+    barra no teste acima."""
+    sinais, _ = _rodar_winfut(
+        _config_winfut(magnitude_relativa_minima=0.0), n_lateral=20_000
+    )
+    assert len(_compras_confirmadas(sinais)) > 100
+
+
+@pytest.mark.parametrize("n_lateral", N_LATERAIS_VARREDURA)
+def test_winfut_varredura_de_laterais_zero_confirmado_espurio(n_lateral):
+    """Varredura do eixo que a R3 usou. O teste anterior do repositório vivia
+    em `n_lateral=0` — o único ponto da curva em que o gate antigo segurava.
+    Aqui todos os pontos têm de segurar, senão a correção é outra vez local a
+    um ponto."""
+    sinais, _ = _rodar_winfut(_config_winfut(), n_lateral=n_lateral)
+    assert _compras_confirmadas(sinais) == []
+
+
+@pytest.mark.parametrize("n_lateral", N_LATERAIS_VARREDURA)
+def test_movimento_do_tamanho_do_dia_passa_em_qualquer_ponto_da_varredura(n_lateral):
+    """O contrário do "sempre não": um movimento comprador da magnitude do
+    próprio pico do dia (qty 20, a mesma da fase vendedora) tem de virar
+    `CONFIRMADO` — inclusive depois de 50.000 trades laterais."""
+    sinais, _ = _rodar_winfut(_config_winfut(), n_lateral=n_lateral, qty_repique=20)
+    assert _compras_confirmadas(sinais) != []
+    assert sinais[-1].evidencia["magnitude_relativa"] >= 0.60
+
+
+def test_outlier_de_abertura_nao_trava_o_motor_pelo_resto_do_dia():
+    """Um único negócio gigante na abertura (fat finger / leilão) não pode
+    virar a referência de magnitude do dia inteiro.
+
+    É o risco de usar `max` de sessão como referência, e ele é pior que o
+    defeito original porque é silencioso: o motor simplesmente não confirma
+    mais nada. Aqui o trade de 100.000 lotes entra, sai da janela, e o
+    movimento legítimo que vem depois continua sendo confirmado.
+    """
+    cfg = _config_winfut()
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg)
+    ts = 0
+
+    # dois negócios normais antes — o fat finger não é o primeiro print do
+    # dia, e é isso que exige que `_maiores_qty` seja um deque MONOTÔNICO: se
+    # ele guardasse o negócio mais antigo da janela em vez do maior, o filtro
+    # de negócio único leria "2 lotes" e deixaria o fat finger entrar.
+    for _ in range(2):
+        motor.ao_trade(_trade(ts, 5000, 2, AgressorSide.BUY))
+        ts += 100_000_000
+    motor.ao_trade(_trade(ts, 5000, 100_000, AgressorSide.BUY))
+    ts += 100_000_000
+    for i in range(5_000):  # o resto da manhã: lateral e miúdo
+        lado = AgressorSide.BUY if i % 2 == 0 else AgressorSide.SELL
+        motor.ao_trade(_trade(ts, 5000, 2, lado))
+        ts += 100_000_000
+
+    sinais = []
+    for i in range(900):  # movimento comprador legítimo, de tape normal
+        lado = AgressorSide.SELL if i % 10 == 0 else AgressorSide.BUY
+        sinais.append(motor.ao_trade(_trade(ts, 5000, 20, lado)))
+        ts += 100_000_000
+
+    assert _compras_confirmadas(sinais) != []
+    # e a referência NÃO é o fat finger
+    assert sinais[-1].evidencia["magnitude_referencia"] < 100_000
+
+
+def test_referencia_ignora_magnitude_que_um_unico_negocio_explica():
+    """O mecanismo do teste acima, isolado: enquanto a magnitude da janela for
+    explicada por um só negócio, ela não entra na referência."""
+    cfg = _config_winfut()
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg)
+    motor.ao_trade(_trade(0, 5000, 100_000, AgressorSide.BUY))
+    assert motor._reservatorio == []
+    assert motor._n_visto == 0
+    assert motor._magnitude_referencia(0) is None
+
+
+def test_com_amostra_curta_a_referencia_e_o_maximo_da_sessao():
+    """Antes de `minimo_amostras_referencia` a referência é o MÁXIMO da sessão
+    — a leitura conservadora — e não a K-ésima maior de uma amostra que ainda
+    não é uma cauda. Se fosse a K-ésima maior de 3 amostras, a referência
+    seria a MENOR delas e o gate nasceria escancarado."""
+    cfg = _config_winfut(tamanho_topo_magnitude=8, minimo_amostras_referencia=8)
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg)
+    ts = 0
+    # magnitude cresce 100, 200, 300... com o maior negócio isolado em 100:
+    # da terceira em diante ela passa do filtro de negócio único e é amostrada
+    for _ in range(6):
+        motor.ao_trade(_trade(ts, 5000, 100, AgressorSide.SELL))
+        ts += 100_000_000
+    assert 0 < len(motor._reservatorio) < 8
+    assert motor._magnitude_referencia(ts) == float(max(motor._reservatorio))
+    assert motor._magnitude_referencia(ts) > float(min(motor._reservatorio))
+
+
+def test_default_de_fabrica_protege_a_abertura_com_o_maximo_da_sessao():
+    """O default de `minimo_amostras_referencia` (não o valor que um teste
+    escolhe) é o que roda em produção. Com ele em 0 o gate nasceria calibrado
+    pela PRIMEIRA amostra da sessão — a razão passaria de 1,0 e a abertura, o
+    momento de maior magnitude do dia, ficaria sem filtro."""
+    cfg_default = ConfigMotorSinais()
+    assert cfg_default.minimo_amostras_referencia > 1
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg_default)
+    ts = 0
+    sinal = None
+    for _ in range(10):  # magnitude estritamente crescente
+        sinal = motor.ao_trade(_trade(ts, 5000, 100, AgressorSide.SELL))
+        ts += 100_000_000
+    assert 1 < len(motor._reservatorio) < cfg_default.minimo_amostras_referencia
+    assert motor._magnitude_referencia(ts) == float(max(motor._reservatorio))
+    assert sinal.evidencia["magnitude_relativa"] <= 1.0
+
+
+def test_referencia_e_a_kesima_maior_e_nao_o_maximo_da_sessao():
+    """Um estouro CURTO de magnitude não pode virar a referência do dia.
+
+    É a diferença entre `max` de sessão e K-ésima maior: o estouro produz
+    poucas amostras (menos que K), então ele entra no topo mas não chega ao
+    `[0]` do heap. Com `max`, o fluxo NORMAL do resto do dia passaria a valer
+    uma fração da referência e o motor não confirmaria mais nada.
+    """
+    cfg = _config_winfut(janela_dominancia_ns=1 * S)  # 10 trades por janela
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg)
+    ts = 0
+    for i in range(300):  # tape normal
+        lado = AgressorSide.SELL if i % 10 == 0 else AgressorSide.BUY
+        motor.ao_trade(_trade(ts, 5000, 20, lado))
+        ts += 100_000_000
+    for _ in range(3):  # estouro curto: 3 negócios de 500
+        motor.ao_trade(_trade(ts, 5000, 500, AgressorSide.SELL))
+        ts += 100_000_000
+    pico = motor._max_sessao
+
+    sinais = []
+    for i in range(300):  # movimento comprador legítimo, de tamanho normal
+        lado = AgressorSide.SELL if i % 10 == 0 else AgressorSide.BUY
+        sinais.append(motor.ao_trade(_trade(ts, 5000, 20, lado)))
+        ts += 100_000_000
+
+    ref = motor._magnitude_referencia(ts)
+    assert ref < pico  # a referência NÃO é o máximo da sessão
+    assert _compras_confirmadas(sinais) != []
+
+
+def test_iniciar_nova_sessao_zera_a_referencia_de_magnitude():
+    """`criticas/nucleo_r3.md` §C.4: o p95 do dia 2 era o do dia 1, e o motor
+    não tinha API para virar o dia."""
+    cfg = _config_winfut()
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg)
+    ts = 0
+    for i in range(900):
+        lado = AgressorSide.BUY if i % 10 == 0 else AgressorSide.SELL
+        motor.ao_trade(_trade(ts, 5000, 500, lado))
+        ts += 100_000_000
+    ref_dia1 = motor._magnitude_referencia(ts)
+    assert ref_dia1 is not None and ref_dia1 > 0
+    assert motor.estagio_atual is not EstagioSinal.NENHUM
+
+    motor.iniciar_nova_sessao()
+
+    assert motor._reservatorio == []
+    assert motor._n_visto == 0
+    assert motor._magnitude_referencia(ts) is None
+    assert motor.estagio_atual is EstagioSinal.NENHUM
+    assert motor.direcao_atual is None
+    # e o dia 2 não herda a calibração do dia 1
+    s = motor.ao_trade(_trade(86_400 * S, 5000, 1, AgressorSide.BUY))
+    assert s.evidencia["magnitude_pico_sessao"] < ref_dia1
 
 
 # ---------------------------------------------------------------------------

@@ -34,7 +34,7 @@ from fluxopro.app.config import ConfigOperacao, ConfigSimulador
 from fluxopro.app.montagem import Montagem, montar
 from fluxopro.app.saida import ConsoleFluxo
 from fluxopro.app.sessao_fluxo import DeteccaoAnotada, SessaoFluxo
-from fluxopro.core.eventos import BookDelta, BookSnapshot, Trade
+from fluxopro.core.eventos import AgressorSide, BookDelta, BookSnapshot, Trade
 from fluxopro.microestrutura.detectores import TipoDeteccao
 from fluxopro.microestrutura.eventos_mbo import CONFIANCA_OBSERVADO, FonteMicro
 from fluxopro.motor.sinais import EstagioSinal, Sinal
@@ -381,9 +381,16 @@ def test_virada_de_sessao_reabre_os_niveis_ja_sinalizados():
         d for d in coletor.deteccoes if d.deteccao.tipo is TipoDeteccao.ESCORA
     ]
     assert de_escora, "o tape deveria ter sinalizado algum nivel"
-    assert escora.esta_sinalizado(
-        (de_escora[0].deteccao.side, de_escora[0].deteccao.price)
-    ), "o nivel que emitiu tinha de ficar marcado no dedup"
+    # NOTA (conserto do §A.5 da R4): a pré-condição "o nível que emitiu ainda
+    # está marcado no fim do tape" deixou de ser verdade por construção. O
+    # dedup passou a expirar por TEMPO (`JANELA_EPISODIO_NS`, 30 s) e este tape
+    # sintético cobre ~386 s de pregão — um nível que emitiu no primeiro minuto
+    # e depois ficou quieto SAI do dedup, e sair é o comportamento correto.
+    # A intenção do teste (dia 1 tem estado, a virada limpa o estado) segue
+    # presa por `n_chaves_rastreadas > 0` acima e pelas asserções abaixo; o
+    # contrato "nível sinalizado fica marcado, virada devolve o direito de
+    # emitir" está preso de forma determinística em
+    # `tests/test_micro_detectores.py::test_virada_reabre_o_dedup_dos_detectores_de_livro`.
 
     montagem.sessao.iniciar_nova_sessao(timestamp_ns=10**18)
 
@@ -449,23 +456,58 @@ def test_o_pipeline_continua_inteiro_depois_da_virada():
 
 
 def test_componentes_sem_reset_estao_declarados():
-    """Os dois que esta camada NÃO consegue resetar estão nomeados no código,
-    não escondidos — `Barramento` não tem `desassinar`, então trocar a
-    instância dobraria a contagem."""
-    assert SessaoFluxo.SEM_RESET_POSSIVEL == (
-        "FootprintPorTimeframe",
-        "RankingCorretoras",
-    )
+    """O único que esta camada NÃO consegue resetar por troca de instância
+    está nomeado no código, não escondido — `Barramento` não tem
+    `desassinar`, então trocar a instância dobraria a contagem.
+    `RankingCorretoras` ganhou `iniciar_nova_sessao()` (fluxopro/analytics/
+    brokers.py) e saiu desta lista: não precisa mais de troca de instância,
+    é zerado igual aos demais do grupo (a)."""
+    assert SessaoFluxo.SEM_RESET_POSSIVEL == ("FootprintPorTimeframe",)
     montagem = montar(config(n=10))
     for nome in SessaoFluxo.SEM_RESET_POSSIVEL:
         peca = {
             "FootprintPorTimeframe": montagem.sessao.footprint,
-            "RankingCorretoras": montagem.sessao.brokers,
         }[nome]
         assert peca is not None
         assert not hasattr(peca, "iniciar_nova_sessao")
         assert not hasattr(peca, "nova_sessao")
     assert not hasattr(montagem.barramento, "desassinar")
+
+    assert hasattr(montagem.sessao.brokers, "iniciar_nova_sessao")
+
+
+def test_iniciar_nova_sessao_zera_o_ranking_de_corretoras():
+    """`RankingCorretoras` mistura sessões desde a fábrica (`janela_ns=None`
+    acumula para sempre) — a virada de dia tem de zerá-lo de verdade.
+    `SimuladorWDO` não preenche `buyer_broker`/`seller_broker`, então
+    publica-se um trade sintético direto no barramento da sessão para
+    popular o ranking antes da virada."""
+    montagem = montar(config(n=1))
+    brokers = montagem.sessao.brokers
+    assert brokers is not None
+
+    montagem.barramento.publicar(
+        Trade(
+            timestamp_ns=1,
+            symbol=SYMBOL,
+            price=100,
+            qty=10,
+            side_agressor=AgressorSide.BUY,
+            trade_id="sintetico-1",
+            buyer_broker="XP",
+            seller_broker="BTG",
+        )
+    )
+    assert brokers.ranking_por_volume() != []
+    instancia_antes = montagem.sessao.brokers
+
+    montagem.sessao.iniciar_nova_sessao()
+
+    assert brokers.ranking_por_volume() == []
+    # a instância não trocou (é o mesmo objeto, só o estado interno zerou) --
+    # RankingCorretoras saiu de SEM_RESET_POSSIVEL porque nao precisa mais
+    # de troca de instancia.
+    assert montagem.sessao.brokers is instancia_antes
 
 
 def test_finalizar_drena_o_inferidor():
@@ -546,10 +588,17 @@ def test_a_deteccao_de_livro_carrega_a_cadeia_inteira_e_nao_so_o_gatilho():
         ev = d.deteccao.evidencia
         assert ev["procedencia"] == "INFERIDA", ev
         assert ev["fonte"] == FonteMicro.MBP_INFERIDO.value
-        assert ev["n_eventos_procedencia"] > 1, (
-            "cadeia de 0 ou 1 evento: os detectores nao estao seguindo o livro"
-        )
+        assert ev["n_eventos_procedencia"] >= 1, ev
         assert d.deteccao.confianca < CONFIANCA_OBSERVADO
+    # A asserção forte é sobre o CONJUNTO, e não sobre cada detecção. Sem
+    # `acompanhar`, TODA cadeia teria no máximo o evento gatilho (comprimento
+    # 1) e este máximo seria 1 — é isso que prende a fiação. Exigir > 1 de cada
+    # detecção deixou de ser válido depois que o dedup passou a expirar por
+    # tempo (§A.5 da R4): uma cadeia começa do zero a cada episódio novo, então
+    # a primeira detecção de um episódio pode legitimamente ter um evento só.
+    assert max(d.deteccao.evidencia["n_eventos_procedencia"] for d in de_livro) > 1, (
+        "nenhuma cadeia passou de 1 evento: os detectores nao estao seguindo o livro"
+    )
 
 
 def test_a_fronteira_nao_penaliza_a_mesma_incerteza_duas_vezes():

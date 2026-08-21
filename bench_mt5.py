@@ -20,7 +20,7 @@ import numpy as np
 
 from fluxopro.core.barramento import Barramento
 from fluxopro.core.eventos import WDO_GRID
-from fluxopro.dados.mt5 import AdaptadorMT5, _CursorTick
+from fluxopro.dados.mt5 import AdaptadorMT5, _CursorTick, _RelogioServidor
 
 ALVO_PICO_TICKS_S = 10_000  # WDO em dia agitado (barra do projeto)
 POLLS_POR_S = 20            # intervalo_poll_s = 0.05 de fabrica
@@ -86,6 +86,76 @@ def medir(ticks_por_seg: int, n_seg: int = 5) -> tuple[int, float]:
     return entregues, time.perf_counter() - t0
 
 
+
+# ----------------------------------------------------------------------
+# Estagio 2: o estimador de offset do relogio (R4 A.4)
+# ----------------------------------------------------------------------
+# O relogio de MAXIMO PURO da onda 7 era um `if` e uma atribuicao. O que o
+# substituiu — maximo sobre janela deslizante + deteccao de regressao — e um
+# deque monotonico com poda por idade. `observar` roda uma vez POR POLL (20x
+# por segundo), nunca por tick, entao o custo absoluto e irrelevante para a
+# vazao; mede-se assim mesmo porque "irrelevante" e uma afirmacao que tem de
+# ter numero. `MaximoPuro` abaixo e o estimador ANTIGO, literal, para o
+# antes/depois ficar na mesma maquina e na mesma execucao.
+
+
+class _MaximoPuro:
+    """O estimador da onda 7, para comparacao. NAO usar em producao: e a
+    catraca do achado A.4 da R4 (uma regressao do servidor inflava o offset
+    para sempre)."""
+
+    __slots__ = ("_offset_ns", "_sincronizado", "_ultimo_ns")
+
+    def __init__(self):
+        self._offset_ns = 0
+        self._sincronizado = False
+        self._ultimo_ns = 0
+
+    def observar(self, servidor_ns):
+        estimativa = servidor_ns - time.time_ns()
+        if not self._sincronizado or estimativa > self._offset_ns:
+            self._offset_ns = estimativa
+        self._sincronizado = True
+        if servidor_ns > self._ultimo_ns:
+            self._ultimo_ns = servidor_ns
+
+    def agora_ns(self):
+        derivado = time.time_ns() + self._offset_ns
+        if derivado <= self._ultimo_ns:
+            derivado = self._ultimo_ns + 1
+        self._ultimo_ns = derivado
+        return derivado
+
+
+def _exercitar_relogio(relogio, n_polls, passo_ns, parados=0):
+    """`n_polls` observacoes com o tape andando `passo_ns` por poll, e
+    `parados` re-observacoes do mesmo tick (tape parado) intercaladas."""
+    base = time.time_ns() + 3 * 3600 * 10**9
+    t0 = time.perf_counter()
+    servidor = base
+    for i in range(n_polls):
+        servidor += passo_ns
+        relogio.observar(servidor)
+        for _ in range(parados):
+            relogio.observar(servidor)
+        relogio.agora_ns()
+    return time.perf_counter() - t0
+
+
+def bench_relogio() -> None:
+    print("\n\nRelogio de servidor — custo de `observar` + `agora_ns` por poll")
+    print("(roda 1x por poll = 20x/s; NAO por tick)\n")
+    n = 200_000
+    print(f'{"estimador":>28}  {"regime":>22}  {"CPU":>9}  {"por poll":>10}')
+    for rotulo, fabrica in (
+        ("maximo puro (onda 7)", _MaximoPuro),
+        ("janela + deteccao (atual)", _RelogioServidor),
+    ):
+        for regime, parados in (("tape andando", 0), ("tape parado 4:1", 4)):
+            dt = _exercitar_relogio(fabrica(), n, 50_000_000, parados=parados)
+            print(f"{rotulo:>28}  {regime:>22}  {dt:>8.3f}s  {dt / n * 1e9:>8.0f} ns")
+
+
 def main() -> None:
     print("Borda MT5 — _puxar_ticks com mock honesto (de em segundos, count respeitado)")
     print(f"{POLLS_POR_S} polls/s, 5 s de tape por linha\n")
@@ -98,6 +168,7 @@ def main() -> None:
         print(f"{tps:>8,}  {entregues:>10,}  {total-entregues:>8,}  {dt:>6.3f}s  "
               f"{entregues/dt:>12,.0f}/s  {dt/n_seg*100:>15.1f}%")
     print(f"\nbarra do projeto: {ALVO_PICO_TICKS_S:,} ticks/s de pico")
+    bench_relogio()
 
 
 if __name__ == "__main__":

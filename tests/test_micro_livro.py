@@ -265,6 +265,115 @@ def test_ciclos_repetidos_de_esvaziar_e_repovoar_nao_incham_o_heap():
     assert len(livro._heap_bids) <= 1
 
 
+def _contar_compactacoes_livro(livro: LivroMBO) -> list[int]:
+    """Envolve `_compactar_heap` para contar as chamadas. Devolve o contador."""
+    contador = [0]
+    original = livro._compactar_heap
+
+    def espiao(side: Side) -> None:
+        contador[0] += 1
+        original(side)
+
+    livro._compactar_heap = espiao  # type: ignore[method-assign]
+    return contador
+
+
+def test_heap_nao_cresce_com_preco_distinto_enquanto_o_topo_fica_ocupado():
+    """Dedup não é teto: falta a compactação (a mesma forma da 5a casa, R4).
+
+    A marca `no_heap` (onda 4) impede o push DUPLICADO, e o teste acima prende
+    isso. O que ela não dá é teto: aqui o livro CAMINHA para baixo, cada preço
+    é visitado uma vez só — a dedup nunca dispara — e o topo permanece ocupado
+    o tempo todo, então `melhor_bid` jamais poda nada, porque a poda preguiçosa
+    só alcança a CABEÇA do heap. Sem `_compactar_heap`, `len(_heap_bids)` vira
+    5.001 entradas para UM nível vivo: passa a medir "preços que já existiram"
+    em vez de "níveis vivos", e é exatamente o eixo que a auditoria R4 encontrou
+    aberto em `inferencia_mbp.py`.
+    """
+    livro = _livro()
+    livro.adicionar("topo", Side.BUY, BID, 10**6, 1_000)
+
+    ts = 2_000
+    for i in range(5_000):
+        livro.adicionar(f"p{i}", Side.BUY, BID - 1 - i, 100, ts)
+        livro.cancelar(f"p{i}", ts + 1)
+        ts += 2
+
+    vivos = sum(1 for n in livro._bids.values() if n.qty_total > 0)
+    assert vivos == 1, "so o topo deveria ter sobrado vivo"
+    assert len(livro._heap_bids) <= max(64, 4 * vivos), (
+        f"heap com {len(livro._heap_bids)} entradas para {vivos} nivel vivo"
+    )
+    assert livro.melhor_bid() == BID, "a compactacao nao pode perder o topo"
+
+
+def test_heap_de_asks_tambem_e_compactado():
+    """Lado da venda é código separado — e mutação separada."""
+    livro = _livro()
+    livro.adicionar("topo", Side.SELL, ASK, 10**6, 1_000)
+
+    ts = 2_000
+    for i in range(5_000):
+        livro.adicionar(f"p{i}", Side.SELL, ASK + 1 + i, 100, ts)
+        livro.cancelar(f"p{i}", ts + 1)
+        ts += 2
+
+    vivos = sum(1 for n in livro._asks.values() if n.qty_total > 0)
+    assert len(livro._heap_asks) <= max(64, 4 * vivos)
+    assert livro.melhor_ask() == ASK
+
+
+def test_nivel_descartado_pela_compactacao_volta_ao_topo_se_ressuscitar():
+    """Compactar sem desmarcar `no_heap` exilaria o preço para sempre.
+
+    É o mesmo bug que a onda 4 já pagou uma vez pela poda da cabeça: o nível
+    sai do heap, a marca continua `True`, e `_obter_nivel` nunca mais republica
+    o preço — o topo do livro passa a mentir em silêncio, sem erro nenhum.
+    """
+    livro = _livro()
+    livro.adicionar("topo", Side.BUY, BID, 10**6, 1_000)
+    alvo = BID - 7
+
+    ts = 2_000
+    for i in range(3_000):
+        preco = alvo if i % 2 else BID - 100 - i
+        livro.adicionar(f"p{i}", Side.BUY, preco, 100, ts)
+        livro.cancelar(f"p{i}", ts + 1)
+        ts += 2
+
+    livro.adicionar("volta", Side.BUY, alvo, 90, ts)
+    livro.cancelar("topo", ts + 1)
+    assert livro.melhor_bid() == alvo, (
+        "nivel ressuscitado depois da compactacao sumiu do topo"
+    )
+
+
+def test_compactacao_preserva_a_ordem_de_todos_os_niveis_vivos():
+    """Compactar não pode perder — nem reordenar — nível vivo."""
+    livro = _livro()
+    permanentes = (BID, BID - 2, BID - 4)
+    for i, preco in enumerate(permanentes):
+        livro.adicionar(f"perm{i}", Side.BUY, preco, 500, 1_000 + i)
+
+    compactacoes = _contar_compactacoes_livro(livro)
+
+    # 200 preços distintos: com 40 a compactação nunca disparava (piso 64) e o
+    # teste não cobria o código que diz cobrir — foi assim que a mutação
+    # "compactar descartando os níveis VIVOS" sobreviveu à auto-mutação.
+    ts = 2_000
+    for i in range(4_000):
+        livro.adicionar(f"p{i}", Side.BUY, BID - 50 - (i % 200), 10, ts)
+        livro.cancelar(f"p{i}", ts + 1)
+        ts += 2
+
+    assert compactacoes[0] > 0, "a compactacao nem chegou a rodar: o teste nao cobre nada"
+    for i, preco in enumerate(permanentes):
+        assert livro.melhor_bid() == preco, "a compactacao engoliu um nivel vivo"
+        livro.cancelar(f"perm{i}", ts)
+        ts += 1
+    assert livro.melhor_bid() is None
+
+
 def test_niveis_ordenados_respeita_o_lado():
     livro = _livro()
     for i, price in enumerate((4998, 5000, 4999)):

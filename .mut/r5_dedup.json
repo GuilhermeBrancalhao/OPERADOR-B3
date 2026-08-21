@@ -1,0 +1,114 @@
+[
+ {
+  "id": "D01",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "volta a chave por order_id nos detectores de livro",
+  "de": "        return (evento.side, evento.price)",
+  "para": "        return evento.order_id",
+  "n": 1
+ },
+ {
+  "id": "D02",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "remove o TTL: chave nunca expira (volta a memoria infinita por chave)",
+  "de": "        return self._agora_ns - item.ts_ultimo_ns > self._janela_ns",
+  "para": "        return False",
+  "n": 1
+ },
+ {
+  "id": "D03",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "volta o despejo determinstico (FIFO) no excedente: o penhasco",
+  "de": "        self._remover(self._chaves[_SORTEIO_DESPEJO.randrange(len(self._chaves))])",
+  "para": "        self._remover(self._chaves[0])",
+  "n": 1
+ },
+ {
+  "id": "D04",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "volta o teto de fabrica da onda 7 (4.096 chaves)",
+  "de": "LIMITE_CHAVES_RASTREADAS = 65536",
+  "para": "LIMITE_CHAVES_RASTREADAS = 4096",
+  "n": 1
+ },
+ {
+  "id": "D05",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "janela de episodio de fabrica vira 0 (dedup sem memoria)",
+  "de": "JANELA_EPISODIO_NS = 30_000_000_000",
+  "para": "JANELA_EPISODIO_NS = 0",
+  "n": 1
+ },
+ {
+  "id": "D06",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "Fantasma le o dedup com o relogio do evento ANTERIOR",
+  "de": "        self._procedencia.avancar(ordem.timestamp_saida_ns)\n        chave = (ordem.side, ordem.price)",
+  "para": "        chave = (ordem.side, ordem.price)",
+  "n": 1
+ },
+ {
+  "id": "D07",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "Iceberg le o dedup com o relogio do evento ANTERIOR",
+  "de": "        self._procedencia.avancar(timestamp_ns)\n        chave = (ordem.side, ordem.price)",
+  "para": "        chave = (ordem.side, ordem.price)",
+  "n": 1
+ },
+ {
+  "id": "D08",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "episodio novo herda a mordaca do anterior (reiniciar nao solta sinalizado)",
+  "de": "        self.n_eventos = 0\n        self.sinalizado = False",
+  "para": "        self.n_eventos = 0",
+  "n": 1
+ },
+ {
+  "id": "D09",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "sem varredura amortizada: cadaveres ficam ate o teto (vazamento)",
+  "de": "            n = self._desde_varredura + 1\n            if n >= self._ESCRITAS_POR_VARREDURA:\n                self._desde_varredura = 0\n                self._varrer(1)\n            else:\n                self._desde_varredura = n\n            return item",
+  "para": "            return item",
+  "n": 1
+ },
+ {
+  "id": "D10",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "relogio do mapa passa a andar para tras com evento atrasado",
+  "de": "        if agora_ns is not None and agora_ns > agora:\n            agora = self._agora_ns = agora_ns",
+  "para": "        if agora_ns is not None:\n            agora = self._agora_ns = agora_ns",
+  "n": 1
+ },
+ {
+  "id": "D11",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "obter devolve chave expirada como se fosse viva",
+  "de": "        if item is None or self._expirado(item):\n            return None\n        return item",
+  "para": "        return item",
+  "n": 1
+ },
+ {
+  "id": "D12",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "_remover nao conserta o indice da chave movida: vetor de despejo corrompe",
+  "de": "        if ultima != chave:\n            self._chaves[i] = ultima\n            self._itens[ultima].pos = i",
+  "para": "        if ultima != chave:\n            self._chaves[i] = ultima",
+  "n": 1
+ },
+ {
+  "id": "D13",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "teto deixa de valer no excedente (backstop de memoria some)",
+  "de": "        if len(self._chaves) >= self._limite:\n            self._despejar_sorteado()",
+  "para": "        if False:\n            self._despejar_sorteado()",
+  "n": 1
+ },
+ {
+  "id": "D14",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "consulta passa a RENOVAR a chave (verificar em laco segura chave morta)",
+  "de": "    def obter(self, chave: Hashable) -> _Procedencia | None:",
+  "para": "    def obter(self, chave: Hashable) -> _Procedencia | None:\n        item_ = self._itens.get(chave)\n        if item_ is not None:\n            item_.ts_ultimo_ns = self._agora_ns",
+  "n": 1
+ }
+]

@@ -512,7 +512,12 @@ class SessaoFluxo:
     #: reset e, por isso, NÃO podem ser zerados por esta camada. Trocar a
     #: instância deixaria a antiga assinada (contagem dobrada) e a nova no fim
     #: da faixa de prioridade — `Barramento` não tem `desassinar`.
-    SEM_RESET_POSSIVEL = ("FootprintPorTimeframe", "RankingCorretoras")
+    #:
+    #: `RankingCorretoras` ganhou `iniciar_nova_sessao()` (fecha o gap
+    #: apontado em `criticas/nucleo_r3.md`/`nucleo_r4.md`: `janela_ns=None`
+    #: de fábrica acumulava para sempre) e saiu desta lista — não precisa
+    #: mais trocar de instância, só zera o estado interno.
+    SEM_RESET_POSSIVEL = ("FootprintPorTimeframe",)
 
     def iniciar_nova_sessao(self, timestamp_ns: int | None = None) -> None:
         """Virada de pregão — **explícita**, chamada por quem sabe o calendário.
@@ -556,14 +561,18 @@ class SessaoFluxo:
         de uma escora de ontem. O `InferidorMBP` vai junto porque a linha de
         base dele (`_qty_por_nivel`) é o book de ontem.
 
-        **(c) Não tem API e assina sozinho** — `FootprintPorTimeframe` e
-        `RankingCorretoras` (ver `SEM_RESET_POSSIVEL`). Estes **continuam
-        carregando o dia anterior** e esta camada não tem como consertar:
-        `Barramento` não expõe `desassinar`, então trocar a instância dobraria
-        a contagem. Fica declarado em vez de silenciado. O footprint é o menos
-        grave (ele fecha por bucket de tempo, então o candle corrente vira);
-        `RankingCorretoras` com `janela_ns=None` de fábrica acumula desde a
-        construção e é o que de fato mistura sessões.
+        **(c) Não tem API de reset e assina sozinho** — `FootprintPorTimeframe`
+        (ver `SEM_RESET_POSSIVEL`). Continua carregando o dia anterior e esta
+        camada não tem como consertar: `Barramento` não expõe `desassinar`,
+        então trocar a instância dobraria a contagem. Fica declarado em vez de
+        silenciado. É o menos grave dos dois que já estiveram aqui — ele fecha
+        por bucket de tempo, então só o candle corrente vira, o histórico
+        fechado não mistura sessões.
+
+        `RankingCorretoras` tinha o mesmo problema (`janela_ns=None` de
+        fábrica acumulava para sempre, e era o que de fato misturava
+        sessões) mas ganhou `iniciar_nova_sessao()` — chamado abaixo, no
+        grupo (a).
         """
         cfg = self.config
         symbol = cfg.symbol
@@ -578,6 +587,8 @@ class SessaoFluxo:
             self.agressao.iniciar_nova_sessao(timestamp_ns)
         if self.volume_profile is not None:
             self.volume_profile.nova_sessao()
+        if self.brokers is not None:
+            self.brokers.iniciar_nova_sessao()
 
         # (b) quem esta classe chama — recriado com a mesma config
         self.perfil_sessao = VolumeProfile(config=cfg.volume_profile)

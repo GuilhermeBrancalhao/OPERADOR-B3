@@ -1,0 +1,74 @@
+[
+  {
+    "id": "M1",
+    "arquivo": "inferencia_mbp.py",
+    "descricao": "remove a dedup do heap de BIDS (volta o push incondicional)",
+    "teste_que_mata": "test_recarga_do_mesmo_nivel_nao_gera_TRABALHO_no_heap"
+  },
+  {
+    "id": "M2",
+    "arquivo": "inferencia_mbp.py",
+    "descricao": "remove a dedup do heap de ASKS",
+    "teste_que_mata": "test_recarga_do_mesmo_nivel_nao_gera_TRABALHO_no_heap"
+  },
+  {
+    "id": "M3",
+    "arquivo": "inferencia_mbp.py",
+    "descricao": "remove o TETO (nunca compacta o lado da compra)",
+    "teste_que_mata": "test_heap_de_precos_tem_teto_no_numero_de_niveis_vivos"
+  },
+  {
+    "id": "M4",
+    "arquivo": "inferencia_mbp.py",
+    "descricao": "volta a poda SO pela cabeca (espelho nunca solta o preco)",
+    "teste_que_mata": "test_topo_continua_correto_depois_de_mil_recargas"
+  },
+  {
+    "id": "M5",
+    "arquivo": "inferencia_mbp.py",
+    "descricao": "espelho do ASK nunca solta o preco no heappop",
+    "teste_que_mata": "test_topo_de_ask_continua_correto_depois_de_mil_recargas"
+  },
+  {
+    "id": "M6",
+    "arquivo": "inferencia_mbp.py",
+    "descricao": "compactacao mantem os niveis MORTOS (filtro invertido p/ >= 0)",
+    "teste_que_mata": "test_heap_de_precos_tem_teto_no_numero_de_niveis_vivos"
+  },
+  {
+    "id": "M7",
+    "arquivo": "inferencia_mbp.py",
+    "descricao": "compactacao DESCARTA os niveis vivos (mantem so os mortos)",
+    "teste_que_mata": "test_compactacao_do_heap_preserva_todos_os_niveis_vivos"
+  },
+  {
+    "id": "M8",
+    "arquivo": "inferencia_mbp.py",
+    "descricao": "piso do teto sobe a 10**9: compactacao nunca dispara",
+    "teste_que_mata": "test_heap_de_precos_tem_teto_no_numero_de_niveis_vivos"
+  },
+  {
+    "id": "M9",
+    "arquivo": "livro_mbo.py",
+    "descricao": "LivroMBO: remove a compactacao do lado da compra",
+    "teste_que_mata": "test_heap_nao_cresce_com_preco_distinto_enquanto_o_topo_fica_ocupado"
+  },
+  {
+    "id": "M10",
+    "arquivo": "livro_mbo.py",
+    "descricao": "LivroMBO: compactacao nao desmarca `no_heap` do nivel morto",
+    "teste_que_mata": "test_nivel_descartado_pela_compactacao_volta_ao_topo_se_ressuscitar"
+  },
+  {
+    "id": "M11",
+    "arquivo": "livro_mbo.py",
+    "descricao": "LivroMBO: compactacao descarta os niveis VIVOS",
+    "teste_que_mata": "test_compactacao_preserva_a_ordem_de_todos_os_niveis_vivos"
+  },
+  {
+    "id": "M12",
+    "arquivo": "livro_mbo.py",
+    "descricao": "LivroMBO: remove a compactacao do lado da venda",
+    "teste_que_mata": "test_heap_de_asks_tambem_e_compactado"
+  }
+]

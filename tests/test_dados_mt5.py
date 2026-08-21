@@ -39,6 +39,9 @@ from fluxopro.core.eventos import (
 from fluxopro.dados import mt5 as mt5_mod
 from fluxopro.dados.eventos_captura import FalhaCaptura, TipoFalha
 from fluxopro.dados.mt5 import (
+    _AMOSTRAS_PARA_REGRESSAO,
+    _JANELA_OFFSET_S,
+    _LIMIAR_REGRESSAO_NS,
     AdaptadorMT5,
     _CursorTick,
     _importar_mt5,
@@ -548,6 +551,30 @@ def test_tick_invalido_na_ponta_do_lote_nao_prende_o_cursor():
 # ======================================================================
 
 
+class _RelogioFalso:
+    """Relogio local controlavel — `time_ns` e `monotonic_ns` andam juntos.
+
+    Sem ele nao da para testar a JANELA do estimador: a poda por idade e por
+    `time.monotonic_ns()`, e esperar 120 s de verdade nao e teste.
+    """
+
+    def __init__(self, base_ns=1_700_000_000_000_000_000):
+        self.ns = base_ns
+        self.mono = 5_000_000_000
+
+    def avancar(self, segundos):
+        delta = int(segundos * 10**9)
+        self.ns += delta
+        self.mono += delta
+
+    def instalar(self, monkeypatch):
+        monkeypatch.setattr(mt5_mod.time, "time_ns", lambda: self.ns)
+        monkeypatch.setattr(mt5_mod.time, "monotonic_ns", lambda: self.mono)
+        return self
+
+
+
+
 def _tape_com_offset_de_servidor(n, offset_s, ticks_por_ms=1):
     """Tape cujo `time_msc` está `offset_s` à frente do relógio local — é o
     que um servidor MetaQuotes em GMT+3 entrega para uma máquina em GMT-3."""
@@ -604,9 +631,22 @@ def test_falha_captura_usa_o_mesmo_relogio_do_trade():
     assert (falha.timestamp_ns - trades[-1].timestamp_ns) / 1e6 < 300
 
 
-def test_sequencia_intercalada_de_trades_e_books_sai_monotonica():
+def test_sequencia_intercalada_de_trades_e_books_sai_monotonica(monkeypatch):
+    """Trades (tempo do servidor) e books (tempo derivado) intercalados na
+    mesma linha do tempo, sem inversão.
+
+    O relógio local é CONTROLADO e anda 1 ms por poll, o mesmo passo com que
+    o tape avança. Sem isso o teste é uma moeda: o tape de mentira andava
+    1 ms por rodada enquanto o relógio de parede andava ~0,1 ms, então o
+    relógio derivado (local + offset) ultrapassava legitimamente o tape e o
+    piso monotônico empurrava um book para depois do trade seguinte —
+    medido em ~10% das execuções, com o estimador desta onda E com o da
+    onda 7. Nenhum servidor real entrega tape 10x mais rápido que o relógio
+    de parede; o regime era do fixture, não do código.
+    """
+    falso = _RelogioFalso().instalar(monkeypatch)
     offset_s = 3 * 3600
-    base_msc = (time.time_ns() + offset_s * 10**9) // 10**6
+    base_msc = (falso.ns + offset_s * 10**9) // 10**6
     tape = _tape_denso(40, base_msc, ticks_por_ms=2)
     fake = _FakeMT5(tape=tape, book_repetido=BOOK_PADRAO, visivel_ate_msc=base_msc)
     adaptador = _adaptador(fake)
@@ -615,6 +655,7 @@ def test_sequencia_intercalada_de_trades_e_books_sai_monotonica():
     linha: list[int] = []
     cursor = _CursorTick()
     for i in range(1, 21):
+        falso.avancar(0.001)  # o relógio local anda junto com o tape
         fake.visivel_ate_msc = base_msc + i
         trades, cursor, _falhas = adaptador._puxar_ticks(fake, cursor)
         linha.extend(t.timestamp_ns for t in trades)
@@ -884,3 +925,347 @@ def test_adaptador_mt5_deriva_book_delta_entre_polls_consecutivos():
     assert len(snapshots) >= 2
     # a segunda leitura de book (qty 10->25 no bid) deve ter gerado UPDATE
     assert any(d.action == BookAction.UPDATE and d.qty == 25 for d in deltas)
+
+
+# ======================================================================
+# O relogio esquece regressoes do servidor (R4 A.4)
+# ======================================================================
+#
+# O estimador de MAXIMO da onda 7 consertou o relogio preso com tape parado
+# e criou uma catraca: uma regressao do relogio do servidor (troca de
+# servidor da corretora, ajuste de NTP, failover) inflava o offset PARA
+# SEMPRE. Uma regressao de 400 ms ja excede a janela de reconciliacao de
+# 300 ms do `InferidorMBP` ⇒ 100% das execucoes viram cancelamento. Os
+# testes abaixo prendem os TRES regimes que o estimador tem de separar:
+# tape parado (nao pode prender), regressao de servidor (tem de esquecer,
+# em tempo limitado e ALTO) e tick atrasado isolado (NAO pode resetar).
+
+
+def _alimentar(relogio, falso, offset_ns, n, passo_s=0.05, idade_s=0.0):
+    """`n` ticks de um servidor com `offset_ns`, tape andando a `passo_s`.
+
+    `idade_s` e a idade do tick no momento em que e observado — a
+    SUBESTIMACAO estrutural que obriga o estimador a ser um maximo.
+    Devolve a lista de retornos de `observar` (para ver a regressao).
+    """
+    saidas = []
+    for _ in range(n):
+        falso.avancar(passo_s)
+        servidor_ns = falso.ns + offset_ns - int(idade_s * 10**9)
+        saidas.append(relogio.observar(servidor_ns))
+    return saidas
+
+
+def _erro_do_derivado_s(relogio, falso, offset_ns):
+    """Quanto o relogio derivado erra em relacao a verdade corrente."""
+    return abs(relogio.agora_ns() - (falso.ns + offset_ns)) / 1e9
+
+
+def test_relogio_esquece_regressao_de_400ms_do_servidor(monkeypatch):
+    """O caso medido pela R4: 400 ms de recuo bastam para estourar a janela
+    de reconciliacao de 300 ms, e com o maximo puro o erro era PERMANENTE
+    (5.000 amostras corretas nao moviam o estimador um nanossegundo).
+
+    Contrato preso aqui: converge em `_AMOSTRAS_PARA_REGRESSAO` amostras (3
+    polls, ~150 ms com o poll padrao de 50 ms) e `observar` DEVOLVE o recuo
+    para virar `FalhaCaptura` — corrigir em silencio nao vale.
+    """
+    falso = _RelogioFalso().instalar(monkeypatch)
+    relogio = _RelogioServidor()
+
+    offset_bom = 3 * 3600 * 10**9
+    _alimentar(relogio, falso, offset_bom, 50)
+    assert _erro_do_derivado_s(relogio, falso, offset_bom) < 0.05
+
+    # o servidor RECUA 400 ms e o tape continua andando no referencial novo.
+    recuo_ns = 400_000_000
+    offset_novo = offset_bom - recuo_ns
+    saidas = _alimentar(relogio, falso, offset_novo, 20)
+
+    detectadas = [x for x in saidas if x is not None]
+    assert detectadas, "regressao de 400 ms passou despercebida — o maximo virou catraca"
+    assert abs(detectadas[0] - recuo_ns) < 50_000_000, (
+        f"recuo reportado ({detectadas[0]}) nao bate com os 400 ms reais"
+    )
+    # o tick do step em si nao ANDA para a frente (recua), entao nao conta
+    # para o detector: convergencia = `_AMOSTRAS_PARA_REGRESSAO` + 1 polls.
+    polls_ate_detectar = saidas.index(detectadas[0]) + 1
+    assert polls_ate_detectar <= _AMOSTRAS_PARA_REGRESSAO + 1, (
+        f"a regressao levou {polls_ate_detectar} polls para ser detectada"
+    )
+
+    erro_s = _erro_do_derivado_s(relogio, falso, offset_novo)
+    assert erro_s * 1000 < 300, (
+        f"apos a regressao o relogio derivado erra {erro_s * 1000:.0f} ms — "
+        "ainda fora da janela de reconciliacao de 300 ms do InferidorMBP"
+    )
+
+
+def test_regressao_do_servidor_vira_falha_captura_no_fluxo(monkeypatch):
+    """A regressao nao pode ficar so dentro do estimador: o replay tem de
+    ver a descontinuidade. Aqui pelo caminho real (`_puxar_ticks`)."""
+    falso = _RelogioFalso().instalar(monkeypatch)
+    base_msc = (falso.ns + 3 * 3600 * 10**9) // 10**6
+
+    # 10 ticks bons, depois o servidor recua 2 s e o tape recomeca dali.
+    bons = [(base_msc + i, 4999.5, 5000.5, 5000.5, 1, TICK_FLAG_BUY, 0.0) for i in range(10)]
+    recuado = base_msc - 2000
+    depois = [(recuado + i, 4999.5, 5000.5, 5000.5, 1, TICK_FLAG_BUY, 0.0) for i in range(10)]
+
+    adaptador = _adaptador(_FakeMT5())
+    falhas_vistas = []
+    cursor = _CursorTick()
+    for lote in [bons] + [[t] for t in depois]:
+        fake = _FakeMT5(tape=_linhas(lote))
+        _trades, _c, falhas = adaptador._puxar_ticks(fake, _CursorTick())
+        falhas_vistas.extend(falhas)
+        falso.avancar(0.05)
+
+    tipos = [f.tipo for f in falhas_vistas]
+    assert TipoFalha.RELOGIO_REGREDIU in tipos, (
+        "regressao do relogio do servidor tem de ser ALTA (FalhaCaptura), "
+        f"nunca silenciosa; falhas vistas: {tipos}"
+    )
+    falha = next(f for f in falhas_vistas if f.tipo is TipoFalha.RELOGIO_REGREDIU)
+    assert "recuou" in falha.detalhe
+    assert falha.symbol == adaptador._symbol
+
+
+def test_tape_parado_por_10_minutos_nao_prende_o_relogio_derivado(monkeypatch):
+    """O defeito que o MAXIMO consertou, e que a correcao da regressao NAO
+    pode reintroduzir. Com o tape parado o mesmo tick e re-observado a cada
+    poll e cada amostra e mais velha que a anterior; se o estimador adotasse
+    a amostra corrente (ou deixasse a janela envelhecer ate so restar
+    amostra degradada), o relogio derivado ficaria preso na hora do ultimo
+    negocio e o erro cresceria sem limite — medido: -60 s e subindo.
+
+    10 minutos e MAIS que a janela de 120 s de proposito: e exatamente o
+    regime em que uma janela deslizante ingenua quebra.
+    """
+    falso = _RelogioFalso().instalar(monkeypatch)
+    relogio = _RelogioServidor()
+
+    offset_ns = 3 * 3600 * 10**9
+    _alimentar(relogio, falso, offset_ns, 20)
+
+    tick_congelado = falso.ns + offset_ns  # o ultimo negocio do dia
+    piores = []
+    for _ in range(10 * 60 * 20):  # 10 min a 20 polls/s
+        falso.avancar(0.05)
+        assert relogio.observar(tick_congelado) is None, (
+            "tape parado nao e regressao de servidor — nao pode resetar"
+        )
+        piores.append(_erro_do_derivado_s(relogio, falso, offset_ns))
+
+    assert max(piores) < 1.0, (
+        f"com o tape parado 10 min o relogio derivado errou {max(piores):.1f} s — "
+        "ficou preso na hora do ultimo negocio (defeito da onda 6)"
+    )
+    assert relogio.amostras_na_janela <= 2, (
+        "re-observar o mesmo tick nao pode encher a janela"
+    )
+
+
+def test_tick_atrasado_isolado_nao_dispara_reset(monkeypatch):
+    """A distincao que sustenta o desenho: um tick atrasado no meio do fluxo
+    produz o MESMO sinal bruto que uma regressao ("estimativa abaixo do
+    maximo"). O que separa os dois e o relogio do SERVIDOR — na regressao o
+    tape volta a ANDAR PARA A FRENTE num referencial novo; um tick atrasado
+    e um ponto isolado e o proximo tick volta acima do pico.
+    """
+    falso = _RelogioFalso().instalar(monkeypatch)
+    relogio = _RelogioServidor()
+
+    offset_ns = 3 * 3600 * 10**9
+    _alimentar(relogio, falso, offset_ns, 30)
+    offset_antes = relogio.offset_ns
+
+    atraso_ns = 5 * 10**9  # 5 s de atraso: MUITO acima do limiar de 250 ms
+    for _ in range(40):
+        falso.avancar(0.05)
+        assert relogio.observar(falso.ns + offset_ns - atraso_ns) is None, (
+            "um tick atrasado ISOLADO nao e regressao de servidor"
+        )
+        falso.avancar(0.05)
+        assert relogio.observar(falso.ns + offset_ns) is None
+
+    assert relogio.offset_ns >= offset_antes - 10**8, (
+        "tick atrasado isolado degradou o offset"
+    )
+    assert _erro_do_derivado_s(relogio, falso, offset_ns) < 0.1
+
+
+def test_adaptador_atrasado_nao_e_confundido_com_regressao(monkeypatch):
+    """Regime achado pelo `bench_mt5.py`: no pico de 50.000 ticks/s cada poll
+    custa mais CPU do que o tape que ele consome, entao o adaptador FICA PARA
+    TRAS — a hora do servidor continua subindo, so que mais devagar que a
+    local, e a estimativa despenca centenas de ms por poll.
+
+    Um detector que olhasse so o deficit chamaria isso de regressao (medido:
+    oito falsos positivos numa unica passada do benchmark) e RESETARIA o
+    estimador numa amostra velha, jogando fora o unico offset bom que ele
+    tem. O que separa os dois casos e o sinal fisico: aqui o `time_msc`
+    NUNCA anda para tras.
+    """
+    falso = _RelogioFalso().instalar(monkeypatch)
+    relogio = _RelogioServidor()
+
+    offset_ns = 3 * 3600 * 10**9
+    _alimentar(relogio, falso, offset_ns, 30)
+    offset_bom = relogio.offset_ns
+
+    # 40 polls em que o local anda 500 ms e o tape so 50 ms: o adaptador
+    # acumula 450 ms de atraso por poll, 18 s no fim.
+    servidor_ns = falso.ns + offset_ns
+    for _ in range(40):
+        falso.avancar(0.5)          # relogio local: +500 ms
+        servidor_ns += 50_000_000   # tape consumido:  +50 ms
+        assert relogio.observar(servidor_ns) is None, (
+            "adaptador atrasado NAO e regressao de servidor — o time_msc nunca "
+            "andou para tras"
+        )
+
+    assert relogio.offset_ns >= offset_bom - 10**8, (
+        "o estimador jogou fora o offset bom por causa do proprio atraso"
+    )
+
+
+def test_regressao_sub_limiar_e_absorvida_pela_janela_deslizante(monkeypatch):
+    """Recuo abaixo de `_LIMIAR_REGRESSAO_NS` nao dispara o detector — e nem
+    precisa, porque nao estoura a janela de 300 ms. Quem o corrige e a
+    MEMORIA FINITA do maximo, em no maximo `_JANELA_OFFSET_S`. Com o maximo
+    puro esse erro era permanente.
+    """
+    falso = _RelogioFalso().instalar(monkeypatch)
+    relogio = _RelogioServidor()
+
+    offset_bom = 3 * 3600 * 10**9
+    _alimentar(relogio, falso, offset_bom, 50)
+
+    recuo_ns = _LIMIAR_REGRESSAO_NS // 2
+    offset_novo = offset_bom - recuo_ns
+    saidas = _alimentar(
+        relogio, falso, offset_novo, int(_JANELA_OFFSET_S / 0.05) + 40
+    )
+    assert all(x is None for x in saidas), (
+        "recuo sub-limiar nao deve ser declarado regressao (falso positivo)"
+    )
+    erro_s = _erro_do_derivado_s(relogio, falso, offset_novo)
+    assert erro_s * 1000 < 50, (
+        f"a janela deslizante nao esqueceu o offset velho: erro de "
+        f"{erro_s * 1000:.0f} ms depois de {_JANELA_OFFSET_S:.0f} s"
+    )
+
+
+def test_janela_do_offset_tem_memoria_limitada(monkeypatch):
+    """R4 tambem achou vazamento de heap em estrutura sem teto. A janela e um
+    deque monotonico com teto DURO: sessao longa nao pode virar memoria.
+    """
+    falso = _RelogioFalso().instalar(monkeypatch)
+    relogio = _RelogioServidor(janela_s=10**6, max_amostras=64)
+
+    # offset ESTRITAMENTE DECRESCENTE e o pior caso do deque monotonico:
+    # cada amostra nova e MENOR que a anterior, entao nenhuma e podada pela
+    # regra do maximo e todas ficam na fila. (Offset crescente e o caso
+    # facil: a amostra nova expulsa todas as anteriores e a fila tem 1.)
+    # O regime existe: e o adaptador consumindo tape mais devagar que o
+    # relogio de parede — o mesmo do `test_adaptador_atrasado...`.
+    servidor_ns = falso.ns + 10**9
+    for _ in range(5000):
+        falso.avancar(0.010)          # local: +10 ms
+        servidor_ns += 1_000_000      # tape:  +1 ms
+        relogio.observar(servidor_ns)
+    assert relogio.amostras_na_janela <= 64, (
+        f"janela cresceu para {relogio.amostras_na_janela} entradas apesar do teto"
+    )
+
+
+def test_propriedade_erro_do_relogio_limitado_em_sequencia_adversarial(monkeypatch):
+    """Propriedade: em QUALQUER mistura de tape andando, tape parado, ticks
+    fora de ordem e regressoes de servidor,
+
+      (a) o erro do relogio derivado e LIMITADO — nada de catraca;
+      (b) fora dos episodios de convergencia que se seguem a cada
+          regressao, o erro fica dentro dos 300 ms da reconciliacao do
+          `InferidorMBP`;
+      (c) cada episodio de convergencia FECHA, e em poucas amostras.
+
+    A sequencia e deterministica (semente fixa) e o tape e simulado como
+    estado de verdade (`servidor_ns` corrente), nao como sorteio
+    independente: tape parado repete o ULTIMO tick, tick fora de ordem e um
+    tick JA passado, regressao desloca o referencial inteiro para tras. Sem
+    isso o teste testaria um mundo que nao existe.
+
+    O teto de `_MAX_AMOSTRAS_CONVERGENCIA` amostras e maior que os
+    `_AMOSTRAS_PARA_REGRESSAO + 1` do caso limpo de proposito: tape parado
+    nao alimenta o detector (nao ha tempo de servidor novo) e um tick fora
+    de ordem no meio do episodio zera a contagem de suspeitas. Os dois
+    ATRASAM a convergencia; nenhum dos dois a impede — e e isso que este
+    teste prende.
+    """
+    import random
+
+    _MAX_AMOSTRAS_CONVERGENCIA = 20
+
+    rng = random.Random(20260821)
+    falso = _RelogioFalso().instalar(monkeypatch)
+    relogio = _RelogioServidor()
+
+    offset_ns = 3 * 3600 * 10**9
+    _alimentar(relogio, falso, offset_ns, 20)
+    servidor_ns = falso.ns + offset_ns
+
+    pior_absoluto = 0.0
+    pior_fora_de_episodio = 0.0
+    episodios = []       # tamanho de cada convergencia, em amostras
+    em_episodio = 0      # 0 = estavel; >0 = amostras desde a regressao
+    regressoes = 0
+
+    for passo in range(4000):
+        modo = rng.choices(
+            ["andar", "parado", "fora_de_ordem", "regressao"],
+            weights=[70, 20, 8, 2],
+        )[0]
+        falso.avancar(0.05)
+
+        if modo == "parado":
+            relogio.observar(servidor_ns)          # o mesmo tick de novo
+        elif modo == "fora_de_ordem":
+            relogio.observar(servidor_ns - rng.randint(10**9, 8 * 10**9))
+        else:
+            if modo == "regressao":
+                offset_ns -= rng.randint(300_000_000, 10 * 10**9)
+                if em_episodio:
+                    episodios.append(em_episodio)  # regressao sobre regressao
+                em_episodio = 1
+                regressoes += 1
+            servidor_ns = falso.ns + offset_ns
+            relogio.observar(servidor_ns)
+
+        erro = _erro_do_derivado_s(relogio, falso, offset_ns)
+        pior_absoluto = max(pior_absoluto, erro)
+
+        if em_episodio:
+            if erro * 1000 < 300:
+                episodios.append(em_episodio)
+                em_episodio = 0
+            else:
+                em_episodio += 1
+                assert em_episodio <= _MAX_AMOSTRAS_CONVERGENCIA, (
+                    f"no passo {passo} o relogio nao convergiu em "
+                    f"{_MAX_AMOSTRAS_CONVERGENCIA} amostras apos a regressao "
+                    f"(erro corrente {erro * 1000:.0f} ms) — e catraca de novo"
+                )
+        else:
+            pior_fora_de_episodio = max(pior_fora_de_episodio, erro)
+
+    assert regressoes >= 20, "a sequencia adversarial nao exercitou regressoes"
+    assert len(episodios) >= regressoes - 1, "algum episodio nunca fechou"
+    assert pior_absoluto < 30.0, (
+        f"erro do relogio derivado chegou a {pior_absoluto:.1f} s — nem "
+        "durante a convergencia ele pode ser ilimitado"
+    )
+    assert pior_fora_de_episodio * 1000 < 300, (
+        f"fora dos episodios de convergencia o erro chegou a "
+        f"{pior_fora_de_episodio * 1000:.0f} ms — acima da janela de 300 ms"
+    )

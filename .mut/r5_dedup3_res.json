@@ -1,0 +1,25 @@
+[
+ {
+  "id": "D17b",
+  "estado": "MORTA",
+  "desc": "fronteira da janela no caminho quente vira >= (par do D16, inline em `de`)",
+  "linha": "1 failed, 114 passed in 25.22s",
+  "testes": [
+   "test_a_fronteira_da_janela_e_estrita"
+  ]
+ },
+ {
+  "id": "D19",
+  "estado": "SOBREVIVEU",
+  "desc": "varredura na insercao some (reclamacao so pela amortizada)",
+  "linha": "115 passed in 24.06s",
+  "testes": []
+ },
+ {
+  "id": "D20",
+  "estado": "SOBREVIVEU",
+  "desc": "limpar() nao zera o relogio: dia 2 nasce com o relogio do dia 1",
+  "linha": "115 passed in 24.86s",
+  "testes": []
+ }
+]

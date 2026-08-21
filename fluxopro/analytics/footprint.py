@@ -54,9 +54,17 @@ class ConfigFootprint:
     """Razão diagonal mínima (comprador(P) / vendedor(P+1) ou o espelho) para
     marcar imbalance. Padrão de mercado: 3.0 (300%)."""
 
-    qty_minima_imbalance: int = 0
+    qty_minima_imbalance: int = 5
     """Ignora o lado "forte" de níveis com qty abaixo deste piso — evita
-    imbalance espúrio tipo 1 contra 0 (razão infinita) em ruído de 1 lote."""
+    imbalance espúrio tipo 1 contra 0 (razão infinita) em ruído de poucos
+    lotes. Default de fábrica vinha `0` (proteção desarmada) até a R4 medir
+    42-72% dos níveis de um candle esparso marcados como imbalance por causa
+    disso (`criticas/nucleo_r3.md` C.7, `criticas/nucleo_r4.md` achado 10) —
+    uma razão 3:1 sobre 1 contrato contra 0 não é sinal, é ruído de tape fino.
+    `5` é o piso: abaixo disso a razão diagonal não dispara nada, mesmo que
+    ultrapasse `limiar_imbalance`. Ajuste para o contrato/liquidez do symbol
+    (WDO negocia rotineiramente em clipes de 1-10 lotes; `5` filtra o ruído
+    de ponta sem apagar imbalance real de tamanho médio)."""
 
     multiplo_absorcao: float = 2.0
     """Volume no nível do extremo (topo/fundo) precisa ser >= este múltiplo da

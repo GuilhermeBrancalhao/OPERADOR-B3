@@ -1,0 +1,18 @@
+[
+ {
+  "id": "D19b",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "varredura na insercao some (reclamacao so pela amortizada)",
+  "de": "        self._varrer(self._VARREDURA_POR_INSERCAO)\n        if len(self._chaves) >= self._limite:",
+  "para": "        if len(self._chaves) >= self._limite:",
+  "n": 1
+ },
+ {
+  "id": "D20b",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "limpar() nao zera o relogio: dia 2 nasce com o relogio do dia 1",
+  "de": "        self._agora_ns = 0\n        self._cursor = 0\n        self._desde_varredura = 0\n\n\nclass _DetectorDeLivro:",
+  "para": "        self._cursor = 0\n        self._desde_varredura = 0\n\n\nclass _DetectorDeLivro:",
+  "n": 1
+ }
+]

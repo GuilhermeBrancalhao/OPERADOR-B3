@@ -1,0 +1,169 @@
+[
+  {
+    "id": "N04",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "agressao de COMPRA empurra o preco para BAIXO (sinal trocado no ramo BUY)",
+    "testes": [
+      "tests/test_simulador_propriedades_mercado.py::test_preco_desloca_na_direcao_do_agressor_nunca_ao_contrario"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "N05",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "regime de absorcao desligado (desloca_preco ignora `absorcao`)",
+    "testes": [
+      "tests/test_simulador_propriedades_mercado.py::test_absorcao_forcada_a_100_por_cento_impede_qualquer_deslocamento_de_preco"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "X06",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "quem agrediu invertido (comprador<->vendedor)",
+    "testes": [
+      "tests/test_micro_perfil_player.py::test_comprador_agride_conta_como_agressor_do_comprador_nao_do_vendedor",
+      "tests/test_micro_perfil_player.py::test_vendedor_agride_conta_como_agressor_do_vendedor_nao_do_comprador"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "X08",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "perna vendedora nao conta clip (n_clips nao incrementado no ramo seller)",
+    "testes": [
+      "tests/test_micro_perfil_player.py::test_perna_vendedora_tambem_conta_no_clip_e_no_volume"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "X10",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "agressividade mede o lado PASSIVO",
+    "testes": [
+      "tests/test_micro_perfil_player.py::test_agressividade_e_agressor_sobre_agressor_mais_passivo_nao_o_inverso",
+      "tests/test_micro_perfil_player.py::test_comprador_agride_conta_como_agressor_do_comprador_nao_do_vendedor"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "X01",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "janela expira com >= (trade na borda exata da janela some)",
+    "testes": [
+      "tests/test_analytics_brokers.py::test_janela_expira_estritamente_maior_trade_na_borda_exata_sobrevive"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "X04",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "aceita trade de OUTRO symbol (guarda de symbol removida)",
+    "testes": [
+      "tests/test_analytics_brokers.py::test_trade_de_outro_symbol_e_ignorado"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "X26",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "vizinho diagonal zerado/ausente deixa de marcar imbalance de compra",
+    "testes": [
+      "tests/test_analytics_footprint.py::test_imbalance_sem_vizinho_diagonal_marca_por_falta_de_contraparte"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "X27",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "media de volume por nivel divide por n+1",
+    "testes": [
+      "tests/test_analytics_footprint.py::test_media_volume_por_nivel_divide_pelo_numero_de_niveis_nao_mais_um"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "X28",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "delta_divergente so olha alta (ramo de baixa removido)",
+    "testes": [
+      "tests/test_analytics_footprint.py::test_delta_divergente_cobre_os_quatro_quadrantes_preco_x_delta"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "Y10-R5",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "qty_minima_imbalance volta ao default antigo condenado (0) em vez do novo (5)",
+    "testes": [
+      "tests/test_analytics_footprint.py::test_imbalance_abaixo_do_piso_padrao_nao_dispara_mesmo_com_razao_alta"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "P-own-1",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "sinal do saldo liquido invertido (vendido - comprado)",
+    "testes": [
+      "tests/test_micro_perfil_player.py::test_saldo_liquido_positivo_quando_compra_mais_que_vende_e_negativo_no_inverso"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "P-own-2",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "persistencia conta trades (n_clips) em vez de periodos distintos",
+    "testes": [
+      "tests/test_micro_perfil_player.py::test_persistencia_nao_conta_trades_e_sim_periodos_distintos",
+      "tests/test_micro_perfil_player.py::test_persistencia_conta_periodos_distintos"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "B-own-1",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "sinal do saldo liquido de EstatisticaCorretora invertido",
+    "testes": [
+      "tests/test_analytics_brokers.py::test_saldo_liquido_tem_sinal_positivo_quando_compra_mais_que_vende",
+      "tests/test_analytics_brokers.py::test_ranking_por_volume_e_por_saldo"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "B-own-2",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "iniciar_nova_sessao vira no-op (nao zera estatisticas nem janela)",
+    "testes": [
+      "tests/test_analytics_brokers.py::test_iniciar_nova_sessao_zera_estatisticas_e_janela",
+      "tests/test_app_pipeline.py::test_iniciar_nova_sessao_zera_o_ranking_de_corretoras"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "F-own-1",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "absorcao_topo usa OR em vez de AND (volume alto OU reversao ja confirma)",
+    "testes": [
+      "tests/test_analytics_footprint.py::test_absorcao_nao_confirma_sem_reversao_suficiente"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "S-own-1",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "multiplicador de clip grande desativado (player_grande nao aumenta qty)",
+    "testes": [
+      "tests/test_simulador_propriedades_mercado.py::test_player_grande_forcado_gera_clips_fora_do_padrao_normal"
+    ],
+    "veredito": "MORTA"
+  },
+  {
+    "id": "S-own-2",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "agressao de COMPRA consome o topo do BID em vez do ASK (lado trocado)",
+    "testes": [
+      "tests/test_simulador_propriedades_mercado.py::test_agressao_de_compra_consome_o_topo_do_ask_nao_do_bid"
+    ],
+    "veredito": "MORTA"
+  }
+]

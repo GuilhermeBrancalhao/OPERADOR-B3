@@ -89,3 +89,84 @@ def test_janela_de_tempo_expira_negocios_antigos() -> None:
     xp = ranking.estatistica("XP")
     assert xp is not None
     assert xp.volume_compra == 5
+
+
+def test_comprador_e_vendedor_nao_se_confundem() -> None:
+    """Mata a mutacao que troca buyer/seller: comprador entra so no lado
+    compra, vendedor so no lado venda -- nunca o oposto."""
+    barramento = Barramento()
+    ranking = RankingCorretoras(barramento, symbol="WDOFUT")
+
+    barramento.publicar(_trade(0, 100, 10, "XP", "BTG", "T1"))
+
+    xp = ranking.estatistica("XP")
+    btg = ranking.estatistica("BTG")
+    assert xp.volume_compra == 10 and xp.volume_venda == 0
+    assert btg.volume_venda == 10 and btg.volume_compra == 0
+
+
+def test_saldo_liquido_tem_sinal_positivo_quando_compra_mais_que_vende() -> None:
+    """Mata a mutacao que inverte o sinal do saldo (compra - venda vira
+    venda - compra)."""
+    barramento = Barramento()
+    ranking = RankingCorretoras(barramento, symbol="WDOFUT")
+
+    barramento.publicar(_trade(0, 100, 30, "XP", "BTG", "T1"))
+    barramento.publicar(_trade(1, 100, 10, "BTG", "XP", "T2"))
+
+    xp = ranking.estatistica("XP")
+    # XP comprou 30 e vendeu 10 -> mais comprador -> saldo POSITIVO
+    assert xp.saldo_liquido == 20
+    assert xp.saldo_liquido > 0
+
+    btg = ranking.estatistica("BTG")
+    # BTG vendeu 30 e comprou 10 -> mais vendedor -> saldo NEGATIVO
+    assert btg.saldo_liquido == -20
+    assert btg.saldo_liquido < 0
+
+
+def test_janela_expira_estritamente_maior_trade_na_borda_exata_sobrevive() -> None:
+    """Mata a mutacao que troca `>` por `>=` na expiracao: um trade
+    EXATAMENTE na borda da janela nao pode expirar."""
+    barramento = Barramento()
+    config = ConfigRankingCorretoras(janela_ns=10)
+    ranking = RankingCorretoras(barramento, symbol="WDOFUT", config=config)
+
+    barramento.publicar(_trade(0, 100, 10, "XP", "BTG", "T1"))
+    # 10 - 0 = 10, exatamente igual a janela_ns -> NAO expira (regra e' >, nao >=)
+    barramento.publicar(_trade(10, 100, 5, "XP", "BTG", "T2"))
+
+    xp = ranking.estatistica("XP")
+    assert xp.volume_compra == 15  # T1 ainda vivo
+
+
+def test_trade_de_outro_symbol_e_ignorado() -> None:
+    barramento = Barramento()
+    ranking = RankingCorretoras(barramento, symbol="WDOFUT")
+
+    barramento.publicar(Trade(
+        timestamp_ns=0, symbol="WINFUT", price=100000, qty=5,
+        side_agressor=AgressorSide.BUY, trade_id="t0",
+        buyer_broker="XP", seller_broker="BTG",
+    ))
+    assert ranking.estatistica("XP") is None
+
+
+def test_iniciar_nova_sessao_zera_estatisticas_e_janela() -> None:
+    barramento = Barramento()
+    config = ConfigRankingCorretoras(janela_ns=1_000)
+    ranking = RankingCorretoras(barramento, symbol="WDOFUT", config=config)
+
+    barramento.publicar(_trade(0, 100, 10, "XP", "BTG", "T1"))
+    assert ranking.estatistica("XP") is not None
+
+    ranking.iniciar_nova_sessao()
+
+    assert ranking.estatistica("XP") is None
+    assert ranking.ranking_por_volume() == []
+    # a janela deslizante tambem foi limpa: um trade novo na sessao seguinte
+    # nao deve ser expirado por um trade antigo que ja tinha sido zerado
+    barramento.publicar(_trade(5_000, 100, 7, "XP", "BTG", "T2"))
+    xp = ranking.estatistica("XP")
+    assert xp is not None
+    assert xp.volume_compra == 7

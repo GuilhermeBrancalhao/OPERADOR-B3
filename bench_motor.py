@@ -14,6 +14,12 @@ Tres medicoes, nesta ordem:
   3. PIPELINE COMPLETO  -> barramento + EstadoMercado + 6 analytics + 3
                            detectores + MotorSinais. E o estagio que
                            `bench_carga.py` NAO mede (ele para nos detectores).
+  4. SESSAO LONGA       -> o eixo DURACAO DE SESSAO, que `criticas/nucleo_r4.md`
+                           SS.C.6 aponta faltar em todos os seis benchmarks da
+                           raiz: mede o custo dos ULTIMOS 10.000 trades de uma
+                           sessao de N, e o tamanho das estruturas de estado no
+                           fim. Media global esconde degradacao tardia; um
+                           estado que cresce com o dia aparece aqui e so aqui.
 
 Uso:
     python bench_motor.py                    # completo
@@ -202,6 +208,45 @@ def bench_pipeline(n_passos: int, taxa: float) -> None:
               f"{dt * 1e6 / n_ev:8.2f} us/ev   {_veredito(eps)}")
 
 
+def bench_sessao_longa(base: int, dobras: int, amostra: int = 10_000) -> None:
+    """Custo dos ULTIMOS `amostra` trades conforme a sessao se alonga.
+
+    A media global do estagio 2 dilui um custo que so aparece no fim do dia.
+    Aqui o relogio so conta na cauda: se alguma estrutura do motor crescer com
+    a duracao da sessao, o us/ev da cauda sobe com N mesmo com o us/ev medio
+    plano. As tres colunas de tamanho sao as estruturas de estado do motor —
+    todas tem de ser CONSTANTES no eixo N (a janela satura na taxa x janela;
+    a cauda de magnitude e o topo-K, de tamanho fixo; o deque de maior qty e
+    monotonico dentro da janela).
+    """
+    print(f"\n{'=' * 92}")
+    print(f"4. SESSAO LONGA — custo dos ULTIMOS {amostra:,} trades de uma sessao de N")
+    print(f"{'=' * 92}")
+    print(f"  {'N trades':>10}  {'cauda seg':>10}  {'cauda ev/s':>12}  {'cauda us/ev':>12}"
+          f"  {'janela':>10}  {'topo mag':>9}  {'mono qty':>9}")
+    for i in range(dobras):
+        n = base * (2 ** i)
+        trades = _tape(n)
+        motor, vp = _motor_e_perfil()
+        gc.collect()
+        corte = n - amostra
+        for t in trades[:corte]:
+            vp.registrar_trade(t)
+            motor.ao_trade(t)
+        t0 = time.perf_counter()
+        for t in trades[corte:]:
+            vp.registrar_trade(t)
+            motor.ao_trade(t)
+        dt = time.perf_counter() - t0
+        us = dt * 1e6 / amostra
+        print(f"  {n:>10,}  {dt:10.3f}  {amostra / dt:12,.0f}  {us:12.2f}"
+              f"  {len(motor._janela_dominancia):>10,}  {len(motor._reservatorio):>9,}"
+              f"  {len(motor._maiores_qty):>9,}   {_veredito(amostra / dt)}")
+        del motor, vp, trades
+    print("\n  PLANO no us/ev da cauda e CONSTANTE nas 3 colunas de tamanho = estado do")
+    print("  motor nao cresce com a duracao da sessao.")
+
+
 def perfil(n: int) -> None:
     print(f"\n{'=' * 92}")
     print(f"cPROFILE — motor isolado, {n:,} trades, top 12 por tempo proprio")
@@ -226,6 +271,9 @@ def main() -> None:
     ap.add_argument("--perfil", action="store_true")
     ap.add_argument("--so-escala", action="store_true")
     ap.add_argument("--so-isolado", action="store_true")
+    ap.add_argument("--so-sessao", action="store_true")
+    ap.add_argument("--sessao-base", type=int, default=50_000)
+    ap.add_argument("--sessao-dobras", type=int, default=4)
     args = ap.parse_args()
 
     print(f"BARRA: {BARRA_EV_S:,} eventos/s (pico do WDO).")
@@ -235,9 +283,13 @@ def main() -> None:
     if args.so_isolado:
         bench_isolado(args.n)
         return
+    if args.so_sessao:
+        bench_sessao_longa(args.sessao_base, args.sessao_dobras)
+        return
     bench_isolado(args.n)
     bench_escalonamento(args.escala_base, args.escala_dobras)
     bench_pipeline(args.pipeline_n, args.taxa)
+    bench_sessao_longa(args.sessao_base, args.sessao_dobras)
     if args.perfil:
         perfil(min(args.n, 50_000))
 

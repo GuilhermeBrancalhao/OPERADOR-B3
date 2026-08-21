@@ -85,18 +85,134 @@ tempo **derivado** — relógio local deslocado pelo offset medido contra o
 concentra isso num lugar só, e `derivado` é o nome do fato: não é medição,
 é extrapolação declarada.
 
-O offset é estimado pelo **MÁXIMO** das amostras, não pela última. Um tick
-só pode ser observado DEPOIS de ter acontecido, então toda amostra
-`time_msc - relógio_local` SUBESTIMA o offset verdadeiro pela idade do
-tick. Com "a última amostra vence", um mercado parado re-observa o mesmo
-tick velho a cada poll e o relógio derivado fica preso na hora do último
-negócio — o erro cresce sem limite (medido: -60s e subindo 50ms por poll,
-com o mercado parado há 1 minuto), e todo `BookSnapshot` sai carimbado no
-passado. Com o máximo, a amostra velha é descartada, o erro fica CONSTANTE
-e limitado pela idade do tick mais fresco já visto — milissegundos em
-pregão ativo — e só melhora conforme o tape acorda. Não existe fonte mais
-fresca no pacote `MetaTrader5`: `symbol_info_tick` devolve o mesmo último
-tick, e `terminal_info` não expõe hora de servidor.
+O offset é estimado pelo **MÁXIMO SOBRE UMA JANELA DESLIZANTE** de
+amostras, com **detecção explícita de regressão do servidor** por cima.
+Três fatos empurram para esse desenho, e cada um mata uma alternativa:
+
+1. Toda amostra `time_msc - relógio_local` SUBESTIMA o offset verdadeiro,
+   porque um tick só pode ser observado DEPOIS de ter acontecido. Por isso
+   o estimador é um MÁXIMO e não a última amostra: com "a última vence",
+   um mercado parado re-observa o mesmo tick velho a cada poll e o relógio
+   derivado fica preso na hora do último negócio — erro crescendo sem
+   limite (medido: -60 s e subindo 50 ms por poll com o tape parado há um
+   minuto) e todo `BookSnapshot` carimbado no passado.
+
+2. Máximo puro é uma CATRACA: nunca esquece. Se o relógio do servidor
+   REGREDIR — troca de servidor da corretora, ajuste de NTP do lado deles,
+   failover, virada de horário de verão — o offset fica inflado para o
+   resto da vida do processo. Medido: 5.000 amostras corretas depois da
+   regressão não movem o estimador um nanossegundo. E uma regressão de
+   400 ms já excede a janela de reconciliação de 300 ms do `InferidorMBP`
+   ⇒ 100% das execuções viram cancelamento, agora permanentemente. Por
+   isso o máximo tem MEMÓRIA FINITA: `janela_s` (120 s por padrão).
+
+3. Amostra velha e regressão de servidor produzem o MESMO sinal bruto
+   ("estimativa abaixo do máximo vigente"), então magnitude sozinha não
+   distingue as duas. O que distingue é o comportamento do relógio do
+   SERVIDOR, não o do offset: com o tape parado o `time_msc` NÃO ANDA (é o
+   mesmo tick de novo) e num tick fora de ordem ele recua UMA vez e o
+   próximo já volta ao normal; numa regressão o `time_msc` recua e depois
+   volta a ANDAR PARA A FRENTE num referencial deslocado, indefinidamente. Daí as duas
+   regras que fazem o estimador funcionar nos três regimes:
+
+   - **Admissão**: só entra na janela — e só é avaliada pelo detector — a
+     amostra cujo `time_msc` ANDOU em relação ao último observado.
+     Re-observar o mesmo tick, ou receber um tick atrasado, é informação
+     zero sobre o offset. Consequência deliberada: com o tape parado a
+     janela para de girar e o offset FICA, que é o comportamento certo
+     porque não chegou informação nova que justificasse mudá-lo. A janela
+     só esquece quando há tempo de servidor novo para esquecer em cima; é
+     isso que impede o esquecimento de reintroduzir o defeito do item 1.
+     O `deque` também nunca é esvaziado pela poda por idade (mantém no
+     mínimo 1 entrada) pela mesma razão. E é por isso que um tick atrasado
+     ISOLADO não pode disparar reset: ele nem chega ao detector.
+
+   - **Detecção**, em dois tempos, porque nenhum sinal sozinho decide:
+
+     *Armar* — o `time_msc` andou PARA TRÁS em relação ao anterior. É o
+     único sinal FÍSICO que só uma regressão produz: tape parado repete o
+     `time_msc`, tape lento não o faz recuar, e adaptador sobrecarregado
+     também não (a hora do servidor continua subindo, só que mais devagar
+     que a local). Armar não decide nada — um tick fora de ordem no lote
+     também arma.
+
+     *Confirmar* — com o detector armado, o `deficit = máximo vigente -
+     estimativa desta amostra` das amostras SEGUINTES é exatamente o erro
+     que o estimador está cometendo agora. Num tick fora de ordem isolado o
+     tape volta ao normal e o déficit cai para a idade do tick
+     (milissegundos): o detector DESARMA sem ter feito nada. Num step de
+     servidor o tape voltou a andar num referencial deslocado e o déficit
+     fica em ~recuo, amostra após amostra. `amostras_para_regressao`
+     amostras consecutivas acima de `limiar_regressao_ns` são a prova de
+     "persistente" em vez de "pico isolado": aí o estimador é RESETADO
+     (janela e piso monotônico) e sai um `FalhaCaptura(RELOGIO_REGREDIU)`,
+     alto, no log e na gravação.
+
+     Convergência: `amostras_para_regressao + 1` polls — o tick do step em
+     si só arma, não conta — ou seja ~200 ms com o poll padrão de 50 ms.
+     Tape parado no meio do episódio não alimenta o detector (não há tempo
+     de servidor novo) e um tick fora de ordem zera a contagem; os dois
+     ATRASAM a convergência, nenhum a impede, e o teste de propriedade
+     prende esse teto.
+
+     As duas metades são necessárias. Só o déficit: `bench_mt5.py` no
+     regime de 50.000 ticks/s mostra o adaptador consumindo tape mais devagar
+     que o relógio de parede — o déficit cresce centenas de ms por poll e o
+     detector declararia "regressão" onde o offset verdadeiro não mudou
+     (medido: oito falsos positivos numa única passada do benchmark). Só o
+     armar: todo tick fora de ordem viraria reset. Só o recuo do `time_msc`
+     contra o pico já visto, sem déficit: numa regressão pequena o tape
+     RECUPERA o pico em poucos polls (400 ms de recuo com poll de 50 ms:
+     oito polls) enquanto o erro do offset continua exatamente 400 ms para
+     sempre — o detector pararia de ver justamente o defeito que precisa
+     ver.
+
+     Falso positivo possível e aceito: um tick fora de ordem SEGUIDO de
+     `amostras_para_regressao` polls atrasados em mais que
+     `limiar_regressao_ns` cada. O reset nesse caso adota uma amostra
+     levemente velha e o máximo volta a subir no poll seguinte —
+     degradação de milissegundos, contra o erro permanente da catraca.
+
+Por que os limiares são esses. `limiar_regressao_ns` = 250 ms é escolhido
+CONTRA a janela de reconciliação de 300 ms do `InferidorMBP`: toda
+regressão capaz de estourar essa janela é detectada e corrigida em
+`amostras_para_regressao` + 1 polls; regressão menor que 250 ms não estoura a
+janela de 300 ms de qualquer jeito, e a janela deslizante a absorve
+sozinha em no máximo `janela_s`. `amostras_para_regressao` = 3 é o menor
+valor que não confunde um par de ticks fora de ordem com um step.
+`janela_s` = 120 s é o teto do erro residual de uma regressão sub-limiar,
+e é longo o bastante para que uma pausa de tape de alguns minutos com
+ticks esparsos não force o estimador a adotar amostras degradadas.
+`max_amostras` = 4096 é um teto DURO de memória. O `deque` é monotônico e
+normalmente tem um punhado de entradas — a amostra nova expulsa todas as
+menores —, mas o pior caso existe e tem nome: offset ESTRITAMENTE
+DECRESCENTE, que é o adaptador consumindo tape mais devagar que o relógio
+de parede. Aí nada é expulso e a fila cresceria com a duração da sessão.
+Ao estourar o teto, a janela efetiva encurta pela frente — degradação
+segura, nunca crescimento sem limite.
+
+**Alternativas descartadas, e por quê.** *Decaimento do offset em direção
+à amostra corrente*: não existe taxa que sirva aos dois regimes. Com o
+tape parado a amostra corrente é o tick velho, e ela envelhece sem limite
+— decair na direção dela é decair na direção do erro do item 1, só que
+mais devagar; para que a deriva com tape parado fosse aceitável, a taxa
+teria de ser tão lenta que uma regressão levaria muito mais que
+`janela_s` para ser absorvida. *Janela deslizante SOZINHA*: absorve
+qualquer regressão, mas só em `janela_s` — e durante esses 120 s toda
+execução vira cancelamento, que é exatamente o modo de falha que se quer
+matar. *Detecção de regressão SOZINHA*: não pega regressão abaixo do
+limiar, e baixar o limiar o bastante para pegá-las faz o detector confundir
+tape parado com step. As três peças juntas cobrem o espaço; nenhuma cobre
+sozinha.
+
+O reset da regressão quebra a monotonicidade do relógio derivado de
+propósito — o piso `_ultimo_ns` também volta, senão ele sozinho prenderia
+o relógio no referencial antigo. Essa é a única quebra, e ela é ANUNCIADA
+pelo `FalhaCaptura(RELOGIO_REGREDIU)`: o replay vê a descontinuidade e
+sabe de onde ela veio, em vez de herdar um relógio mentiroso em silêncio.
+
+Não existe fonte mais fresca no pacote `MetaTrader5`: `symbol_info_tick`
+devolve o mesmo último tick, e `terminal_info` não expõe hora de servidor.
 
 
 PARTIDA A FRIO — POR QUE O CURSOR É SEMEADO
@@ -118,6 +234,7 @@ import logging
 import queue
 import threading
 import time
+from collections import deque
 from types import ModuleType
 from typing import NamedTuple, Optional
 
@@ -155,6 +272,22 @@ _TICKS_POR_CHAMADA_PADRAO = 10_000
 # congelar em silêncio.
 _TETO_TICKS_POR_CHAMADA = 500_000
 
+# --- Limiares do estimador de offset do relogio de servidor ---------------
+# A justificativa de cada numero esta em "UM RELOGIO SO NA BORDA" no topo.
+# Memoria finita do maximo: teto do erro residual de uma regressao de
+# servidor pequena demais para o detector abaixo enxergar.
+_JANELA_OFFSET_S = 120.0
+# Recuo do `time_msc` a partir do qual vale a pena suspeitar de step de
+# servidor. 250 ms e escolhido CONTRA a janela de reconciliacao de 300 ms do
+# `InferidorMBP`: o que pode estourar aquela janela tem de ser detectado.
+_LIMIAR_REGRESSAO_NS = 250_000_000
+# Amostras consecutivas e crescentes abaixo do pico para declarar step. 3 e o
+# menor valor que nao confunde um par de ticks fora de ordem com uma regressao.
+_AMOSTRAS_PARA_REGRESSAO = 3
+# Teto DURO de entradas no deque da janela -- a memoria nao pode crescer com a
+# duracao da sessao (a janela e monotonica e costuma ter poucas entradas).
+_MAX_AMOSTRAS_OFFSET = 4096
+
 EventoBruto = Trade | BookSnapshot | BookDelta | FalhaCaptura
 
 
@@ -181,25 +314,62 @@ class _CursorTick(NamedTuple):
 
 
 class _RelogioServidor:
-    """Fonte de tempo ÚNICA da borda MT5 (ver "UM RELÓGIO SÓ" no topo).
+    """Fonte de tempo UNICA da borda MT5 (ver "UM RELOGIO SO" no topo).
 
-    `observar` mede o offset entre o relógio do servidor (`time_msc` de um
-    tick) e o relógio local; `agora_ns` devolve o instante corrente já no
-    referencial do servidor, para os eventos que não trazem tempo próprio.
-    O piso `_ultimo_ns` garante que a sequência que sai do adaptador seja
-    monotônica mesmo quando o offset é remedido entre dois eventos.
+    `observar` mede o offset entre o relogio do servidor (`time_msc` de um
+    tick) e o relogio local; `agora_ns` devolve o instante corrente ja no
+    referencial do servidor, para os eventos que nao trazem tempo proprio.
+    O piso `_ultimo_ns` garante que a sequencia que sai do adaptador seja
+    monotonica mesmo quando o offset e remedido entre dois eventos.
 
-    O estimador é o MÁXIMO das amostras, não a última — ver "UM RELÓGIO SÓ
-    NA BORDA" no topo do módulo. Toda amostra subestima o offset pela idade
-    do tick; a maior amostra é a do tick mais fresco já visto.
+    O estimador e o MAXIMO SOBRE UMA JANELA DESLIZANTE, com deteccao
+    explicita de regressao do servidor -- a justificativa completa (por que
+    maximo, por que janela, por que deteccao, e por que decaimento e cada
+    peca isolada perdem) esta em "UM RELOGIO SO NA BORDA" no topo do
+    modulo. Os quatro parametros do construtor sao os limiares desse
+    desenho e estao explicados la, um a um.
+
+    `observar` devolve `None` no caso normal e a MAGNITUDE em ns do recuo
+    quando detecta uma regressao de servidor -- o chamador transforma isso
+    num `FalhaCaptura(RELOGIO_REGREDIU)`. Nunca engolir em silencio: o
+    reset quebra a monotonicidade do relogio derivado de proposito, e o
+    replay precisa saber onde.
     """
 
-    __slots__ = ("_offset_ns", "_sincronizado", "_ultimo_ns")
+    __slots__ = (
+        "_amostras_para_regressao",
+        "_armado",
+        "_janela",
+        "_janela_ns",
+        "_limiar_regressao_ns",
+        "_max_amostras",
+        "_sincronizado",
+        "_suspeitas",
+        "_ultimo_ns",
+        "_ultimo_observado_ns",
+    )
 
-    def __init__(self) -> None:
-        self._offset_ns = 0
+    def __init__(
+        self,
+        janela_s: float = _JANELA_OFFSET_S,
+        limiar_regressao_ns: int = _LIMIAR_REGRESSAO_NS,
+        amostras_para_regressao: int = _AMOSTRAS_PARA_REGRESSAO,
+        max_amostras: int = _MAX_AMOSTRAS_OFFSET,
+    ) -> None:
+        # deque monotonicamente DECRESCENTE em `estimativa`: a frente e o
+        # maximo da janela e tambem a entrada mais VELHA, entao a poda por
+        # idade e a leitura do maximo sao o mesmo ponto. O(1) amortizado.
+        self._janela: "deque[tuple[int, int]]" = deque()
+        self._janela_ns = max(1, int(janela_s * 1_000_000_000))
+        self._limiar_regressao_ns = max(0, int(limiar_regressao_ns))
+        self._amostras_para_regressao = max(1, int(amostras_para_regressao))
+        self._max_amostras = max(1, int(max_amostras))
+
         self._sincronizado = False
+        self._armado = False
         self._ultimo_ns = 0
+        self._ultimo_observado_ns = 0
+        self._suspeitas = 0
 
     @property
     def sincronizado(self) -> bool:
@@ -208,25 +378,127 @@ class _RelogioServidor:
     @property
     def offset_ns(self) -> int:
         """Servidor menos local, em ns. 0 enquanto nenhum tick foi visto."""
-        return self._offset_ns
+        return self._janela[0][1] if self._janela else 0
 
-    def observar(self, servidor_ns: int) -> None:
+    @property
+    def amostras_na_janela(self) -> int:
+        """Tamanho do deque monotonico -- para teste de memoria limitada."""
+        return len(self._janela)
+
+    def observar(self, servidor_ns: int) -> Optional[int]:
+        """Alimenta o estimador com o `time_msc` (em ns) de um tick.
+
+        Devolve `None` normalmente, ou o DEFICIT em ns quando conclui que o
+        relogio do SERVIDOR regrediu (e ja se re-sincronizou nele).
+        """
         estimativa = servidor_ns - time.time_ns()
-        if not self._sincronizado or estimativa > self._offset_ns:
-            # amostra melhor (tick mais fresco). Amostra menor é tick VELHO
-            # re-observado: aceitá-la prenderia o relógio derivado na hora
-            # do último negócio.
-            self._offset_ns = estimativa
-        self._sincronizado = True
+        if not self._sincronizado:
+            self._resetar(servidor_ns, estimativa)
+            return None
+
+        anterior = self._ultimo_observado_ns
+        self._ultimo_observado_ns = servidor_ns
+
+        if servidor_ns < anterior:
+            # ARMAR: o relogio do SERVIDOR andou para tras. E o unico sinal
+            # fisico que so uma regressao produz — tape parado repete o
+            # `time_msc`, tape atrasado nao o faz recuar, e adaptador
+            # sobrecarregado tambem nao (a hora do servidor continua
+            # subindo, so que mais devagar que a local). Armar nao decide
+            # nada: um tick fora de ordem tambem chega aqui.
+            self._armado = True
+            self._suspeitas = 0
+            if servidor_ns > self._ultimo_ns:
+                self._ultimo_ns = servidor_ns
+            return None
+
+        if servidor_ns == anterior:
+            # ADMISSAO: re-observar o mesmo tick (tape parado) e informacao
+            # zero sobre o offset. Deixar essa amostra entrar — ou envelhecer
+            # a janela — e o defeito da "ultima amostra vence" de volta.
+            return None
+
+        if self._armado:
+            regressao = self._avaliar_regressao(estimativa)
+            if regressao is not None:
+                self._resetar(servidor_ns, estimativa)
+                return regressao
+
+        self._admitir(estimativa)
         if servidor_ns > self._ultimo_ns:
             self._ultimo_ns = servidor_ns
+        return None
+
+    def _avaliar_regressao(self, estimativa: int) -> Optional[int]:
+        """Com o detector ARMADO, o recuo do servidor foi um step ou um tick
+        fora de ordem? Decide pelo DEFICIT das amostras seguintes.
+
+        `deficit = maximo_vigente - estimativa desta amostra` e exatamente o
+        erro que o estimador esta cometendo agora, e cada regime o assina
+        diferente:
+
+        * tick fora de ordem isolado — o tape volta ao normal no proximo
+          tick e o deficit cai para a idade do tick (milissegundos): o
+          detector DESARMA sem ter feito nada;
+        * step de servidor — o tape voltou a andar num referencial
+          deslocado, e o deficit fica em ~recuo, amostra apos amostra. Sao
+          as `amostras_para_regressao` consecutivas que provam "persistente"
+          em vez de "pico isolado".
+
+        Falso positivo possivel e aceito: um tick fora de ordem SEGUIDO de
+        `amostras_para_regressao` polls atrasados em mais que
+        `limiar_regressao_ns` cada. O reset nesse caso adota uma amostra
+        levemente velha e o maximo volta a subir no poll seguinte —
+        degradacao de milissegundos, contra o erro permanente que a catraca
+        produzia.
+        """
+        deficit = self.offset_ns - estimativa
+        if deficit <= self._limiar_regressao_ns:
+            self._armado = False
+            self._suspeitas = 0
+            return None
+        self._suspeitas += 1
+        if self._suspeitas >= self._amostras_para_regressao:
+            return deficit
+        return None
+
+    def _admitir(self, estimativa: int) -> None:
+        agora_mono = time.monotonic_ns()
+        janela = self._janela
+        while janela and janela[-1][1] <= estimativa:
+            janela.pop()
+        janela.append((agora_mono, estimativa))
+        limite = agora_mono - self._janela_ns
+        while len(janela) > 1 and janela[0][0] < limite:
+            janela.popleft()
+        while len(janela) > self._max_amostras:
+            # teto DURO de memoria: encurta a janela efetiva pela frente
+            # (a entrada mais velha), nunca cresce sem limite.
+            janela.popleft()
+
+    def _resetar(self, servidor_ns: int, estimativa: int) -> None:
+        """Recomeca o estimador no referencial da amostra corrente.
+
+        O piso `_ultimo_ns` volta junto — de proposito. Ele e um maximo
+        monotonico do tempo de servidor; mante-lo depois de um step para
+        baixo prenderia o relogio derivado no referencial antigo mesmo com
+        o offset ja corrigido, que e metade do defeito que se esta
+        consertando.
+        """
+        self._janela.clear()
+        self._sincronizado = True
+        self._armado = False
+        self._suspeitas = 0
+        self._ultimo_observado_ns = servidor_ns
+        self._ultimo_ns = servidor_ns
+        self._admitir(estimativa)
 
     def agora_ns(self) -> int:
-        derivado = time.time_ns() + self._offset_ns
+        derivado = time.time_ns() + self.offset_ns
         if derivado <= self._ultimo_ns:
-            # piso monotônico: nunca voltar no tempo nem empatar com o
-            # evento anterior, senão a ordem de entrega deixa de ser
-            # reconstruível no replay (que ordena por timestamp).
+            # piso monotonico: nunca voltar no tempo nem empatar com o
+            # evento anterior, senao a ordem de entrega deixa de ser
+            # reconstruivel no replay (que ordena por timestamp).
             derivado = self._ultimo_ns + 1
         self._ultimo_ns = derivado
         return derivado
@@ -590,7 +862,30 @@ class AdaptadorMT5(AdaptadorDados):
             )
 
         # o tempo do servidor vem do tick mais novo do lote (crescente).
-        self._relogio.observar(int(ticks[len(ticks) - 1]["time_msc"]) * 1_000_000)
+        recuo_ns = self._relogio.observar(
+            int(ticks[len(ticks) - 1]["time_msc"]) * 1_000_000
+        )
+        if recuo_ns is not None:
+            # o relogio do servidor deu um step para tras e o estimador ja se
+            # re-sincronizou nele. Isso NAO pode ser silencioso: o relogio
+            # derivado acabou de saltar para tras, e o replay precisa saber
+            # onde a descontinuidade esta (ver "UM RELOGIO SO NA BORDA").
+            falhas.append(
+                self._falha(
+                    TipoFalha.RELOGIO_REGREDIU,
+                    f"relogio do servidor MT5 recuou {recuo_ns / 1e6:.3f} ms em "
+                    f"{_AMOSTRAS_PARA_REGRESSAO} amostras consecutivas "
+                    "(troca de servidor da corretora, ajuste de NTP ou failover); "
+                    "estimador de offset resetado no referencial novo — os "
+                    "eventos derivados daqui em diante nao sao comparaveis com "
+                    "os anteriores sem levar este salto em conta"
+                )
+            )
+            _logger.warning(
+                "relogio do servidor MT5 regrediu %.3f ms — estimador de offset "
+                "resetado",
+                recuo_ns / 1e6,
+            )
 
         if saturado:
             congelou = novo == cursor

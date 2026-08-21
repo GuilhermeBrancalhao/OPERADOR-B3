@@ -1,0 +1,164 @@
+[
+  {
+    "id": "N04",
+    "origem": "R3/R4 (dados/simulador.py:96-99)",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "agressao de COMPRA empurra o preco para BAIXO (sinal trocado no ramo BUY)",
+    "de": "            if agressor is AgressorSide.BUY:\n                self._preco_ticks += passo_ticks\n            else:\n                self._preco_ticks -= passo_ticks",
+    "para": "            if agressor is AgressorSide.BUY:\n                self._preco_ticks -= passo_ticks\n            else:\n                self._preco_ticks += passo_ticks",
+    "testes": ["tests/test_simulador_propriedades_mercado.py::test_preco_desloca_na_direcao_do_agressor_nunca_ao_contrario"]
+  },
+  {
+    "id": "N05",
+    "origem": "R2/R3/R4 (dados/simulador.py:92)",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "regime de absorcao desligado (desloca_preco ignora `absorcao`)",
+    "de": "        desloca_preco = topo_zerou and not absorcao",
+    "para": "        desloca_preco = topo_zerou",
+    "testes": ["tests/test_simulador_propriedades_mercado.py::test_absorcao_forcada_a_100_por_cento_impede_qualquer_deslocamento_de_preco"]
+  },
+  {
+    "id": "X06",
+    "origem": "R3/R4 (microestrutura/perfil_player.py:83-84)",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "quem agrediu invertido (comprador<->vendedor)",
+    "de": "        lado_comprador_agrediu = trade.side_agressor.name == \"BUY\"\n        lado_vendedor_agrediu = trade.side_agressor.name == \"SELL\"",
+    "para": "        lado_comprador_agrediu = trade.side_agressor.name == \"SELL\"\n        lado_vendedor_agrediu = trade.side_agressor.name == \"BUY\"",
+    "testes": ["tests/test_micro_perfil_player.py::test_comprador_agride_conta_como_agressor_do_comprador_nao_do_vendedor", "tests/test_micro_perfil_player.py::test_vendedor_agride_conta_como_agressor_do_vendedor_nao_do_comprador"]
+  },
+  {
+    "id": "X08",
+    "origem": "R3/R4 (microestrutura/perfil_player.py:99-101)",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "perna vendedora nao conta clip (n_clips nao incrementado no ramo seller)",
+    "de": "            acc = self._acumulador(trade.seller_broker)\n            acc.volume_vendido += trade.qty\n            acc.soma_qty += trade.qty\n            acc.n_clips += 1",
+    "para": "            acc = self._acumulador(trade.seller_broker)\n            acc.volume_vendido += trade.qty\n            acc.soma_qty += trade.qty",
+    "testes": ["tests/test_micro_perfil_player.py::test_perna_vendedora_tambem_conta_no_clip_e_no_volume"]
+  },
+  {
+    "id": "X10",
+    "origem": "R3/R4 (microestrutura/perfil_player.py:38)",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "agressividade mede o lado PASSIVO",
+    "de": "        return 0.0 if total == 0 else self.n_trades_agressor / total",
+    "para": "        return 0.0 if total == 0 else self.n_trades_passivo / total",
+    "testes": ["tests/test_micro_perfil_player.py::test_agressividade_e_agressor_sobre_agressor_mais_passivo_nao_o_inverso", "tests/test_micro_perfil_player.py::test_comprador_agride_conta_como_agressor_do_comprador_nao_do_vendedor"]
+  },
+  {
+    "id": "X01",
+    "origem": "R3/R4 (analytics/brokers.py:110)",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "janela expira com >= (trade na borda exata da janela some)",
+    "de": "        while self._janela and agora_ns - self._janela[0].timestamp_ns > janela_ns:",
+    "para": "        while self._janela and agora_ns - self._janela[0].timestamp_ns >= janela_ns:",
+    "testes": ["tests/test_analytics_brokers.py::test_janela_expira_estritamente_maior_trade_na_borda_exata_sobrevive"]
+  },
+  {
+    "id": "X04",
+    "origem": "R3/R4 (analytics/brokers.py:88)",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "aceita trade de OUTRO symbol (guarda de symbol removida)",
+    "de": "    def _ao_trade(self, trade: Trade) -> None:\n        if trade.symbol != self._symbol:\n            return\n",
+    "para": "    def _ao_trade(self, trade: Trade) -> None:\n",
+    "testes": ["tests/test_analytics_brokers.py::test_trade_de_outro_symbol_e_ignorado"]
+  },
+  {
+    "id": "X26",
+    "origem": "R3/R4 (analytics/footprint.py:165-166)",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "vizinho diagonal zerado/ausente deixa de marcar imbalance de compra",
+    "de": "            if qty_vendedor_vizinho == 0:\n                resultado.append(preco)\n            elif nivel.qty_comprador / qty_vendedor_vizinho >= limiar:",
+    "para": "            if qty_vendedor_vizinho == 0:\n                continue\n            elif nivel.qty_comprador / qty_vendedor_vizinho >= limiar:",
+    "testes": ["tests/test_analytics_footprint.py::test_imbalance_sem_vizinho_diagonal_marca_por_falta_de_contraparte"]
+  },
+  {
+    "id": "X27",
+    "origem": "R3/R4 (analytics/footprint.py:200)",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "media de volume por nivel divide por n+1",
+    "de": "        return self._volume_total / len(self._niveis)",
+    "para": "        return self._volume_total / (len(self._niveis) + 1)",
+    "testes": ["tests/test_analytics_footprint.py::test_media_volume_por_nivel_divide_pelo_numero_de_niveis_nao_mais_um"]
+  },
+  {
+    "id": "X28",
+    "origem": "R3/R4 (analytics/footprint.py:193-194)",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "delta_divergente so olha alta (ramo de baixa removido)",
+    "de": "        if self.preco_fechamento > self.preco_abertura and self._delta < 0:\n            return True\n        if self.preco_fechamento < self.preco_abertura and self._delta > 0:\n            return True\n        return False",
+    "para": "        if self.preco_fechamento > self.preco_abertura and self._delta < 0:\n            return True\n        return False",
+    "testes": ["tests/test_analytics_footprint.py::test_delta_divergente_cobre_os_quatro_quadrantes_preco_x_delta"]
+  },
+  {
+    "id": "Y10-R5",
+    "origem": "propria (footprint.py:57) -- default endurecido nesta rodada",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "qty_minima_imbalance volta ao default antigo condenado (0) em vez do novo (5)",
+    "de": "    qty_minima_imbalance: int = 5",
+    "para": "    qty_minima_imbalance: int = 0",
+    "testes": ["tests/test_analytics_footprint.py::test_imbalance_abaixo_do_piso_padrao_nao_dispara_mesmo_com_razao_alta"]
+  },
+  {
+    "id": "P-own-1",
+    "origem": "propria (perfil_player.py: saldo_liquido)",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "sinal do saldo liquido invertido (vendido - comprado)",
+    "de": "    def saldo_liquido(self) -> int:\n        return self.volume_comprado - self.volume_vendido",
+    "para": "    def saldo_liquido(self) -> int:\n        return self.volume_vendido - self.volume_comprado",
+    "testes": ["tests/test_micro_perfil_player.py::test_saldo_liquido_positivo_quando_compra_mais_que_vende_e_negativo_no_inverso"]
+  },
+  {
+    "id": "P-own-2",
+    "origem": "propria (perfil_player.py: persistencia)",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "persistencia conta trades (n_clips) em vez de periodos distintos",
+    "de": "    def persistencia(self) -> int:\n        return len(self.periodos)",
+    "para": "    def persistencia(self) -> int:\n        return self.n_clips",
+    "testes": ["tests/test_micro_perfil_player.py::test_persistencia_nao_conta_trades_e_sim_periodos_distintos", "tests/test_micro_perfil_player.py::test_persistencia_conta_periodos_distintos"]
+  },
+  {
+    "id": "B-own-1",
+    "origem": "propria (analytics/brokers.py: saldo_liquido)",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "sinal do saldo liquido de EstatisticaCorretora invertido",
+    "de": "    def saldo_liquido(self) -> int:\n        return self.volume_compra - self.volume_venda",
+    "para": "    def saldo_liquido(self) -> int:\n        return self.volume_venda - self.volume_compra",
+    "testes": ["tests/test_analytics_brokers.py::test_saldo_liquido_tem_sinal_positivo_quando_compra_mais_que_vende", "tests/test_analytics_brokers.py::test_ranking_por_volume_e_por_saldo"]
+  },
+  {
+    "id": "B-own-2",
+    "origem": "propria (analytics/brokers.py: iniciar_nova_sessao)",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "iniciar_nova_sessao vira no-op (nao zera estatisticas nem janela)",
+    "de": "        self._estatisticas = {}\n        self._janela.clear()",
+    "para": "        pass",
+    "testes": ["tests/test_analytics_brokers.py::test_iniciar_nova_sessao_zera_estatisticas_e_janela", "tests/test_app_pipeline.py::test_iniciar_nova_sessao_zera_o_ranking_de_corretoras"]
+  },
+  {
+    "id": "F-own-1",
+    "origem": "propria (analytics/footprint.py: absorcao_topo)",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "absorcao_topo usa OR em vez de AND (volume alto OU reversao ja confirma)",
+    "de": "        volume_alto = nivel_topo.volume_total >= self.config.multiplo_absorcao * media\n        reversao = (\n            self.preco_maximo - self.preco_fechamento\n        ) >= self.config.reversao_ticks_absorcao\n        return volume_alto and reversao",
+    "para": "        volume_alto = nivel_topo.volume_total >= self.config.multiplo_absorcao * media\n        reversao = (\n            self.preco_maximo - self.preco_fechamento\n        ) >= self.config.reversao_ticks_absorcao\n        return volume_alto or reversao",
+    "testes": ["tests/test_analytics_footprint.py::test_absorcao_nao_confirma_sem_reversao_suficiente"]
+  },
+  {
+    "id": "S-own-1",
+    "origem": "propria (dados/simulador.py: clip grande)",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "multiplicador de clip grande desativado (player_grande nao aumenta qty)",
+    "de": "        qty = self._rng.randint(1, 10)\n        if player_grande:\n            qty *= _CLIP_GRANDE_MULTIPLICADOR",
+    "para": "        qty = self._rng.randint(1, 10)",
+    "testes": ["tests/test_simulador_propriedades_mercado.py::test_player_grande_forcado_gera_clips_fora_do_padrao_normal"]
+  },
+  {
+    "id": "S-own-2",
+    "origem": "propria (dados/simulador.py: lado consumido pelo agressor)",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "agressao de COMPRA consome o topo do BID em vez do ASK (lado trocado)",
+    "de": "        if agressor is AgressorSide.BUY:\n            self._qty_topo_ask -= qty\n        else:\n            self._qty_topo_bid -= qty",
+    "para": "        if agressor is AgressorSide.BUY:\n            self._qty_topo_bid -= qty\n        else:\n            self._qty_topo_ask -= qty",
+    "testes": ["tests/test_simulador_propriedades_mercado.py::test_agressao_de_compra_consome_o_topo_do_ask_nao_do_bid"]
+  }
+]

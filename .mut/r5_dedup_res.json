@@ -1,0 +1,198 @@
+[
+ {
+  "id": "D01",
+  "estado": "MORTA",
+  "desc": "volta a chave por order_id nos detectores de livro",
+  "linha": "17 failed, 95 passed in 101.27s (0:01:41)",
+  "testes": [
+   "test_a_confianca_publicada_e_a_do_detector_quando_a_cadeia_esta_viva",
+   "test_a_deteccao_de_livro_carrega_a_cadeia_inteira_e_nao_so_o_gatilho",
+   "test_a_ordem_de_chegada_nao_muda_o_resultado",
+   "test_acompanhar_alimenta_a_cadeia_de_ponta_a_ponta",
+   "test_cadeia_so_de_observados_declara_observada",
+   "test_episodio_longo_de_iceberg_sob_carga_emite_uma_vez_so",
+   "test_escora_aceita_o_evento_gatilho_pelo_caminho_pull",
+   "test_escora_retem_no_maximo_o_teto_de_niveis",
+   "test_escora_sobre_livro_inferido_nunca_sai_com_confianca_1",
+   "test_iceberg_propaga_a_cadeia_do_nivel",
+   "test_liquidez_fantasma_propaga_a_cadeia_do_nivel",
+   "test_o_iceberg_atravessa_carga_de_ordens_sinteticas_sem_perder_a_chave",
+   "test_o_teto_de_fabrica_e_o_do_pacote",
+   "test_propagacao_e_idempotente",
+   "test_propagacao_e_monotona_juntar_observado_nunca_aumenta",
+   "test_propagacao_usa_o_minimo_e_nao_produto_nem_media",
+   "test_um_elo_fraco_nao_e_mascarado_pelos_fortes"
+  ]
+ },
+ {
+  "id": "D02",
+  "estado": "MORTA",
+  "desc": "remove o TTL: chave nunca expira (volta a memoria infinita por chave)",
+  "linha": "6 failed, 106 passed in 40.24s",
+  "testes": [
+   "test_a_varredura_incremental_encolhe_o_mapa_quando_o_mercado_esfria",
+   "test_chave_parada_alem_da_janela_expira_e_a_reemissao_e_correta",
+   "test_chave_realimentada_atravessa_a_janela",
+   "test_consulta_nao_renova_a_chave",
+   "test_janela_zero_e_valida_e_significa_sem_memoria_entre_eventos",
+   "test_o_mesmo_nivel_volta_a_emitir_depois_da_janela"
+  ]
+ },
+ {
+  "id": "D03",
+  "estado": "SOBREVIVEU",
+  "desc": "volta o despejo determinstico (FIFO) no excedente: o penhasco",
+  "linha": "112 passed in 62.63s (0:01:02)",
+  "testes": []
+ },
+ {
+  "id": "D04",
+  "estado": "MORTA",
+  "desc": "volta o teto de fabrica da onda 7 (4.096 chaves)",
+  "linha": "1 failed, 111 passed in 42.00s",
+  "testes": [
+   "test_rotacao_adversarial_de_50000_chaves_fica_no_limite_declarado"
+  ]
+ },
+ {
+  "id": "D05",
+  "estado": "MORTA",
+  "desc": "janela de episodio de fabrica vira 0 (dedup sem memoria)",
+  "linha": "20 failed, 92 passed in 44.75s",
+  "testes": [
+   "test_a_curva_de_reemissao_nao_tem_penhasco",
+   "test_a_deteccao_de_livro_carrega_a_cadeia_inteira_e_nao_so_o_gatilho",
+   "test_a_ordem_de_chegada_nao_muda_o_resultado",
+   "test_acompanhar_alimenta_a_cadeia_de_ponta_a_ponta",
+   "test_cadeia_so_de_observados_declara_observada",
+   "test_dois_order_id_no_mesmo_nivel_sao_o_mesmo_episodio_no_fantasma",
+   "test_dois_order_id_no_mesmo_nivel_sao_o_mesmo_episodio_no_iceberg",
+   "test_episodio_longo_de_iceberg_sob_carga_emite_uma_vez_so",
+   "test_escora_aceita_o_evento_gatilho_pelo_caminho_pull",
+   "test_escora_sobre_livro_inferido_nunca_sai_com_confianca_1",
+   "test_iceberg_propaga_a_cadeia_do_nivel",
+   "test_liquidez_fantasma_propaga_a_cadeia_do_nivel",
+   "test_o_despejo_nao_e_deterministico_na_ordem_das_chaves",
+   "test_o_iceberg_atravessa_carga_de_ordens_sinteticas_sem_perder_a_chave",
+   "test_propagacao_e_idempotente",
+   "test_propagacao_e_monotona_juntar_observado_nunca_aumenta",
+   "test_propagacao_usa_o_minimo_e_nao_produto_nem_media",
+   "test_rotacao_adversarial_de_50000_chaves_fica_no_limite_declarado",
+   "test_teto_e_respeitado_mesmo_com_a_janela_inteira_viva",
+   "test_um_elo_fraco_nao_e_mascarado_pelos_fortes"
+  ]
+ },
+ {
+  "id": "D06",
+  "estado": "MORTA",
+  "desc": "Fantasma le o dedup com o relogio do evento ANTERIOR",
+  "linha": "1 failed, 111 passed in 58.16s",
+  "testes": [
+   "test_o_mesmo_nivel_volta_a_emitir_depois_da_janela"
+  ]
+ },
+ {
+  "id": "D07",
+  "estado": "SOBREVIVEU",
+  "desc": "Iceberg le o dedup com o relogio do evento ANTERIOR",
+  "linha": "112 passed in 48.55s",
+  "testes": []
+ },
+ {
+  "id": "D08",
+  "estado": "SOBREVIVEU",
+  "desc": "episodio novo herda a mordaca do anterior (reiniciar nao solta sinalizado)",
+  "linha": "112 passed in 43.62s",
+  "testes": []
+ },
+ {
+  "id": "D09",
+  "estado": "ERRO_ANCORA",
+  "detalhe": "0 ocorrencias"
+ },
+ {
+  "id": "D10",
+  "estado": "MORTA",
+  "desc": "relogio do mapa passa a andar para tras com evento atrasado",
+  "linha": "1 failed, 111 passed in 31.24s",
+  "testes": [
+   "test_o_relogio_do_mapa_nao_anda_para_tras"
+  ]
+ },
+ {
+  "id": "D11",
+  "estado": "MORTA",
+  "desc": "obter devolve chave expirada como se fosse viva",
+  "linha": "1 failed, 111 passed in 34.32s",
+  "testes": [
+   "test_o_mesmo_nivel_volta_a_emitir_depois_da_janela"
+  ]
+ },
+ {
+  "id": "D12",
+  "estado": "MORTA",
+  "desc": "_remover nao conserta o indice da chave movida: vetor de despejo corrompe",
+  "linha": "35 failed, 77 passed in 21.72s",
+  "testes": [
+   "test_a_confianca_publicada_e_a_do_detector_quando_a_cadeia_esta_viva",
+   "test_a_curva_de_reemissao_nao_tem_penhasco",
+   "test_a_deteccao_de_livro_carrega_a_cadeia_inteira_e_nao_so_o_gatilho",
+   "test_a_fronteira_nao_penaliza_a_mesma_incerteza_duas_vezes",
+   "test_a_varredura_incremental_encolhe_o_mapa_quando_o_mercado_esfria",
+   "test_a_virada_de_sessao_religa_o_livro_na_mesma_ordem",
+   "test_chave_realimentada_atravessa_a_janela",
+   "test_contadores_de_cada_elo_batem_com_o_barramento",
+   "test_deteccao_vinda_do_livro_sintetico_nunca_sai_como_observada",
+   "test_deteccao_vinda_do_tape_sai_como_observada",
+   "test_escora_retem_no_maximo_o_teto_de_niveis",
+   "test_finalizar_drena_o_inferidor",
+   "test_iceberg_retem_no_maximo_o_teto_de_niveis",
+   "test_liquidez_fantasma_retem_no_maximo_o_teto_de_niveis",
+   "test_mesma_seed_produz_a_mesma_sequencia_exata",
+   "test_o_console_imprime_tudo_o_que_a_sessao_produziu",
+   "test_o_despejo_nao_e_deterministico_na_ordem_das_chaves",
+   "test_o_pipeline_continua_inteiro_depois_da_virada",
+   "test_o_teto_de_fabrica_e_o_do_pacote",
+   "test_os_detectores_assinam_o_livro_antes_do_verificar",
+   "test_pipeline_completo_roda_e_produz_sinais_e_deteccoes",
+   "test_seed_diferente_muda_a_sequencia",
+   "test_sem_detectores_de_tape_sobram_so_as_deteccoes_inferidas",
+   "test_sem_motor_nenhum_sinal_e_emitido",
+   "test_severar_qualquer_elo_derruba_a_verificacao[Trade-_ao_trade_detectores_tape]",
+   "test_severar_qualquer_elo_derruba_a_verificacao[Trade-_ao_trade_micro]",
+   "test_severar_qualquer_elo_derruba_a_verificacao[Trade-_ao_trade_motor]",
+   "test_severar_qualquer_elo_derruba_a_verificacao[Trade-_ao_trade_perfil_sessao]",
+   "test_teto_e_respeitado_mesmo_com_a_janela_inteira_viva",
+   "test_toda_deteccao_carrega_evidencia_nao_vazia",
+   "test_todo_sinal_carrega_a_evidencia_da_condicao_1",
+   "test_virada_de_sessao_reabre_os_niveis_ja_sinalizados",
+   "test_virada_de_sessao_recria_o_livro_reconstruido",
+   "test_virada_de_sessao_zera_a_calibracao_do_gate_winfut",
+   "test_virada_de_sessao_zera_acumuladores_e_a_distribuicao_do_motor"
+  ]
+ },
+ {
+  "id": "D13",
+  "estado": "MORTA",
+  "desc": "teto deixa de valer no excedente (backstop de memoria some)",
+  "linha": "6 failed, 106 passed in 35.33s",
+  "testes": [
+   "test_escora_retem_no_maximo_o_teto_de_niveis",
+   "test_iceberg_retem_no_maximo_o_teto_de_niveis",
+   "test_liquidez_fantasma_retem_no_maximo_o_teto_de_niveis",
+   "test_o_teto_de_fabrica_e_o_do_pacote",
+   "test_teto_de_um_e_valido_e_nao_divide_por_zero",
+   "test_teto_e_respeitado_mesmo_com_a_janela_inteira_viva"
+  ]
+ },
+ {
+  "id": "D14",
+  "estado": "MORTA",
+  "desc": "consulta passa a RENOVAR a chave (verificar em laco segura chave morta)",
+  "linha": "2 failed, 110 passed in 43.66s",
+  "testes": [
+   "test_chave_parada_alem_da_janela_expira_e_a_reemissao_e_correta",
+   "test_o_mesmo_nivel_volta_a_emitir_depois_da_janela"
+  ]
+ }
+]

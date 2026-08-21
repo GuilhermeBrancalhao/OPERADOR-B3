@@ -106,11 +106,6 @@ _COD_COMPRA = 0
 _COD_VENDA = 1
 _COD_DESCONHECIDO = 2  # agressor `UNKNOWN`: candidato dos dois lados
 
-# Piso do teto do heap de precos. Abaixo disto compactar nao paga o custo: um
-# livro real tem dezenas de niveis vivos por lado, e um heap de 64 inteiros e
-# irrelevante em memoria e em latencia. Ver `InferidorMBP._compactar_heap`.
-_PISO_TETO_HEAP = 64
-
 
 @dataclass(frozen=True, slots=True)
 class ConfigInferenciaMBP:
@@ -309,19 +304,8 @@ class InferidorMBP:
         livro.registrar_liquidez_nao_aplicada(self.tem_liquidez_nao_aplicada)
 
         # Heaps com remoção preguiçosa para melhor bid/ask do dado agregado.
-        # Ver `_registrar_preco` para o porquê dos conjuntos-espelho e do teto.
         self._heap_bids: list[int] = []
         self._heap_asks: list[int] = []
-        # Espelho do heap: preço com entrada VIVA nele. É a marca `no_heap` do
-        # `LivroMBO` (onda 4) transposta para cá — aqui não existe objeto de
-        # nível onde pendurar um booleano, porque `_qty_por_nivel` guarda só
-        # inteiros e a chave some quando o nível zera, então a marca vira set.
-        self._precos_no_heap_bid: set[int] = set()
-        self._precos_no_heap_ask: set[int] = set()
-        # Teto amortizado: acima do limiar o heap é compactado contra os
-        # níveis vivos e o limiar é reajustado. Ver `_compactar_heap`.
-        self._limiar_heap_bid = _PISO_TETO_HEAP
-        self._limiar_heap_ask = _PISO_TETO_HEAP
 
     # ------------------------------------------------------------------
     # entradas
@@ -772,115 +756,11 @@ class InferidorMBP:
     # ------------------------------------------------------------------
     # topo do livro sobre o dado agregado
     # ------------------------------------------------------------------
-    def _compactar_heap(self, side: Side) -> None:
-        """Descarta do heap TODO nível já morto, não só os da cabeça.
-
-        A poda preguiçosa de `melhor_bid`/`melhor_ask` só alcança a cabeça: um
-        preço morto no MEIO do heap fica lá até virar topo, e num livro que
-        caminha para um lado ele nunca vira. A dedup sozinha limita o heap ao
-        número de preços DISTINTOS já vistos na sessão — que cresce o dia
-        inteiro. Esta compactação é o que fecha o teto de verdade, e é
-        amortizada: só roda quando o heap passa do limiar, e o limiar é reposto
-        em `2x` o tamanho compactado, então cada compactação exige tantas
-        inserções novas quantas ela removeu para poder acontecer de novo.
-        Custo amortizado O(1) por inserção. O teto é `2x` os níveis vivos na
-        última compactação (piso de 64) — e como a compactação só é disparada
-        por INSERÇÃO, um livro que encolhe e para de receber preço novo pode
-        segurar o tamanho antigo até a próxima inserção. Isso é retenção
-        limitada pelos preços do dia, não pelo tempo de pregão, que é
-        exatamente a diferença entre este código e o defeito que ele corrige.
-        """
-        if side is Side.BUY:
-            vivos = [
-                -p
-                for p in self._precos_no_heap_bid
-                if self._qty_por_nivel.get((Side.BUY, p), 0) > 0
-            ]
-            heapq.heapify(vivos)
-            self._heap_bids = vivos
-            self._precos_no_heap_bid = {-p for p in vivos}
-            self._limiar_heap_bid = max(_PISO_TETO_HEAP, 2 * len(vivos))
-        else:
-            vivos = [
-                p
-                for p in self._precos_no_heap_ask
-                if self._qty_por_nivel.get((Side.SELL, p), 0) > 0
-            ]
-            heapq.heapify(vivos)
-            self._heap_asks = vivos
-            self._precos_no_heap_ask = set(vivos)
-            self._limiar_heap_ask = max(_PISO_TETO_HEAP, 2 * len(vivos))
-
     def _registrar_preco(self, side: Side, price: int) -> None:
-        """Publica o preço no heap do lado — UMA vez enquanto a entrada viver.
-
-        =====================================================================
-        A 5a CASA DO MESMO DEFEITO (leia antes de mexer aqui)
-        =====================================================================
-        Este ponto foi, na auditoria R4, a QUINTA aparição da mesma falha
-        estrutural neste projeto:
-
-        1. **R1 — `detectores.py`**: `self._trades` como `list` que só crescia,
-           varrida inteira a cada evento.
-        2. **R2 — `motor/sinais.py`**: `_dominancia` / `_micro_virou`
-           acumulando histórico e recalculando sobre o acumulado.
-        3. **R3 — `inferencia_mbp.py`**: `_lado_casa` varrendo todo o estado
-           pendente a cada negócio.
-        4. **R3 — `livro_mbo.py`**: `ultima_ordem_ativa` percorrendo a fila
-           histórica do nível.
-        5. **R4 — AQUI**: `_registrar_preco` fazendo `heappush` INCONDICIONAL
-           a cada transição `0 -> qty` de um nível, sem teste de pertinência e
-           sem teto, podado só pela cabeça do heap.
-
-        A forma comum é sempre a mesma: **uma estrutura que cresce com o
-        estado acumulado e é varrida ou podada tarde demais.** Aqui o preço
-        foram 2.400.001 entradas de heap para DOIS níveis vivos após 16 min de
-        pregão a 5.000 ev/s, e 244 ms de latência num único evento — o evento
-        em que o topo do book esvazia e a dívida inteira é cobrada de uma só
-        vez, que é justamente o rompimento que o produto existe para ler.
-
-        A ironia que fecha o ciclo: esta 5a casa foi CRIADA pela correção da
-        3a. O índice por preço que matou a varredura precisou de um heap para
-        responder `melhor_bid`, e o heap nasceu com o mesmo vício.
-
-        ---------------------------------------------------------------------
-        COMO RECONHECER A 6a CASA ANTES QUE A AUDITORIA A ENCONTRE
-        ---------------------------------------------------------------------
-        Nenhuma das cinco foi achada por benchmark de VAZÃO, e isso não é
-        acidente: enquanto a estrutura infla, o custo MÉDIO por evento
-        costuma CAIR (aqui caiu de 33,54 para 23,01 us/passo enquanto o heap
-        subia a 2,4 milhões), porque o trabalho extra fica represado num
-        evento raro em vez de diluído em todos — a média é exatamente o eixo
-        que não dói, e é por isso que cinco rodadas de benchmark passaram por
-        cima de cinco vazamentos. Os eixos que doem são três, e nenhum é taxa
-        de eventos: **(a) DURAÇÃO** — minutos de pregão simulado, não milhares
-        de passos; **(b) RETENÇÃO** — o `len` de cada estrutura interna ao
-        final, confrontado com quantas coisas VIVAS ela deveria descrever;
-        **(c) LATÊNCIA DE CAUDA** — p99 e MÁXIMO por evento, jamais a média.
-        O teste prático, aplicável a qualquer `list`, `deque`, `dict`, `set`
-        ou heap de instância deste projeto: *qual grandeza limita o `len`
-        disto, e ela para de crescer enquanto o pregão continua?* Se a
-        resposta contiver "número de eventos", "de recargas", "de negócios"
-        ou "de atualizações", em vez de "de níveis vivos", "de ordens ativas"
-        ou "do tamanho da janela em ns", a 6a casa é essa — e o benchmark que
-        a esconde já está verde. O estágio de retenção/cauda do
-        `bench_inferencia.py` existe para que ela apareça ali antes de
-        aparecer numa auditoria.
-        """
         if side is Side.BUY:
-            if price in self._precos_no_heap_bid:
-                return
             heapq.heappush(self._heap_bids, -price)
-            self._precos_no_heap_bid.add(price)
-            if len(self._heap_bids) > self._limiar_heap_bid:
-                self._compactar_heap(Side.BUY)
         else:
-            if price in self._precos_no_heap_ask:
-                return
             heapq.heappush(self._heap_asks, price)
-            self._precos_no_heap_ask.add(price)
-            if len(self._heap_asks) > self._limiar_heap_ask:
-                self._compactar_heap(Side.SELL)
 
     def melhor_bid(self) -> int | None:
         while self._heap_bids:
@@ -888,10 +768,6 @@ class InferidorMBP:
             if self._qty_por_nivel.get((Side.BUY, price), 0) > 0:
                 return price
             heapq.heappop(self._heap_bids)
-            # Sai do espelho junto: sem isto o nível que RESSUSCITA nunca mais
-            # seria republicado e o topo do livro ficaria errado em silêncio —
-            # o mesmo bug que a marca `no_heap` do `LivroMBO` já pagou uma vez.
-            self._precos_no_heap_bid.discard(price)
         return None
 
     def melhor_ask(self) -> int | None:
@@ -900,7 +776,6 @@ class InferidorMBP:
             if self._qty_por_nivel.get((Side.SELL, price), 0) > 0:
                 return price
             heapq.heappop(self._heap_asks)
-            self._precos_no_heap_ask.discard(price)
         return None
 
     def _distancia_do_topo(self, side: Side, price: int) -> int:

@@ -1,0 +1,86 @@
+[
+  {
+    "id": "R01",
+    "desc": "volta ao MAXIMO PURO da onda 7: a janela nunca esquece (catraca do A.4)",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        limite = agora_mono - self._janela_ns\n        while len(janela) > 1 and janela[0][0] < limite:\n            janela.popleft()",
+    "para": "        limite = agora_mono - self._janela_ns\n        while False and len(janela) > 1 and janela[0][0] < limite:\n            janela.popleft()"
+  },
+  {
+    "id": "R02",
+    "desc": "volta a ULTIMA AMOSTRA vence: a janela guarda so o ultimo",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        while janela and janela[-1][1] <= estimativa:\n            janela.pop()\n        janela.append((agora_mono, estimativa))",
+    "para": "        janela.clear()\n        janela.append((agora_mono, estimativa))"
+  },
+  {
+    "id": "R03",
+    "desc": "desliga a DETECCAO de regressao (so a janela sobra)",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        if self._armado:\n            regressao = self._avaliar_regressao(estimativa)",
+    "para": "        if False:\n            regressao = self._avaliar_regressao(estimativa)"
+  },
+  {
+    "id": "R04",
+    "desc": "inverte o sinal do limiar: deficit PEQUENO passa a contar como regressao",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        if deficit <= self._limiar_regressao_ns:\n            self._armado = False",
+    "para": "        if deficit >= self._limiar_regressao_ns:\n            self._armado = False"
+  },
+  {
+    "id": "R05",
+    "desc": "regressao detectada mas ENGOLIDA (sem FalhaCaptura, correcao em silencio)",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "                self._resetar(servidor_ns, estimativa)\n                return regressao",
+    "para": "                self._resetar(servidor_ns, estimativa)\n                return None"
+  },
+  {
+    "id": "R06",
+    "desc": "reset NAO baixa o piso monotonico: relogio preso no referencial antigo",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        self._ultimo_observado_ns = servidor_ns\n        self._ultimo_ns = servidor_ns\n        self._admitir(estimativa)",
+    "para": "        self._ultimo_observado_ns = servidor_ns\n        self._ultimo_ns = max(self._ultimo_ns, servidor_ns)\n        self._admitir(estimativa)"
+  },
+  {
+    "id": "R07",
+    "desc": "remove o gate de ADMISSAO: tick re-observado (tape parado) entra na janela",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        if servidor_ns == anterior:",
+    "para": "        if False and servidor_ns == anterior:"
+  },
+  {
+    "id": "R08",
+    "desc": "remove o ARMAR: deficit sozinho decide (adaptador atrasado vira 'regressao')",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        if self._armado:\n            regressao",
+    "para": "        if True:\n            regressao"
+  },
+  {
+    "id": "R09",
+    "desc": "K=1: uma amostra so ja declara regressao (pico isolado vira reset)",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        self._amostras_para_regressao = max(1, int(amostras_para_regressao))",
+    "para": "        self._amostras_para_regressao = 1"
+  },
+  {
+    "id": "R10",
+    "desc": "limiar zero: qualquer deficit apos um tick fora de ordem reseta o relogio",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        self._limiar_regressao_ns = max(0, int(limiar_regressao_ns))",
+    "para": "        self._limiar_regressao_ns = 0"
+  },
+  {
+    "id": "R11",
+    "desc": "remove o teto DURO de memoria da janela (vazamento em sessao longa)",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        while len(janela) > self._max_amostras:",
+    "para": "        while False and len(janela) > self._max_amostras:"
+  },
+  {
+    "id": "R12",
+    "desc": "deficit medido contra a amostra corrente em vez do maximo vigente",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "de": "        deficit = self.offset_ns - estimativa",
+    "para": "        deficit = estimativa - estimativa"
+  }
+]

@@ -16,7 +16,9 @@ def _trade(price: int, qty: int, agressor: AgressorSide, ts: int, trade_id: str)
 
 
 def test_imbalance_diagonal_no_limiar_exato_e_abaixo_dele() -> None:
-    fp = Footprint()
+    # piso=0 explicito: este teste prende a semantica da RAZAO diagonal,
+    # nao o piso de qty minima (que tem teste proprio abaixo).
+    fp = Footprint(config=ConfigFootprint(qty_minima_imbalance=0))
     # limiar padrao = 3.0
     # comp(100)/vend(101) = 6/2 = 3.0 -> imbalance de compra (no limiar exato)
     fp.registrar_trade(_trade(100, 6, AgressorSide.BUY, 0, "T1"))
@@ -122,4 +124,84 @@ def test_absorcao_nao_confirma_sem_reversao_suficiente() -> None:
     fp.registrar_trade(_trade(101, 2, AgressorSide.SELL, 3, "T4"))
     # mesmo cenario do teste de absorcao no topo, mas agora exige reversao de 2
     # ticks; so recuou 1 tick (102->101) -> nao confirma
+    assert fp.absorcao_topo() is False
+
+
+def test_imbalance_abaixo_do_piso_padrao_nao_dispara_mesmo_com_razao_alta() -> None:
+    """`qty_minima_imbalance` default (5): uma razao 4:1 sobre 1 lote contra 0
+    e ruido, nao sinal. Mata a mutacao que zera o piso de fabrica."""
+    fp = Footprint()  # config default: qty_minima_imbalance=5
+    # comp(100)=4 (abaixo do piso de 5), vend(101)=1 -> razao 4.0 > limiar(3.0),
+    # mas qty_comprador(4) < piso(5): NAO deve marcar.
+    fp.registrar_trade(_trade(100, 4, AgressorSide.BUY, 0, "T1"))
+    fp.registrar_trade(_trade(101, 1, AgressorSide.SELL, 1, "T2"))
+    assert fp.niveis_imbalance_compra() == []
+
+    # o mesmo nivel, agora com qty_comprador=5 (no piso) -> volta a marcar
+    fp2 = Footprint()
+    fp2.registrar_trade(_trade(100, 5, AgressorSide.BUY, 0, "T1"))
+    fp2.registrar_trade(_trade(101, 1, AgressorSide.SELL, 1, "T2"))
+    assert fp2.niveis_imbalance_compra() == [100]
+
+
+def test_imbalance_sem_vizinho_diagonal_marca_por_falta_de_contraparte() -> None:
+    """Nivel na borda do candle (sem vizinho diagonal registrado) conta como
+    contraparte zero -> marca imbalance. Mata a mutacao que faz o vizinho
+    ausente/zerado deixar de marcar."""
+    fp = Footprint(config=ConfigFootprint(qty_minima_imbalance=0))
+    # nivel 100 nao tem vizinho 101 registrado -> qty_vendedor_vizinho=0
+    fp.registrar_trade(_trade(100, 6, AgressorSide.BUY, 0, "T1"))
+    assert fp.niveis_imbalance_compra() == [100]
+
+    fp2 = Footprint(config=ConfigFootprint(qty_minima_imbalance=0))
+    # nivel 200 nao tem vizinho 199 registrado -> qty_comprador_vizinho=0
+    fp2.registrar_trade(_trade(200, 9, AgressorSide.SELL, 0, "T1"))
+    assert fp2.niveis_imbalance_venda() == [200]
+
+
+def test_delta_divergente_cobre_os_quatro_quadrantes_preco_x_delta() -> None:
+    """`delta_divergente` compara alta E baixa, nao so alta. Mata a mutacao
+    que restringe a checagem apenas ao caso de preco subindo."""
+    # preco desce, delta positivo -> diverge
+    fp_desce_delta_pos = Footprint()
+    fp_desce_delta_pos.registrar_trade(_trade(105, 10, AgressorSide.BUY, 0, "T1"))
+    fp_desce_delta_pos.registrar_trade(_trade(100, 1, AgressorSide.SELL, 1, "T2"))
+    assert fp_desce_delta_pos.preco_fechamento < fp_desce_delta_pos.preco_abertura
+    assert fp_desce_delta_pos.delta > 0
+    assert fp_desce_delta_pos.delta_divergente() is True
+
+    # preco desce, delta negativo -> concorda, nao diverge
+    fp_desce_delta_neg = Footprint()
+    fp_desce_delta_neg.registrar_trade(_trade(105, 1, AgressorSide.BUY, 0, "T1"))
+    fp_desce_delta_neg.registrar_trade(_trade(100, 10, AgressorSide.SELL, 1, "T2"))
+    assert fp_desce_delta_neg.preco_fechamento < fp_desce_delta_neg.preco_abertura
+    assert fp_desce_delta_neg.delta < 0
+    assert fp_desce_delta_neg.delta_divergente() is False
+
+    # preco sobe, delta positivo -> concorda (ja coberto em outro teste, aqui
+    # so por simetria da tabela verdade)
+    fp_sobe_delta_pos = Footprint()
+    fp_sobe_delta_pos.registrar_trade(_trade(100, 10, AgressorSide.BUY, 0, "T1"))
+    fp_sobe_delta_pos.registrar_trade(_trade(105, 1, AgressorSide.SELL, 1, "T2"))
+    assert fp_sobe_delta_pos.preco_fechamento > fp_sobe_delta_pos.preco_abertura
+    assert fp_sobe_delta_pos.delta > 0
+    assert fp_sobe_delta_pos.delta_divergente() is False
+
+
+def test_media_volume_por_nivel_divide_pelo_numero_de_niveis_nao_mais_um() -> None:
+    """A media que alimenta o limiar de absorcao e volume_total/len(niveis).
+    Se um bug dividir por len(niveis)+1, o limiar fica menor e um caso que
+    deveria REPROVAR passa a aprovar. 2 niveis, volume_total=30:
+    media correta=15 -> limiar=30 (25 < 30 -> reprova);
+    media buggy(n+1=3)=10 -> limiar=20 (25 >= 20 -> aprovaria, ERRADO)."""
+    fp = Footprint(config=ConfigFootprint(multiplo_absorcao=2.0, reversao_ticks_absorcao=1))
+    fp.registrar_trade(_trade(100, 3, AgressorSide.BUY, 0, "T1"))   # abertura, nivel 100
+    fp.registrar_trade(_trade(105, 25, AgressorSide.SELL, 1, "T2"))  # maximo, nivel 105
+    fp.registrar_trade(_trade(100, 2, AgressorSide.BUY, 2, "T3"))   # fechamento volta a 100
+    assert fp.preco_maximo == 105
+    assert fp.preco_fechamento == 100
+    assert fp.volume_total == 30
+    assert len(fp._niveis) == 2
+    # com a media/limiar corretos (n=2, media=15, limiar=30), volume do topo
+    # (25) fica ABAIXO do limiar -> nao confirma
     assert fp.absorcao_topo() is False

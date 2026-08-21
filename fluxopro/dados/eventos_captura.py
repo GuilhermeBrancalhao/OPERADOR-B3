@@ -21,6 +21,11 @@ class TipoFalha(Enum):
     DESCONEXAO = "DESCONEXAO"  # perda de conexao com a fonte
     RECONEXAO = "RECONEXAO"  # conexao restabelecida apos DESCONEXAO
     ERRO_FONTE = "ERRO_FONTE"  # fonte devolveu erro explicito (ex.: mt5.last_error())
+    # o relogio do SERVIDOR recuou (troca de servidor da corretora, ajuste de
+    # NTP do lado deles, failover): o estimador de offset foi resetado e o
+    # relogio derivado deu um salto para tras. Unica quebra de monotonicidade
+    # que este adaptador produz, e ela e anunciada.
+    RELOGIO_REGREDIU = "RELOGIO_REGREDIU"
 
 
 @dataclass(frozen=True, slots=True)

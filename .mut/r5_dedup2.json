@@ -1,0 +1,74 @@
+[
+ {
+  "id": "D03b",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "despejo volta a ser LRU estrito (menos recentemente alimentada): o penhasco de volta",
+  "de": "        self._remover(self._chaves[_SORTEIO_DESPEJO.randrange(len(self._chaves))])",
+  "para": "        self._remover(min(self._itens, key=lambda k: self._itens[k].ts_ultimo_ns))",
+  "n": 1
+ },
+ {
+  "id": "D07b",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "Iceberg le o dedup com o relogio do evento ANTERIOR",
+  "de": "        self._procedencia.avancar(timestamp_ns)\n        chave = (ordem.side, ordem.price)",
+  "para": "        chave = (ordem.side, ordem.price)",
+  "n": 1
+ },
+ {
+  "id": "D08b",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "episodio novo herda a mordaca do anterior (reiniciar nao solta sinalizado)",
+  "de": "        self.n_eventos = 0\n        self.sinalizado = False",
+  "para": "        self.n_eventos = 0",
+  "n": 1
+ },
+ {
+  "id": "D08c",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "episodio novo herda a CADEIA do anterior (reiniciar nao zera n_eventos)",
+  "de": "        self.fonte = FonteMicro.MBO\n        self.n_eventos = 0",
+  "para": "        self.fonte = FonteMicro.MBO",
+  "n": 1
+ },
+ {
+  "id": "D09b",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "sem varredura amortizada: cadaveres ficam ate o teto (vazamento)",
+  "de": "            n = self._desde_varredura + 1\n            if n >= self._ESCRITAS_POR_VARREDURA:\n                self._desde_varredura = 0\n                self._varrer(self._ESCRITAS_POR_VARREDURA)\n            else:\n                self._desde_varredura = n\n            return item",
+  "para": "            return item",
+  "n": 1
+ },
+ {
+  "id": "D15",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "chave de episodio ignora o LADO (bid e ask no mesmo preco viram um episodio so)",
+  "de": "        return (evento.side, evento.price)",
+  "para": "        return evento.price",
+  "n": 1
+ },
+ {
+  "id": "D16",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "fronteira da janela vira >=: no limiar exato a chave ja expira",
+  "de": "        return self._agora_ns - item.ts_ultimo_ns > self._janela_ns",
+  "para": "        return self._agora_ns - item.ts_ultimo_ns >= self._janela_ns",
+  "n": 1
+ },
+ {
+  "id": "D17",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "fronteira da janela no caminho quente vira >= (o par do D16, inline em `de`)",
+  "de": "            if agora - item.ts_ultimo_ns > self._janela_ns:",
+  "para": "            if agora - item.ts_ultimo_ns >= self._janela_ns:",
+  "n": 1
+ },
+ {
+  "id": "D18",
+  "arquivo": "fluxopro/microestrutura/detectores.py",
+  "desc": "de() deixa de renovar o relogio da chave (chave viva envelhece e expira)",
+  "de": "            item.ts_ultimo_ns = agora\n            # Varredura amortizada",
+  "para": "            # Varredura amortizada",
+  "n": 1
+ }
+]

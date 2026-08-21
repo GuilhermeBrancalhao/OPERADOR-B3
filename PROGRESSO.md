@@ -206,13 +206,94 @@ Nota de método do crítico: a prova "byte a byte contra o blob de HEAD" da R3 *
 
 ## Onda 8 — correções da R4
 
+> **Nota de método — o registro em voo virou infraestrutura crítica.** Criei o `.mut/*_em_voo.json` depois que o crítico da R4 morreu por limite no meio de uma mutação. Nesta onda ele **pagou duas vezes**: (1) um timeout matou o harness do motor no meio da mutação M10 e deixou um `while False:` em disco — o registro + sha256 identificou e desfez, e a suíte teria ficado **verde com o defeito**, porque só um teste o pegava; (2) dois builders colidiram no mesmo nome de arquivo e adotaram nomes próprios por conta, sem que eu precisasse intervir. Numa execução com 5 builders mutando código em paralelo, `git diff` não basta — já foi provado cego neste repo (o `.gitignore`) e não distingue mutação de trabalho legítimo.
+
 | Peça | Modelo | Estado |
 |---|---|---|
-| Inferência: 5ª casa (heap sem dedup/teto em `_registrar_preco`) | opus | 🔄 em voo |
-| MT5: relógio de máximo vira catraca — precisa esquecer | opus | 🔄 em voo |
-| Detectores: dedup 4.096 é penhasco; `order_id` sintético estoura em 63 ms | opus | 🔄 em voo |
-| Motor: WINFUT com 20.000 laterais ainda fura o gate | opus | 🔄 em voo |
-| Testes fracos: `perfil_player`, `brokers`, `simulador`, `footprint` (cimento) | sonnet | 🔄 em voo |
+| **Inferência: 5ª casa (heap sem dedup/teto)** | opus | ✅ **12/12 mortas, 2,4M → 2 entradas, 5,3 s → 28 µs** |
+| **MT5: relógio de máximo vira catraca** | opus | ✅ **36 → 44 testes, 12/12 mutações mortas** |
+| **Detectores: dedup 4.096 é penhasco** | opus | ✅ **+34 testes, 28 mutações / 4 rodadas, penhasco 100 pp → 22,9 pp** |
+| **Motor: WINFUT com 20.000 laterais fura o gate** | opus | ✅ **33 → 51 testes, 10/10 mortas, 480 espúrios → 0** |
+| **Testes fracos: `perfil_player`, `brokers`, `simulador`, `footprint`** | sonnet | ✅ **+24 testes, 18/18 mutações mortas** |
+
+### Dedup — a chave errada era o problema maior, não o teto
+**A chave**: Iceberg e Fantasma chaveavam por `order_id`. Medido: 5 s de tape a 65.000 ordens sintéticas/s produzem **325.000 chaves por `order_id` contra 802 por `(side, price)` — 405×**. Um episódio de iceberg é "estão recarregando em 5000,5", não "a etiqueta que a ponte inventou nesta inserção". O `order_id` continua na `evidencia`; só deixou de ser identidade.
+
+**O penhasco**: teto duro virou expiração por tempo (30 s) com teto por contagem só de backstop (4.096 → 65.536) e **vítima sorteada** no excedente. O sorteio é o que mata a patologia — com FIFO ou LRU sob varredura cíclica, a vítima é sempre exatamente a próxima chave a ser revisitada.
+
+| chaves em rotação | onda 7 (FIFO 4.096) | agora |
+|---|---|---|
+| 4.096 | 0,0% | 0,0% |
+| **5.000** | **100,0%** | **0,0%** |
+| 50.000 | 100,0% | **0,0%** |
+
+Com o mesmo teto nas duas políticas, para exercitar o excedente: FIFO salta 0% → 100% entre 512 e 560 chaves; a nova sobe 0 → 16,2 → 35,4 → 56,2 → 79,1 → 92,8 → 98,1%. **Maior degrau: 22,9 pp contra 100 pp.** Retenção em 6 h a 65.000 ev/s: 802 chaves, plano.
+
+**28 aplicações em 4 rodadas**; 6 sobreviventes iniciais viraram 6 testes novos. Uma delas (D03) sobreviveu por **mutação mal formada do próprio builder** — ele percebeu, refez como LRU estrito e ela morreu. Custo: o mapa ficou 2,2× mais caro por operação (TTL e relógio em Python onde `move_to_end` era C), declarado — e ainda 122× acima da barra.
+
+**Erro registrado sem recuperação**: ao gravar a sonda, o builder **sobrescreveu um arquivo de mesmo nome de outro builder** em `.mut/` (untracked, sem restauração possível). Renomeou a sua e liberou o nome. O registro em voo não foi afetado — ele já usava nome próprio.
+
+### A 5ª casa fechada — e o critério para achar a 6ª antes da auditoria
+
+| tape de recarga, 5.000 ev/s | antes | depois |
+|---|---|---|
+| entradas de heap (16 min, 1 nível vivo) | **2.400.001** | **2** |
+| pior evento de rompimento | **5,3 s** | **28 µs** |
+| vazão | 12.954 ev/s | **47.142 ev/s** |
+
+Duas defesas: **dedup** por conjunto-espelho (com `discard` no `heappop`, senão o nível que ressuscita fica exilado do topo em silêncio — bug que a onda 4 já pagou uma vez no livro) e **teto** por compactação amortizada. A dedup sozinha não bastaria: num livro que caminha, cada preço entra uma vez e nunca sai, porque a poda preguiçosa só alcança a cabeça. O `livro_mbo.py` tinha a dedup desde a onda 4 mas **não tinha teto** — 5.001 entradas para 1 nível vivo; recebeu a mesma compactação.
+
+**Achado metodológico que muda como medimos daqui pra frente**: o `max µs` bruto continua em centenas de ms **mesmo depois da correção** — e não é código. Um laço aritmético de controle, sem estrutura de dado alguma, mede 7.250 µs no pior evento nesta máquina (86.735 µs com 4 builders em paralelo). O `bench_inferencia.py` agora imprime esse **piso de ruído** e o veredito de cauda julga a coluna `rompimento` (evento determinístico e identificado), não o `max`. Sem isso o próximo builder "corrige" ruído de escalonamento e declara vitória sobre nada.
+
+**Quatro mutações sobreviveram na primeira rodada, e cada uma expôs defeito do TESTE, não do código**: M1/M2 — com a compactação no lugar, tirar a dedup não faz o heap crescer, só churnar; `len` não era prova de nada, e o teste passou a contar **trabalho** (espião sobre `_compactar_heap`). M7/M11 — os testes de compactação usavam 40-50 preços, **abaixo do piso de 64**: a compactação nunca rodava. Testes verdes que não executavam a linha que diziam cobrir.
+
+#### Como reconhecer a 6ª casa (do docstring de `_registrar_preco`)
+As cinco: R1 `detectores._trades` · R2 `sinais._dominancia`/`_micro_virou` · R3 `inferencia._lado_casa` · R3 `livro.ultima_ordem_ativa` · R4 este heap. Forma comum: **estrutura que cresce com estado acumulado e é varrida ou podada tarde demais**.
+
+**Nenhuma das cinco foi achada por vazão, e não é acidente**: enquanto a estrutura infla, o custo *médio* CAI (33,54 → 23,01 µs/passo aqui), porque o trabalho fica represado num evento raro em vez de diluído em todos.
+
+O teste prático para qualquer `list`/`deque`/`dict`/`set`/heap de instância: **qual grandeza limita o `len` disto, e ela para de crescer enquanto o pregão continua?** Se a resposta contiver "número de eventos/recargas/negócios/atualizações" em vez de "níveis vivos / ordens ativas / janela em ns", a 6ª casa é essa — e o benchmark que a esconde já está verde.
+
+### WINFUT — o gate fechado, e a razão voltou a ser propriedade do mercado
+A referência de magnitude deixou de ser percentil sobre reservoir uniforme e passou a ser a **K-ésima maior magnitude da sessão** (min-heap de tamanho fixo, K=32): nunca esquece o pico, é monótona não-decrescente dentro da sessão, O(1) para ler. O `random` e a seed saíram inteiros — **o motor virou determinístico por construção**, não por seed.
+
+| N laterais | R3/R4 | agora | mag_rel |
+|---|---|---|---|
+| 0 … 9.000 | — | 0 | 0,450 |
+| **20.000** | **480 espúrios** (mag_rel 0,920) | **0** | **0,450** |
+| 50.000 | — | 0 | 0,450 |
+
+**A `mag_rel` ficou plana em 0,450 no eixo inteiro** — a razão voltou a ser propriedade do mercado, não de quanto tempo o pregão ficou parado depois. Controle (gate desligado): 371/783/783 espúrios, provando que o cenário é real. E não é "sempre não": repique na magnitude do próprio dia confirma 413-533 vezes, `mag_rel` 1,000.
+
+**O filtro que não estava no enunciado e era indispensável**: a magnitude é o |delta| de uma *janela*, então um fat finger de 100.000 lotes deixa **centenas** de amostras da janela com magnitude ≈ o tamanho dele — top-K sozinho afogaria e travaria a referência o dia inteiro. Daí o `fator_dominio_trade_unico`: a amostra só entra se for maior que 2× o maior negócio isolado ainda na janela (deque monotônico, O(1)). Sem ele, o teste de outlier morre.
+
+**Ficou mais rápido**: 138.412 → **143.649 ev/s**, porque saíram o `random.randint` por trade e o `sorted()` de 500 itens a cada 100 trades. M08, M09 e M10 sobreviveram na primeira passada — os três testes que os matam nasceram disso.
+
+**O registro em voo salvou o repositório**: um timeout matou o harness no meio de M10 e deixou a mutação em disco; o `r5_em_voo` + sha256 identificou e desfez. Sem ele, um `while False:` teria ficado no `_registrar_dominancia` — **e a suíte ficaria verde com ele**, porque só o teste de outlier o pega.
+
+### Relógio — máximo sobre janela deslizante + detecção de regressão em dois tempos
+A catraca foi desfeita sem reintroduzir o defeito que o máximo corrigira. Três regras, cada uma cobrindo um regime: **máximo** (toda amostra subestima o offset pela idade do tick); **janela de 120 s com gate de admissão** — só entra amostra cujo `time_msc` andou, porque re-observar o mesmo tick é informação zero, e é isso que permite esquecer sem voltar a travar com tape parado; e **detecção em dois tempos** — *armar* quando o `time_msc` recua (único sinal físico exclusivo de regressão), *confirmar* com 3 amostras de déficit acima de 250 ms, com reset e `FalhaCaptura(RELOGIO_REGREDIU)`.
+
+O limiar de 250 ms é escolhido **contra a janela de 300 ms do `InferidorMBP`**: toda regressão capaz de estourá-la é detectada; abaixo disso não estoura e a janela absorve sozinha. Convergência após regressão de 400 ms: **4 polls ≈ 200 ms**.
+
+**Duas correções que só a construção revelou:**
+- Medir o *recuo do `time_msc`* contra o pico não funciona — numa regressão de 400 ms com poll de 50 ms o tape recupera o pico em 8 polls, enquanto o erro do offset continua 400 ms para sempre. Por isso o *confirmar* mede déficit, não recuo.
+- **Déficit sozinho dá falso positivo, e quem denunciou foi o próprio `bench_mt5.py`**: no regime de 50.000 ticks/s o adaptador consome tape mais devagar que o relógio de parede, o déficit cresce centenas de ms/poll e o detector disparava 8 vezes numa passada. Daí o *armar*. Virou teste.
+
+**Flake alheio corrigido**: `test_sequencia_intercalada...` era uma moeda — ~10% de falha medida, **com o estimador novo E com o da onda 7** (o fixture fazia o tape andar 1 ms/poll contra ~0,1 ms de relógio real). Agora usa relógio controlado.
+
+Custo: `observar` roda 1× por poll (20×/s), não por tick — **+34 µs por segundo de tape**, contra ~200 ms de CPU/s na barra: **+0,017%**. R11 sobreviveu na 1ª rodada porque o teste de memória usava o pior caso invertido; corrigido e morto na 2ª.
+
+### Testes fracos — o simulador podia estar invertido e ninguém saberia
+Os 4 módulos que nenhuma onda tocou. **18 de 18 mutações mortas**, incluindo as 3 inversões de semântica de `perfil_player.py` que sobreviveram desde a R3 (quem agrediu, agressividade medindo o lado passivo, perna vendedora não contando clip).
+
+O achado que mais importa é o **simulador**: N04 e N05 — "agressão de COMPRA empurra preço para BAIXO" e "absorção desligada" — sobreviveram a R2, R3 e R4. Ou seja, o gerador de toda medição de qualidade deste projeto podia ter a física do mercado invertida sem quebrar um teste. Agora há testes de propriedade de mercado: preço desloca na direção do agressor, absorção a 100% impede deslocamento, compra consome o topo do **ask** (não do bid), player grande gera clips fora do padrão.
+
+**`qty_minima_imbalance` deixou de ser cimento**: default de `0` → `5`, justificado (WDO negocia em clipes de 1-10 lotes; razão infinita de 1 contra 0 marcava 42-72% dos níveis de um candle esparso como imbalance espúrio). O teste que travava o zero foi reescrito para prender a **semântica** da razão diagonal, passando o piso explicitamente, e ganhou um irmão dedicado ao piso.
+
+**`RankingCorretoras` ganhou `iniciar_nova_sessao`** e saiu de `SEM_RESET_POSSIVEL` na app — sobrou só o `FootprintPorTimeframe` sem solução (assina no construtor e o `Barramento` não expõe `desassinar`).
+
+Nota de coordenação: o builder achou `.mut/r5_em_voo.json` **ocupado por um irmão vivo** (mutação ativa em `motor/sinais.py`) e usou um nome próprio em vez de sobrescrever — o rastreamento em voo funcionou como projetado.
 
 ## Onda 7 — correções da R3 (retomada após queda por limite de gasto)
 

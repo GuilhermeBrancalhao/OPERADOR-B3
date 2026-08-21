@@ -69,11 +69,14 @@ Uma razão percentual é cega às duas coisas: 90% de dominância sobre 1925
 contratos e 90% sobre 915 dão o mesmo `0.900`. Por isso este motor aplica:
 
 - **(a) magnitude relativa** — `_magnitude` é o |delta| absoluto da janela de
-  dominância, e ele é comparado com a distribuição do PRÓPRIO DIA, mantida
-  por *reservoir sampling* com seed determinística (mesmo algoritmo R de
-  `analytics/agressao.py`). `magnitude_relativa = magnitude / percentil(dia)`.
-  Abaixo de `magnitude_relativa_minima` a condição 1 **não** é dada por
-  confirmada, por mais alto que esteja o percentual.
+  dominância, e ele é comparado com o **pico robusto da própria sessão**: a
+  K-ésima maior magnitude já vista no dia, mantida num min-heap de tamanho
+  fixo K (`tamanho_topo_magnitude`). `magnitude_relativa = magnitude /
+  referencia`. Abaixo de `magnitude_relativa_minima` a condição 1 **não** é
+  dada por confirmada, por mais alto que esteja o percentual. Ver
+  `_magnitude_referencia` para por que a referência é a cauda da sessão e não
+  o percentil de uma amostra — foi o defeito que as auditorias R3 e R4
+  mediram (480 `CONFIRMADO` espúrios com 20.000 trades laterais no meio).
 - **(b) persistência / histerese** — o estágio publicado só sobe depois que a
   condição se sustenta por `persistencia_minima_trades` **e**
   `persistencia_minima_ns`, e só cai depois que a condição falha por
@@ -105,11 +108,17 @@ Tudo o que este motor mede por trade sai de contador incremental:
   `value_area()` DUAS vezes — por trade. A R2 mediu 969,6 µs/trade só nisso
   com 800 níveis, teto de 1.031 trades/s. Ver `_regiao` para a política de
   invalidação do cache.
+- A referência de magnitude é a K-ésima maior do dia num min-heap de tamanho
+  FIXO (`_reservatorio`) mais um deque monotônico do maior negócio da janela
+  (`_maiores_qty`): as duas estruturas são O(1) amortizado por trade e não
+  crescem com a duração da sessão. Ler a referência é `heap[0]` — O(1), sem
+  cache e sem ordenação, ao contrário do percentil que estava aqui antes.
+  Medido em `bench_motor.py` estágio 4, o eixo DURAÇÃO DE SESSÃO.
 """
 
 from __future__ import annotations
 
-import random
+import heapq
 from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum, unique
@@ -176,14 +185,23 @@ class ConfigMotorSinais:
     `magnitude_relativa_minima` — fração da magnitude de referência do dia
     abaixo da qual a direção NÃO é dada por confirmada, por mais alto que
     esteja o percentual.
-    `percentil_magnitude_referencia` — percentil da distribuição intradiária
-    de magnitude usado como referência.
-    `tamanho_reservatorio_magnitude` / `seed_reservatorio_magnitude` —
-    reservoir sampling (algoritmo R) da distribuição do dia; seed fixa para
-    que o mesmo replay produza sempre o mesmo resultado.
-    `cache_magnitude_max_trades` / `cache_magnitude_max_ns` — cadência de
-    recálculo do percentil (ordenar a amostra a cada trade seria caro e não
-    muda a resposta).
+    `tamanho_topo_magnitude` (K) — quantas das maiores magnitudes da sessão
+    são guardadas. A referência é a **K-ésima maior**, então K−1 outliers
+    (leilão de abertura, fat finger, um único burst) não conseguem levantá-la
+    sozinhos. K menor = referência mais alta e gate mais rígido; K maior =
+    mais robusto a outlier e mais permissivo.
+    `fator_dominio_trade_unico` — a magnitude da janela só entra na
+    referência se for maior que este fator vezes o MAIOR negócio isolado da
+    janela. É o anticorpo contra o fat finger: um único negócio gigante deixa
+    a janela inteira (600 trades, com a janela de 5 min do default) com
+    magnitude ≈ o tamanho dele, e essas 600 amostras contaminadas afogariam
+    qualquer top-K. Magnitude que um só negócio explica não é fluxo do dia —
+    é aquele negócio. Com 1.0 o filtro está praticamente desligado.
+    `minimo_amostras_referencia` — quantos trades a sessão precisa ter visto
+    antes de a referência passar a ser a K-ésima maior. Antes disso a amostra
+    é curta demais para uma cauda e a referência é o **máximo da sessão** (a
+    leitura mais conservadora disponível: a razão nunca passa de 1,0). Manter
+    igual a K é o natural — é exatamente quando o heap enche.
 
     Condição 2 — região de interesse:
     `margem_regiao_ticks` — tolerância em ticks para considerar o preço
@@ -212,11 +230,9 @@ class ConfigMotorSinais:
     janela_dominancia_ns: int = 5 * 60_000_000_000  # 5 min
 
     magnitude_relativa_minima: float = 0.60
-    percentil_magnitude_referencia: float = 0.95
-    tamanho_reservatorio_magnitude: int = 500
-    seed_reservatorio_magnitude: int = 42
-    cache_magnitude_max_trades: int = 100
-    cache_magnitude_max_ns: int = 250_000_000  # 250 ms
+    tamanho_topo_magnitude: int = 32
+    fator_dominio_trade_unico: float = 2.0
+    minimo_amostras_referencia: int = 32
 
     margem_regiao_ticks: int = 2
     cache_regiao_max_trades: int = 200
@@ -259,21 +275,6 @@ def _delta_de(reg: _TradeJanela) -> int:
     return 0
 
 
-def _percentil(amostra: list[int], p: float) -> float | None:
-    """Percentil por interpolação linear entre ranks — mesmo método de
-    `MedidorAgressao._percentil_amostra` (e o default de `numpy.percentile`)."""
-    if not amostra:
-        return None
-    dados = sorted(amostra)
-    if len(dados) == 1:
-        return float(dados[0])
-    posicao = p * (len(dados) - 1)
-    indice_baixo = int(posicao)
-    indice_alto = min(indice_baixo + 1, len(dados) - 1)
-    fracao = posicao - indice_baixo
-    return dados[indice_baixo] + (dados[indice_alto] - dados[indice_baixo]) * fracao
-
-
 class MotorSinais:
     """Consome trades e mantém o estágio de confluência por símbolo.
 
@@ -304,17 +305,19 @@ class MotorSinais:
 
         # --- condição 1: janela de dominância, tudo incremental ---
         self._janela_dominancia: deque[_TradeJanela] = deque()
+        # deque monotônico decrescente (ts, qty) — `[0][1]` é o maior negócio
+        # isolado ainda dentro da janela. Ver `_amostrar_magnitude`.
+        self._maiores_qty: deque[tuple[int, int]] = deque()
         self._vol_buy = 0
         self._vol_sell = 0
         self._vol_unknown = 0
 
-        # --- condição 1 (b): distribuição intradiária de magnitude ---
+        # --- condição 1 (b): cauda da magnitude da sessão ---
+        # min-heap com as K MAIORES magnitudes do dia (`_reservatorio[0]` é a
+        # K-ésima maior). O nome é histórico — ver `_amostrar_magnitude`.
         self._reservatorio: list[int] = []
-        self._rng = random.Random(self.config.seed_reservatorio_magnitude)
         self._n_visto = 0
-        self._cache_magnitude: float | None = None
-        self._cache_magnitude_ts_ns: int | None = None
-        self._cache_magnitude_n = 0
+        self._max_sessao = 0
 
         # --- condição 2: cache de VAL/VAH ---
         self._cache_regiao: tuple[int, int] | None = None
@@ -342,6 +345,10 @@ class MotorSinais:
         cfg = self.config
         reg = _TradeJanela(trade.timestamp_ns, trade.qty, trade.side_agressor)
         self._janela_dominancia.append(reg)
+        mono = self._maiores_qty
+        while mono and mono[-1][1] <= reg.qty:
+            mono.pop()
+        mono.append((reg.timestamp_ns, reg.qty))
         if reg.lado is AgressorSide.BUY:
             self._vol_buy += reg.qty
         elif reg.lado is AgressorSide.SELL:
@@ -359,6 +366,8 @@ class MotorSinais:
                 self._vol_sell -= antigo.qty
             else:
                 self._vol_unknown -= antigo.qty
+        while mono and mono[0][0] < limite:
+            mono.popleft()
 
     def _dominancia(self) -> tuple[float, Side | None]:
         vol_buy = self._vol_buy
@@ -392,41 +401,134 @@ class MotorSinais:
     # Condição 1 (b) — magnitude relativa ao histórico do dia
     # ------------------------------------------------------------------
     def _amostrar_magnitude(self, magnitude: int) -> None:
-        """Reservoir sampling (algoritmo R) — amostra uniforme de tamanho fixo
-        da magnitude vista no dia, sem guardar o dia inteiro. Mesmo algoritmo
-        e mesma justificativa de `MedidorAgressao._atualizar_reservatorio`."""
-        capacidade = self.config.tamanho_reservatorio_magnitude
-        if len(self._reservatorio) < capacidade:
-            self._reservatorio.append(magnitude)
-        else:
-            indice_sorteado = self._rng.randint(0, self._n_visto)
-            if indice_sorteado < capacidade:
-                self._reservatorio[indice_sorteado] = magnitude
+        """Guarda a CAUDA da sessão: as K maiores magnitudes já vistas.
+
+        `_reservatorio` é um min-heap de tamanho fixo K, então `[0]` é a
+        K-ésima maior magnitude do dia. Custo: uma comparação por trade no
+        caso comum (a magnitude corrente não entra no topo) e O(log K) só
+        quando entra — mais barato que o `random.randint` por trade do
+        reservoir que estava aqui antes, e sem RNG nenhum, o que torna o
+        motor determinístico por construção (não mais por seed fixa).
+
+        **Filtro de negócio único.** Magnitude que UM negócio explica sozinho
+        não é fluxo do dia — é aquele negócio. E ela não aparece uma vez: a
+        magnitude é o |delta| de uma JANELA, então um fat finger de 100.000
+        lotes deixa as CENTENAS de amostras que couberem na janela com
+        magnitude ≈ o tamanho dele. Isso afogaria qualquer top-K (o defeito
+        que o top-K sozinho teria) e travaria a referência pelo resto do
+        pregão. Por isso a amostra só entra se a magnitude for maior que
+        `fator_dominio_trade_unico` × o MAIOR negócio isolado ainda dentro da
+        janela — que `_maiores_qty` mantém em O(1) amortizado, num deque
+        monotônico decrescente alimentado por `_registrar_dominancia`.
+        """
+        cfg = self.config
+        maior_negocio = self._maiores_qty[0][1] if self._maiores_qty else 0
+        if magnitude <= cfg.fator_dominio_trade_unico * maior_negocio:
+            return
+        capacidade = cfg.tamanho_topo_magnitude
         self._n_visto += 1
+        if magnitude > self._max_sessao:
+            self._max_sessao = magnitude
+        topo = self._reservatorio
+        if len(topo) < capacidade:
+            heapq.heappush(topo, magnitude)
+        elif capacidade > 0 and magnitude > topo[0]:
+            heapq.heapreplace(topo, magnitude)
 
     def _magnitude_referencia(self, timestamp_ns: int) -> float | None:
-        """Percentil da magnitude do dia, com cache por contagem/tempo.
+        """Pico ROBUSTO da sessão — a K-ésima maior magnitude do dia.
 
-        Ordenar a amostra (500 itens) a cada trade custaria mais que todo o
-        resto do motor somado, e o percentil de uma amostra de reservoir não
-        muda de um trade para o outro. A amostra corrente SEMPRE inclui o
-        trade atual (é atualizada antes desta chamada), então no início do dia
-        a referência é a própria magnitude corrente e a razão nasce em ~1.0 —
-        não há dia sem referência, só dia com referência curta."""
+        ## Por que não é mais o percentil de um reservoir (o defeito R3/R4)
+
+        A versão anterior normalizava pelo percentil 0,95 de uma amostra de
+        *reservoir sampling* uniforme do dia. Uniforme é justamente o
+        problema: o reservoir representa a distribuição **em massa**, e o que
+        a fonte pede é comparar com o **pico** ("o pico comprador nunca
+        igualou a magnitude dos picos vendedores"). Com um pico de manhã e
+        depois 20.000 trades laterais, a massa vira lateral, o p95 desce até o
+        regime morno e um repique de 45% do pico real do dia passa a parecer
+        grande. As auditorias R3 e R4 mediram isso duas vezes, idêntico: 480
+        `CONFIRMADO` de compra espúrios, `magnitude_relativa` 0,920. O pico do
+        dia não desceu — a estrutura é que esqueceu. Um percentil sobre
+        amostra uniforme depende da FRAÇÃO do dia que o pico ocupa, e essa
+        fração não é uma propriedade do mercado; é uma propriedade de quanto
+        tempo o pregão ficou parado depois.
+
+        ## Por que a K-ésima maior, e não as outras opções
+
+        - **`max` da sessão** resolve o esquecimento (é O(1) e não desce), mas
+          um único trade absurdo — leilão de abertura, fat finger, erro de
+          feed — trava a referência lá em cima e o motor não confirma mais
+          nada no dia. É um modo de falha pior que o original, porque é
+          silencioso. A K-ésima maior é o mesmo `max` "com anticorpo": para
+          levantar a referência é preciso que **K** eventos concordem.
+        - **Reservoir ponderado por magnitude** preserva a cauda em
+          probabilidade, não em garantia: continua sendo aleatório, continua
+          podendo perder o pico, e reintroduz RNG num motor que precisa ser
+          reproduzível no replay. Troca um esquecimento determinístico por um
+          esquecimento raro — pior de auditar, porque falha em 1 dia de 50.
+        - **Dois reservoirs (sessão + recente), usando o maior p95** é o mesmo
+          top-K com mais estado e mais custo: se o de sessão nunca esquece a
+          cauda, é ele quem manda sempre, e o recente é peso morto.
+        - **Histerese/decaimento lento na referência** trata o sintoma. Aqui
+          ela é desnecessária: a K-ésima maior é **monótona não-decrescente
+          dentro da sessão por construção** (o heap só troca por valores
+          maiores). Não existe "descer de uma vez" para amortecer. O único
+          degrau para baixo de todo o dia é a transição de `max` para
+          K-ésima maior quando o heap enche — que é a REMOÇÃO deliberada do
+          outlier de abertura, não um esquecimento.
+
+        Enquanto a sessão tem menos de `minimo_amostras_referencia` trades a
+        referência é `_max_sessao`: com amostra curta não há cauda para falar,
+        e o máximo é a leitura mais conservadora possível (a razão nunca passa
+        de 1,0). É por isso que um fat finger na abertura fecha o gate por
+        alguns trades e **não** pelo dia inteiro.
+
+        O parâmetro `timestamp_ns` sobrou da versão com cache por tempo e é
+        mantido na assinatura de propósito: a resposta agora é O(1) (leitura
+        de `heap[0]`), não precisa mais de cache nenhum, e nenhum chamador
+        precisou mudar.
+        """
         cfg = self.config
-        precisa = (
-            self._cache_magnitude_ts_ns is None
-            or self._cache_magnitude_n >= cfg.cache_magnitude_max_trades
-            or (timestamp_ns - self._cache_magnitude_ts_ns) >= cfg.cache_magnitude_max_ns
-        )
-        if precisa:
-            self._cache_magnitude = _percentil(
-                self._reservatorio, cfg.percentil_magnitude_referencia
-            )
-            self._cache_magnitude_ts_ns = timestamp_ns
-            self._cache_magnitude_n = 0
-        self._cache_magnitude_n += 1
-        return self._cache_magnitude
+        if self._n_visto == 0:
+            return None
+        if self._n_visto < cfg.minimo_amostras_referencia or not self._reservatorio:
+            return float(self._max_sessao)
+        return float(self._reservatorio[0])
+
+    def iniciar_nova_sessao(self) -> None:
+        """Virada de pregão — zera a referência de magnitude e o estágio.
+
+        `criticas/nucleo_r3.md` §C.4 mediu a referência do dia 2 sendo a do
+        dia 1 (o motor não tinha API para virar o dia): depois de um pregão de
+        pânico o gate ficava fechado o dia inteiro; depois de um feriado
+        morno, escancarado. A camada de app resolvia RECRIANDO o motor; com
+        este método ela deixa de precisar, e quem usa o motor solto passa a
+        ter como virar o dia.
+
+        Zera o que é "do dia": cauda de magnitude, janelas de dominância e
+        micro, caches e a máquina de histerese. A config, não — ela é do
+        usuário, não da sessão.
+        """
+        self._janela_dominancia.clear()
+        self._maiores_qty.clear()
+        self._vol_buy = self._vol_sell = self._vol_unknown = 0
+        self._reservatorio = []
+        self._n_visto = 0
+        self._max_sessao = 0
+        self._cache_regiao = None
+        self._cache_regiao_ts_ns = None
+        self._cache_regiao_n = 0
+        self._micro_antiga.clear()
+        self._micro_recente.clear()
+        self._delta_antiga = 0
+        self._delta_recente = 0
+        self._estagio_atual = EstagioSinal.NENHUM
+        self._direcao_atual = None
+        self._faixa_atual = FaixaConviccao.LATERAL
+        self._candidato = None
+        self._candidato_desde_ns = 0
+        self._candidato_n = 0
 
     # ------------------------------------------------------------------
     # Condição 2 — região de interesse (VAL/VAH cacheados)
@@ -624,6 +726,7 @@ class MotorSinais:
             "faixa": faixa.value,
             "magnitude": magnitude,
             "magnitude_referencia": referencia,
+            "magnitude_pico_sessao": self._max_sessao,
             "magnitude_relativa": magnitude_relativa,
             "volume_nao_atribuido": self._vol_unknown,
         }

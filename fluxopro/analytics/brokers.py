@@ -11,6 +11,13 @@ dominando o book hoje" — uma corretora com saldo líquido grande e crescente
 Agregação incremental (O(1) por trade); janela de tempo opcional expira
 trades antigos de uma deque, com o mesmo padrão de bucketing/expiração dos
 outros módulos de analytics.
+
+Sem `janela_ns` configurado, a agregação acumula para sempre — o mesmo
+defeito que `delta.py` e `vwap.py` tinham antes de ganhar
+`iniciar_nova_sessao()` (ver docstrings lá). `RankingCorretoras` também tem
+`iniciar_nova_sessao()`: zera `_estatisticas` e a janela deslizante — virada
+explícita pelo chamador, nunca detecção automática por data, mesma política
+de `EstadoMercado.iniciar_nova_sessao`.
 """
 
 from __future__ import annotations
@@ -119,6 +126,13 @@ class RankingCorretoras:
                 est.volume_venda -= antigo.qty
                 est.n_negocios_venda -= 1
                 est.soma_preco_qty_venda -= antigo.price * antigo.qty
+
+    def iniciar_nova_sessao(self) -> None:
+        """Zera `_estatisticas` e a janela deslizante. Ver docstring do
+        módulo: virada explícita pelo chamador, mesma política de
+        `EstadoMercado.iniciar_nova_sessao`."""
+        self._estatisticas = {}
+        self._janela.clear()
 
     def estatistica(self, corretora: str) -> EstatisticaCorretora | None:
         return self._estatisticas.get(corretora)

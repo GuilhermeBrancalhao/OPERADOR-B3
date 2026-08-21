@@ -1,0 +1,20 @@
+[
+ {
+  "id": "D19b",
+  "estado": "MORTA",
+  "desc": "varredura na insercao some (reclamacao so pela amortizada)",
+  "linha": "1 failed, 116 passed in 23.86s",
+  "testes": [
+   "test_a_varredura_da_insercao_segura_um_fluxo_so_de_chaves_novas"
+  ]
+ },
+ {
+  "id": "D20b",
+  "estado": "MORTA",
+  "desc": "limpar() nao zera o relogio: dia 2 nasce com o relogio do dia 1",
+  "linha": "1 failed, 116 passed in 26.05s",
+  "testes": [
+   "test_a_virada_zera_o_relogio_da_dedup"
+  ]
+ }
+]

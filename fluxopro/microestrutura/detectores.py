@@ -69,8 +69,26 @@ que cresça sem poda vira vazamento em minutos, não em dias:
   (`DetectorExaustao`, `DetectorClipInstitucional`) ou podadas por tempo
   (`DetectorAbsorcao`);
 * os livros-razão de procedência/dedup dos detectores de livro são
-  `_MapaProcedencia`, um dicionário com **teto rígido** e despejo FIFO — nunca
-  o `set` que crescia um item por nível/ordem ao longo do pregão.
+  `_MapaProcedencia`, que **expira chave por tempo** (`JANELA_EPISODIO_NS`) e
+  guarda `LIMITE_CHAVES_RASTREADAS` só como backstop — nunca o `set` que
+  crescia um item por nível/ordem ao longo do pregão.
+
+A ordem dessas duas coisas importa e custou uma revisão inteira para ficar
+clara. A onda 7 pôs teto rígido de 4.096 chaves com despejo FIFO; a crítica R4
+(§A.5) mediu a consequência e ela era **penhasco**, não degradação: 0% de
+re-emissão indevida com 4.096 chaves em rotação e **100% com 5.000**. E como
+Iceberg e Fantasma chaveavam por `order_id` — sintético, ~65.000 criados por
+segundo pelo `InferidorMBP` —, 4.096 chaves eram **63 ms** de memória contra um
+fenômeno que dura segundos. Contagem de chaves é a grandeza errada para
+delimitar um episódio; **tempo** é a certa, e o teto por contagem fica onde
+sempre devia estar: como limite de desastre, não como política.
+
+## Chave de episódio: `(side, price)` nos três detectores de livro
+
+Um iceberg em 5000,5 é UM episódio, independente de quantos `order_id` a ponte
+inventou para representá-lo. O `order_id` identifica a ordem; não identifica o
+fenômeno — e em feed inferido nem sequer identifica a ordem, porque é uma
+etiqueta que o próprio sistema recicla. Ele segue publicado na `evidencia`.
 
 ## Virada de sessão
 
@@ -90,7 +108,8 @@ detector sem nenhum dos dois — que era o estado anterior.
 
 from __future__ import annotations
 
-from collections import OrderedDict, deque
+import random
+from collections import deque
 from collections.abc import Hashable
 from dataclasses import dataclass, field
 from enum import Enum, unique
@@ -131,26 +150,59 @@ class Deteccao:
 # Procedência — a cadeia de eventos que sustenta uma detecção de livro
 # ---------------------------------------------------------------------------
 
-#: Teto de chaves rastreadas por detector de livro. Dimensionado para cobrir
-#: com folga o que um pregão de WDO produz de níveis/ordens VIVOS ao mesmo
-#: tempo, mantendo o custo de memória em dezenas de KB. Não é limite de
-#: throughput: é limite de RETENÇÃO.
-LIMITE_CHAVES_RASTREADAS = 4096
+#: Teto de chaves rastreadas por detector de livro. É o BACKSTOP de memória,
+#: não a política: quem regula o tamanho no dia a dia é `JANELA_EPISODIO_NS`
+#: (chave que ninguém toca há uma janela sai). O teto só existe para que um
+#: feed patológico não consiga fazer o mapa crescer sem limite, e por isso é
+#: dimensionado com ordens de grandeza de folga sobre a população de chaves
+#: VIVAS que um pregão produz (~1.200 níveis `(side, price)` num WDO).
+#:
+#: HISTÓRICO — por que 4.096 não servia (`criticas/nucleo_r4.md` §A.5): com a
+#: chave por `order_id` sintético, o `InferidorMBP` cria ~6,5 ordens por evento
+#: de mercado, ~65.000 chaves/s na barra de 10.000 ev/s. 4.096 chaves cobriam
+#: **63 ms** de tape contra um fenômeno (iceberg recarregando) que dura
+#: segundos. E o despejo FIFO desabava em PENHASCO: 0% de re-emissão indevida
+#: com 4.096 chaves em rotação, 100% com 5.000. Os dois lados foram
+#: consertados — a chave (ver `_chave_do_evento`) e a política (ver
+#: `_MapaProcedencia`).
+LIMITE_CHAVES_RASTREADAS = 65536
+
+#: Quanto tempo uma chave sobrevive sem ser tocada. É a definição operacional
+#: de "episódio": um iceberg em 5000,5 que recarrega de 3 em 3 segundos é UM
+#: episódio; o mesmo nível voltando a chamar atenção meia hora depois é outro.
+#: 30 s cobre com folga a duração de uma recarga de iceberg e de uma sequência
+#: de reposições de escora, e é curto o bastante para que o mapa encolha
+#: sozinho quando o mercado esfria.
+JANELA_EPISODIO_NS = 30_000_000_000
+
+#: Sorteio do despejo por excedente. Semente FIXA de propósito: o despejo
+#: precisa ser IMPREVISÍVEL EM RELAÇÃO À ORDEM DAS CHAVES (é isso que mata a
+#: ressonância da varredura cíclica), não imprevisível entre execuções — teste
+#: e reprodução de incidente valem mais que entropia aqui.
+_SORTEIO_DESPEJO = random.Random(0x5EED2026)
 
 
 @dataclass(slots=True)
 class _Procedencia:
-    """Cadeia de evidência de UMA chave (um nível de preço, uma ordem).
+    """Cadeia de evidência de UMA chave (um nível de preço) num episódio.
 
     `confianca` é o mínimo já visto e `fonte` degrada para `MBP_INFERIDO` no
     primeiro evento inferido — as duas grandezas são monótonas para baixo, de
     modo que a ordem de chegada dos eventos não muda o resultado.
+
+    `ts_ultimo_ns` é o relógio do EVENTO (não da máquina): é ele que define se
+    a chave ainda está dentro do episódio. `pos` é o índice desta chave no
+    vetor de despejo do `_MapaProcedencia` — detalhe de estrutura, mora aqui
+    porque um dicionário paralelo custaria uma segunda tabela hash no caminho
+    quente.
     """
 
     confianca: float = CONFIANCA_OBSERVADO
     fonte: FonteMicro = FonteMicro.MBO
     n_eventos: int = 0
     sinalizado: bool = False
+    ts_ultimo_ns: int = 0
+    pos: int = -1
 
     def somar(self, confianca: float, fonte: FonteMicro) -> None:
         if confianca < self.confianca:
@@ -158,6 +210,14 @@ class _Procedencia:
         if fonte is FonteMicro.MBP_INFERIDO:
             self.fonte = FonteMicro.MBP_INFERIDO
         self.n_eventos += 1
+
+    def reiniciar(self) -> None:
+        """Episódio novo na MESMA chave: cadeia zerada e direito de emitir de
+        volta. Não é despejo — a entrada continua no mapa, no mesmo slot."""
+        self.confianca = CONFIANCA_OBSERVADO
+        self.fonte = FonteMicro.MBO
+        self.n_eventos = 0
+        self.sinalizado = False
 
     @property
     def rotulo(self) -> str:
@@ -181,34 +241,105 @@ class _Procedencia:
 
 
 class _MapaProcedencia:
-    """Dicionário de procedência com TETO RÍGIDO e despejo FIFO.
+    """Livro-razão de procedência/dedup: expira por TEMPO, teto por segurança.
 
-    Substitui o `set` de `_ja_sinalizado` que `DetectorEscora` e
-    `DetectorIcebergPorRecarga` usavam: aquele crescia um item por nível de
-    preço (ou por `order_id`) e nunca era podado — num pregão inteiro isso é um
-    item por ordem que passou pelo livro. Aqui a entrada mais antiga sai quando
-    o teto é alcançado.
+    ## O defeito que esta estrutura teve, e por que a forma mudou
 
-    Consequência aceita e documentada: uma chave despejada pode voltar a
-    emitir. É o preço de um teto, e a chave despejada é sempre a MENOS
-    recentemente ALIMENTADA — a que tem menos chance de ainda estar num
-    episódio vivo. Memória limitada vale mais que dedup perfeito sobre uma
-    chave que o mercado esqueceu.
+    A onda 7 tirou daqui um `set` que crescia um item por nível/ordem para
+    sempre, e pôs um `OrderedDict` com teto de 4.096 e despejo FIFO pela chave
+    menos recentemente alimentada. O vazamento morreu; nasceram dois defeitos,
+    medidos em `criticas/nucleo_r4.md` §A.5:
 
-    "Alimentada", e não "lida", de propósito: só `de`/`somar` (ingestão de
-    evento, marcação de `sinalizado`) renovam a posição na fila; `obter` e
-    `rearmar` leem sem renovar. A atividade que mantém uma chave viva é o
-    mercado mexer nela, não o detector perguntar por ela — se a consulta
-    renovasse, um `verificar` chamado em laço sobre uma chave morta a
-    seguraria no mapa indefinidamente, e o teto deixaria de refletir o que
-    ainda está acontecendo.
+    1. **Penhasco.** Sob rotação cíclica de chaves a vítima do FIFO é sempre
+       exatamente a próxima chave a ser revisitada. Medido: **0% de re-emissão
+       indevida com 4.096 chaves em rotação, 100% com 5.000.** Não é
+       degradação, é um paredão — e o operador o atravessa sem aviso num
+       pregão agitado.
+    2. **Teto contado em chaves erradas.** Iceberg e Fantasma usavam
+       `order_id`, que em modo MBP é SINTÉTICO (~65.000/s). 4.096 chaves eram
+       63 ms de memória contra um fenômeno que dura segundos.
+
+    ## As duas respostas
+
+    **(a) A política primária é TEMPO, não contagem.** Uma chave vive enquanto
+    o mercado a toca; parada por `janela_episodio_ns`, expira. Esse é o
+    critério SEMÂNTICO: o dedup existe para não repetir alerta dentro de um
+    episódio, e episódio é uma coisa que dura um tempo — não uma coisa que
+    ocupa um dos N slots. Com expiração por tempo o tamanho do mapa se regula
+    sozinho na população de chaves VIVAS, que é exatamente o que se queria
+    limitar.
+
+    A expiração é preguiçosa (verificada no acesso) mais uma varredura
+    incremental de duas posições por chave nova. A preguiçosa sozinha bastaria
+    para a CORREÇÃO — chave expirada nunca é lida como válida; a varredura
+    existe para a MEMÓRIA, para que o mapa encolha quando o mercado esfria em
+    vez de ficar cheio de cadáveres até o teto.
+
+    **(b) O teto continua existindo, mas a vítima é SORTEADA.** Quando mais de
+    `limite` chaves estão simultaneamente vivas não existe chave fria a
+    preferir: todas foram tocadas dentro da janela. Nesse regime qualquer
+    critério determinístico pode entrar em ressonância com o padrão de acesso —
+    e o FIFO entra, do pior jeito possível. Sorteando a vítima, a taxa de
+    acerto passa a ser ~`limite/N` em vez de zero: degradação suave, sem
+    paredão. Perde-se a preferência por chave fria; ganha-se que essa
+    preferência passa a ser feita por quem tem a informação certa (o relógio),
+    e não pela posição numa fila.
+
+    Consequência aceita e documentada: uma chave pode voltar a emitir — se
+    ficou parada uma janela inteira (aí a re-emissão é CORRETA: é episódio
+    novo), ou se foi sorteada em regime de excedente (aí é o preço do teto, e o
+    teto é `LIMITE_CHAVES_RASTREADAS`, com ordens de grandeza de folga sobre a
+    população viva real).
+
+    ## Leitura não renova
+
+    Só `de`/`somar` (ingestão de evento, marcação de `sinalizado`) renovam o
+    relógio da chave; `obter` e `rearmar` leem sem renovar. A atividade que
+    mantém uma chave viva é o mercado mexer nela, não o detector perguntar por
+    ela — se a consulta renovasse, um `verificar` chamado em laço sobre uma
+    chave morta a seguraria viva indefinidamente.
     """
 
-    __slots__ = ("_limite", "_itens")
+    __slots__ = (
+        "_limite", "_janela_ns", "_itens", "_chaves", "_agora_ns", "_cursor",
+        "_desde_varredura",
+    )
 
-    def __init__(self, limite: int = LIMITE_CHAVES_RASTREADAS) -> None:
+    #: Uma posição é varrida a cada N escritas. A varredura tem de existir mesmo
+    #: quando NENHUMA chave nova é criada — é o caso em que o mercado esfria com
+    #: o mesmo punhado de níveis ativo, e uma varredura presa à inserção nunca
+    #: roda: os cadáveres ficam até o teto, que é a forma exata do vazamento que
+    #: esta estrutura existe para não ter.
+    #:
+    #: O orçamento é UMA posição por escrita, paga em RAJADA de
+    #: `_ESCRITAS_POR_VARREDURA` a cada `_ESCRITAS_POR_VARREDURA` escritas. O
+    #: trabalho total é o mesmo de varrer a cada evento; o que a rajada evita é
+    #: a chamada de função por evento, que custava ~2x o caminho quente inteiro
+    #: (medido). A rajada é limitada a 8 — continua O(1) por evento, nunca uma
+    #: passada O(n) num evento isolado.
+    #:
+    #: Pagar em rajada não é detalhe: com uma posição por disparo, uma posição
+    #: que se revela expirada consome o orçamento inteiro daquele disparo (o
+    #: cursor não avança, para reexaminar o slot), e um mapa com 20 mil chaves
+    #: mortas levaria 8 x 20.000 escritas para esvaziar em vez de 20.000.
+    _ESCRITAS_POR_VARREDURA = 8
+    #: Varredura EXTRA na inserção: quem cria chave nova paga a limpeza de mais
+    #: duas, de modo que a reclamação acompanhe a taxa de criação. Todas são
+    #: O(1) por evento — nunca uma passada O(n) num evento isolado.
+    _VARREDURA_POR_INSERCAO = 2
+
+    def __init__(
+        self,
+        limite: int = LIMITE_CHAVES_RASTREADAS,
+        janela_episodio_ns: int = JANELA_EPISODIO_NS,
+    ) -> None:
         self._limite = max(1, int(limite))
-        self._itens: OrderedDict[Hashable, _Procedencia] = OrderedDict()
+        self._janela_ns = max(0, int(janela_episodio_ns))
+        self._itens: dict[Hashable, _Procedencia] = {}
+        self._chaves: list[Hashable] = []
+        self._agora_ns = 0
+        self._cursor = 0
+        self._desde_varredura = 0
 
     def __len__(self) -> int:
         return len(self._itens)
@@ -217,35 +348,139 @@ class _MapaProcedencia:
     def limite(self) -> int:
         return self._limite
 
-    def obter(self, chave: Hashable) -> _Procedencia | None:
-        return self._itens.get(chave)
+    @property
+    def janela_episodio_ns(self) -> int:
+        return self._janela_ns
 
-    def de(self, chave: Hashable) -> _Procedencia:
-        """Entrada da chave, criando-a (e podando o excedente) se preciso."""
+    @property
+    def agora_ns(self) -> int:
+        """Relógio do mapa: o maior timestamp de evento já visto.
+
+        Monótono de propósito. Um feed que entregue um evento com timestamp
+        ATRASADO (reordenação, remendo de gap) não pode fazer o relógio da
+        dedup andar para trás e ressuscitar episódios já encerrados.
+        """
+        return self._agora_ns
+
+    # -- expiração ----------------------------------------------------------
+    def _expirado(self, item: _Procedencia) -> bool:
+        return self._agora_ns - item.ts_ultimo_ns > self._janela_ns
+
+    def _remover(self, chave: Hashable) -> None:
+        """Tira a chave em O(1): troca com a última do vetor e encurta."""
+        item = self._itens.pop(chave)
+        i = item.pos
+        ultima = self._chaves.pop()
+        if ultima != chave:
+            self._chaves[i] = ultima
+            self._itens[ultima].pos = i
+
+    def _varrer(self, quantas: int) -> None:
+        """Varredura incremental: olha `quantas` posições e tira as expiradas.
+
+        O cursor é rotativo, então ao longo de N escritas o vetor inteiro é
+        visitado — sem nenhuma passada O(n) num único evento (é esse tipo de
+        passada que produz pico de latência num evento isolado).
+
+        Ao remover, o cursor NÃO avança: `_remover` traz outra chave para o
+        mesmo slot, e essa chave também precisa ser examinada. É o que permite
+        a um mapa cheio de cadáveres esvaziar em O(n) escritas em vez de nunca.
+        """
+        for _ in range(quantas):
+            n = len(self._chaves)
+            if n == 0:
+                return
+            i = self._cursor % n
+            chave = self._chaves[i]
+            if self._expirado(self._itens[chave]):
+                self._remover(chave)
+                # o slot `i` agora tem OUTRA chave: o cursor não avança, para
+                # que ela também seja examinada.
+            else:
+                self._cursor = i + 1
+
+    def _despejar_sorteado(self) -> None:
+        self._remover(self._chaves[_SORTEIO_DESPEJO.randrange(len(self._chaves))])
+
+    # -- API ----------------------------------------------------------------
+    def avancar(self, agora_ns: int) -> None:
+        """Anda o relógio SEM tocar em chave nenhuma.
+
+        Existe porque a leitura de dedup (`obter`) é feita antes da escrita, e
+        ela precisa julgar a expiração pelo instante do evento em curso — não
+        pelo do evento anterior. Sem isto um nível sinalizado há uma hora
+        continuaria barrando o alerta até que alguma OUTRA chave fizesse o
+        relógio andar.
+        """
+        if agora_ns > self._agora_ns:
+            self._agora_ns = agora_ns
+
+    def obter(self, chave: Hashable) -> _Procedencia | None:
+        """Leitura pura: não cria, não renova, e chave expirada sai como None.
+
+        Expirada é ausente do ponto de vista de quem lê — se a entrada ainda
+        está fisicamente no mapa (a varredura não chegou nela) isso é detalhe
+        de memória, não semântica.
+        """
         item = self._itens.get(chave)
-        if item is None:
-            item = _Procedencia()
-            self._itens[chave] = item
-            while len(self._itens) > self._limite:
-                self._itens.popitem(last=False)
-        else:
-            self._itens.move_to_end(chave)
+        if item is None or self._expirado(item):
+            return None
         return item
 
-    def somar(self, chave: Hashable, confianca: float, fonte: FonteMicro) -> _Procedencia:
-        item = self.de(chave)
+    def de(self, chave: Hashable, agora_ns: int | None = None) -> _Procedencia:
+        """Entrada da chave para ESCRITA — cria, renova o relógio e poda."""
+        agora = self._agora_ns
+        if agora_ns is not None and agora_ns > agora:
+            agora = self._agora_ns = agora_ns
+        item = self._itens.get(chave)
+        if item is not None:
+            # Caminho quente: chave viva sendo realimentada. Nada de estrutura,
+            # só o relógio dela.
+            if agora - item.ts_ultimo_ns > self._janela_ns:
+                item.reiniciar()  # mesma chave, episódio novo
+            item.ts_ultimo_ns = agora
+            # Varredura amortizada, contada aqui em vez de num método: é o
+            # caminho quente do pacote inteiro e uma chamada a mais custa mais
+            # que o trabalho que ela faz.
+            n = self._desde_varredura + 1
+            if n >= self._ESCRITAS_POR_VARREDURA:
+                self._desde_varredura = 0
+                self._varrer(self._ESCRITAS_POR_VARREDURA)
+            else:
+                self._desde_varredura = n
+            return item
+        self._varrer(self._VARREDURA_POR_INSERCAO)
+        if len(self._chaves) >= self._limite:
+            self._despejar_sorteado()
+        item = _Procedencia(ts_ultimo_ns=agora, pos=len(self._chaves))
+        self._chaves.append(chave)
+        self._itens[chave] = item
+        return item
+
+    def somar(
+        self,
+        chave: Hashable,
+        confianca: float,
+        fonte: FonteMicro,
+        agora_ns: int | None = None,
+    ) -> _Procedencia:
+        item = self.de(chave, agora_ns)
         item.somar(confianca, fonte)
         return item
 
     def rearmar(self, chave: Hashable) -> None:
-        """Desmarca a chave sem apagar a cadeia de procedência."""
+        """Desmarca a chave sem apagar a cadeia de procedência nem renovar."""
         item = self._itens.get(chave)
         if item is not None:
             item.sinalizado = False
 
     def limpar(self) -> None:
-        """Esquece tudo. Usado na virada de sessão, não no caminho quente."""
+        """Esquece tudo, relógio inclusive. Virada de sessão, não caminho quente."""
         self._itens.clear()
+        self._chaves.clear()
+        self._agora_ns = 0
+        self._cursor = 0
+        self._desde_varredura = 0
 
 
 class _DetectorDeLivro:
@@ -258,8 +493,12 @@ class _DetectorDeLivro:
 
     __slots__ = ("_procedencia",)
 
-    def __init__(self, limite_chaves: int = LIMITE_CHAVES_RASTREADAS) -> None:
-        self._procedencia = _MapaProcedencia(limite_chaves)
+    def __init__(
+        self,
+        limite_chaves: int = LIMITE_CHAVES_RASTREADAS,
+        janela_episodio_ns: int = JANELA_EPISODIO_NS,
+    ) -> None:
+        self._procedencia = _MapaProcedencia(limite_chaves, janela_episodio_ns)
 
     # -- ingestão de procedência -------------------------------------------
     def acompanhar(self, livro: LivroMBO) -> None:
@@ -271,11 +510,36 @@ class _DetectorDeLivro:
         livro.assinar_evento(self.observar)
 
     def observar(self, evento: OrdemEvento) -> None:
-        """Registra um `OrdemEvento` na cadeia da chave que ele afeta."""
-        self._procedencia.somar(self._chave_do_evento(evento), evento.confianca, evento.fonte)
+        """Registra um `OrdemEvento` na cadeia da chave que ele afeta.
 
-    def _chave_do_evento(self, evento: OrdemEvento) -> Hashable:  # pragma: no cover - abstrato
-        raise NotImplementedError
+        O `timestamp_ns` do evento é o relógio da dedup — ver `_MapaProcedencia`.
+        """
+        self._procedencia.somar(
+            self._chave_do_evento(evento),
+            evento.confianca,
+            evento.fonte,
+            evento.timestamp_ns,
+        )
+
+    def _chave_do_evento(self, evento: OrdemEvento) -> Hashable:
+        """Chave de episódio. Os TRÊS detectores de livro usam `(side, price)`.
+
+        A uniformidade é deliberada — ver `criticas/nucleo_r4.md` §A.5. Iceberg
+        e Fantasma chaveavam por `order_id`, o que só faria sentido em feed MBO
+        real; em modo MBP (o único disponível, porque não há UMDF/ProfitDLL) o
+        `order_id` é uma etiqueta que o `InferidorMBP` inventa a cada inserção
+        inferida, com rotatividade medida de ~65.000/s. Dedup por uma etiqueta
+        que o próprio sistema recicla 65 mil vezes por segundo não deduplica
+        nada: a chave morria antes do fenômeno.
+
+        Do ponto de vista do operador o episódio nunca foi a etiqueta. É
+        "alguém está recarregando liquidez em 5000,5" ou "liquidez grande
+        aparece e some em 5000,5" — um episódio no NÍVEL, independente de
+        quantos ids sintéticos a ponte gerou para representá-lo. O `order_id`
+        segue publicado na `evidencia` de quem o tem; ele identifica a ordem,
+        só não identifica o episódio.
+        """
+        return (evento.side, evento.price)
 
     # -- ciclo de vida ------------------------------------------------------
     def iniciar_nova_sessao(self) -> None:
@@ -298,9 +562,10 @@ class _DetectorDeLivro:
         """A chave já emitiu no episódio corrente? Leitura de dedup.
 
         Substitui o `chave in detector._ja_sinalizado` que a API antiga
-        permitia — existe para que teste e UI leiam o dedup sem alcançar o
-        mapa privado, e para que a consulta NÃO renove a posição da chave na
-        fila de despejo (ver `_MapaProcedencia`).
+        permitia — existe para que teste e UI leiam o dedup sem alcançar o mapa
+        privado, e para que a consulta NÃO renove o relógio da chave (ver
+        `_MapaProcedencia`). Chave cujo episódio expirou responde `False`: o
+        direito de emitir voltou.
         """
         item = self._procedencia.obter(chave)
         return item is not None and item.sinalizado
@@ -536,8 +801,10 @@ class DetectorAbsorcao:
 @dataclass(frozen=True, slots=True)
 class ConfigEscora:
     n_reposicoes_minimo: int = 3
-    #: Teto de níveis de preço com estado retido (dedup + procedência).
+    #: Backstop de memória: níveis com estado retido (dedup + procedência).
     max_niveis_rastreados: int = LIMITE_CHAVES_RASTREADAS
+    #: Quanto tempo um nível parado continua deduplicado. Ver `_MapaProcedencia`.
+    janela_episodio_ns: int = JANELA_EPISODIO_NS
 
 
 class DetectorEscora(_DetectorDeLivro):
@@ -552,19 +819,22 @@ class DetectorEscora(_DetectorDeLivro):
     **Retenção.** O `set` de `_ja_sinalizado` da versão anterior nunca era
     podado: um item por nível de preço que já atingiu o limiar, para sempre
     (defeito apontado pela crítica R2 e repetido na R3, seção C.4). Agora o
-    estado vive num `_MapaProcedencia` com teto `max_niveis_rastreados` e
-    despejo FIFO.
+    estado vive num `_MapaProcedencia`, que expira por tempo
+    (`janela_episodio_ns`) e tem `max_niveis_rastreados` como backstop.
+
+    **Rearme.** Dois caminhos, e os dois precisam existir: `rearmar` explícito
+    quando `n_reposicoes` cai abaixo do mínimo (o livro diz que o episódio
+    acabou), e a expiração da janela quando o nível simplesmente para de dar
+    sinal (o livro não diz nada, e silêncio prolongado também encerra
+    episódio).
     """
 
     __slots__ = ("config",)
 
     def __init__(self, config: ConfigEscora | None = None) -> None:
         cfg = config if config is not None else ConfigEscora()
-        super().__init__(cfg.max_niveis_rastreados)
+        super().__init__(cfg.max_niveis_rastreados, cfg.janela_episodio_ns)
         self.config = cfg
-
-    def _chave_do_evento(self, evento: OrdemEvento) -> Hashable:
-        return (evento.side, evento.price)
 
     def verificar(
         self,
@@ -584,7 +854,7 @@ class DetectorEscora(_DetectorDeLivro):
             # direito de emitir de novo.
             self._procedencia.rearmar(chave)
             return None
-        proc = self._procedencia.de(chave)
+        proc = self._procedencia.de(chave, timestamp_ns)
         if proc.sinalizado:
             return None  # já emitido para este nível — evita repetir a cada tick
         proc.sinalizado = True
@@ -613,8 +883,15 @@ class DetectorEscora(_DetectorDeLivro):
 class ConfigIceberg:
     razao_minima: float = 3.0
     volume_executado_minimo: int = 200
-    #: Teto de `order_id` com estado retido (dedup + procedência).
+    #: Backstop de memória: níveis `(side, price)` com estado retido. O nome
+    #: fala em "ordens" por compatibilidade com quem já configura isto; a
+    #: chave deixou de ser `order_id` (ver `_chave_do_evento`).
     max_ordens_rastreadas: int = LIMITE_CHAVES_RASTREADAS
+    #: Duração do episódio de iceberg: recargas separadas por menos que isso
+    #: são o MESMO episódio e valem um alerta só. 30 s cobre com folga o
+    #: intervalo entre recargas medido; é este número, e não uma contagem de
+    #: chaves, que define a memória do detector.
+    janela_episodio_ns: int = JANELA_EPISODIO_NS
 
 
 # DELETADO: `DetectorIceberg` (proxy por nível de preço).
@@ -665,23 +942,27 @@ class DetectorIcebergPorRecarga(_DetectorDeLivro):
     alcançável (ex.: `LivroMBO.modificar` para cima recria a `Ordem` com
     `qty_original` novo e `qty_executada` herdado) e NÃO é iceberg.
 
-    **Procedência.** A cadeia é por `order_id`: as recargas e execuções que
-    formam a razão. Confiança emitida = mínimo da cadeia daquela ordem.
+    **Procedência e dedup são por `(side, price)`, não por `order_id`.** Era
+    por `order_id` até a crítica R4 (§A.5) medir a consequência: em modo MBP o
+    `order_id` é sintético e o `InferidorMBP` cria ~65.000 por segundo, então
+    a memória do detector durava 63 ms contra um iceberg que recarrega por
+    segundos — cada recarga virava episódio novo e o alerta se repetia. O
+    episódio que o operador enxerga é "estão recarregando em 5000,5"; a cadeia
+    de procedência do NÍVEL é também a cadeia certa, porque é ela que junta as
+    recargas e as execuções que formam a razão. O `order_id` continua na
+    `evidencia`.
 
     **Retenção.** O `set[str]` de `order_id` sinalizados crescia um item por
-    ordem sinalizada e nunca era podado. Agora vive no `_MapaProcedencia` com
-    teto `max_ordens_rastreadas`.
+    ordem sinalizada e nunca era podado. Agora vive no `_MapaProcedencia`, que
+    expira por `janela_episodio_ns` e usa `max_ordens_rastreadas` de backstop.
     """
 
     __slots__ = ("config",)
 
     def __init__(self, config: ConfigIceberg | None = None) -> None:
         cfg = config if config is not None else ConfigIceberg()
-        super().__init__(cfg.max_ordens_rastreadas)
+        super().__init__(cfg.max_ordens_rastreadas, cfg.janela_episodio_ns)
         self.config = cfg
-
-    def _chave_do_evento(self, evento: OrdemEvento) -> Hashable:
-        return evento.order_id
 
     def verificar(
         self,
@@ -692,7 +973,9 @@ class DetectorIcebergPorRecarga(_DetectorDeLivro):
     ) -> Deteccao | None:
         if evento is not None:
             self.observar(evento)
-        proc_existente = self._procedencia.obter(ordem.order_id)
+        self._procedencia.avancar(timestamp_ns)
+        chave = (ordem.side, ordem.price)
+        proc_existente = self._procedencia.obter(chave)
         if proc_existente is not None and proc_existente.sinalizado:
             return None
         volume_executado = ordem.qty_executada
@@ -702,7 +985,7 @@ class DetectorIcebergPorRecarga(_DetectorDeLivro):
         razao = volume_executado / base
         if ordem.n_recargas == 0 or razao < self.config.razao_minima:
             return None
-        proc = self._procedencia.de(ordem.order_id)
+        proc = self._procedencia.de(chave, timestamp_ns)
         proc.sinalizado = True
         evidencia: dict[str, object] = {
             "order_id": ordem.order_id,
@@ -733,8 +1016,13 @@ class ConfigLiquidezFantasma:
     qty_minima: int = 200
     vida_maxima_ns: int = 1_000_000_000
     ticks_proximidade: int = 2
-    #: Teto de `order_id` com estado retido (dedup + procedência).
+    #: Backstop de memória: níveis `(side, price)` com estado retido. Nome
+    #: mantido por compatibilidade; a chave deixou de ser `order_id`.
     max_ordens_rastreadas: int = LIMITE_CHAVES_RASTREADAS
+    #: Duração do episódio. Liquidez grande que aparece e some repetidamente
+    #: no MESMO nível dentro desta janela é um episódio só — que é como o
+    #: operador lê o fenômeno, e não uma ordem de cada vez.
+    janela_episodio_ns: int = JANELA_EPISODIO_NS
 
 
 class DetectorLiquidezFantasma(_DetectorDeLivro):
@@ -743,15 +1031,19 @@ class DetectorLiquidezFantasma(_DetectorDeLivro):
     Termo deliberadamente neutro — o código só observa retirada rápida sem
     execução; não afirma intenção nem usa a palavra "spoof".
 
-    **Procedência.** A cadeia é por `order_id`: a entrada e a retirada da
-    ordem. Em livro inferido as duas são hipóteses do `InferidorMBP` (foi
-    cancelamento ou foi execução que não vimos?), e é exatamente essa dúvida
-    que a confiança emitida precisa carregar.
+    **Procedência.** A cadeia é do nível `(side, price)`: as entradas e as
+    retiradas que passaram por ele. Em livro inferido cada uma dessas é
+    hipótese do `InferidorMBP` (foi cancelamento ou foi execução que não
+    vimos?), e é exatamente essa dúvida que a confiança emitida precisa
+    carregar.
 
-    **Dedup por episódio.** Uma ordem some UMA vez; chamar `verificar` de novo
-    com a mesma `Ordem` (o objeto continua acessível pelo livro) re-emitia o
-    mesmo alerta. Agora o `order_id` é marcado — no mesmo mapa com teto que
-    guarda a procedência, sem estrutura nova e sem crescimento.
+    **Dedup por episódio — por NÍVEL, não por ordem.** Chavear por `order_id`
+    dava dedup perfeito para a mesma `Ordem` e nenhum para o fenômeno: em modo
+    MBP a mesma liquidez aparecendo e sumindo dez vezes em 5000,5 chega como
+    dez `order_id` sintéticos distintos e produzia dez alertas. Pior, com o
+    teto antigo (4.096 chaves contra ~65.000 ids novos por segundo) nem a
+    repetição da mesma ordem era barrada por muito tempo. A chave agora é o
+    nível e a memória é a `janela_episodio_ns`.
     """
 
     __slots__ = ("config", "_tick_size")
@@ -760,12 +1052,9 @@ class DetectorLiquidezFantasma(_DetectorDeLivro):
         self, grid_tick_size: float, config: ConfigLiquidezFantasma | None = None
     ) -> None:
         cfg = config if config is not None else ConfigLiquidezFantasma()
-        super().__init__(cfg.max_ordens_rastreadas)
+        super().__init__(cfg.max_ordens_rastreadas, cfg.janela_episodio_ns)
         self.config = cfg
         self._tick_size = grid_tick_size
-
-    def _chave_do_evento(self, evento: OrdemEvento) -> Hashable:
-        return evento.order_id
 
     def verificar(
         self,
@@ -777,14 +1066,20 @@ class DetectorLiquidezFantasma(_DetectorDeLivro):
         if evento is not None:
             self.observar(evento)
         cfg = self.config
-        proc_existente = self._procedencia.obter(ordem.order_id)
-        if proc_existente is not None and proc_existente.sinalizado:
-            return None
         if ordem.ativa or ordem.qty_executada > 0:
             return None  # se executou nada, não é o fenômeno buscado
         if ordem.qty_original < cfg.qty_minima:
             return None
         if ordem.timestamp_saida_ns is None:
+            return None
+        # O relógio da dedup é o instante do fenômeno, e tem de andar ANTES da
+        # leitura do dedup — senão a expiração é julgada pelo evento anterior.
+        # As guardas acima vêm primeiro de propósito: são baratas e não mexem
+        # em estado, então uma `Ordem` que nem é candidata não move o relógio.
+        self._procedencia.avancar(ordem.timestamp_saida_ns)
+        chave = (ordem.side, ordem.price)
+        proc_existente = self._procedencia.obter(chave)
+        if proc_existente is not None and proc_existente.sinalizado:
             return None
         vida_ns = ordem.timestamp_saida_ns - ordem.timestamp_entrada_ns
         if vida_ns > cfg.vida_maxima_ns:
@@ -793,7 +1088,7 @@ class DetectorLiquidezFantasma(_DetectorDeLivro):
             distancia_ticks = abs(ordem.price - melhor_preco_oposto)
             if distancia_ticks > cfg.ticks_proximidade:
                 return None
-        proc = self._procedencia.de(ordem.order_id)
+        proc = self._procedencia.de(chave, ordem.timestamp_saida_ns)
         proc.sinalizado = True
         evidencia: dict[str, object] = {
             "order_id": ordem.order_id,

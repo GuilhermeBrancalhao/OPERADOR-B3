@@ -1,0 +1,52 @@
+[
+ [
+  "M01",
+  "MORTA",
+  "7 failed, 44 passed in 5.27s  || mata: test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra, test_winfut_nao_emite_confirmado_de_compra_no_repique_de_magnitude_menor, test_winfut_varredura_de_laterais_zero_confirmado_espurio"
+ ],
+ [
+  "M02",
+  "MORTA",
+  "2 failed, 49 passed in 4.74s  || mata: test_outlier_de_abertura_nao_trava_o_motor_pelo_resto_do_dia, test_referencia_ignora_magnitude_que_um_unico_negocio_explica"
+ ],
+ [
+  "M03",
+  "MORTA",
+  "2 failed, 49 passed in 10.64s  || mata: test_com_amostra_curta_a_referencia_e_o_maximo_da_sessao, test_default_de_fabrica_protege_a_abertura_com_o_maximo_da_sessao"
+ ],
+ [
+  "M04",
+  "MORTA",
+  "31 failed, 20 passed in 4.06s  || mata: test_cache_da_regiao_e_invalidado_por_tempo, test_cache_da_regiao_e_reusado_e_depois_invalidado_por_contagem, test_confluencia_completa_gera_confirmado"
+ ],
+ [
+  "M05",
+  "MORTA",
+  "7 failed, 44 passed in 4.85s  || mata: test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra, test_winfut_nao_emite_confirmado_de_compra_no_repique_de_magnitude_menor, test_winfut_varredura_de_laterais_zero_confirmado_espurio"
+ ],
+ [
+  "M06",
+  "MORTA",
+  "1 failed, 50 passed in 5.78s  || mata: test_outlier_de_abertura_nao_trava_o_motor_pelo_resto_do_dia"
+ ],
+ [
+  "M07",
+  "MORTA",
+  "1 failed, 50 passed in 3.16s  || mata: test_iniciar_nova_sessao_zera_a_referencia_de_magnitude"
+ ],
+ [
+  "M08",
+  "MORTA",
+  "1 failed, 50 passed in 2.45s  || mata: test_default_de_fabrica_protege_a_abertura_com_o_maximo_da_sessao"
+ ],
+ [
+  "M09",
+  "MORTA",
+  "1 failed, 50 passed in 2.53s  || mata: test_referencia_e_a_kesima_maior_e_nao_o_maximo_da_sessao"
+ ],
+ [
+  "M10",
+  "MORTA",
+  "1 failed, 50 passed in 2.94s  || mata: test_outlier_de_abertura_nao_trava_o_motor_pelo_resto_do_dia"
+ ]
+]

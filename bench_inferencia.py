@@ -27,10 +27,37 @@ exatamente a grandeza que o defeito faz crescer. O tempo de parede entra junto
 varia 4x entre execuções idênticas, e foi confiando nele que a rodada anterior
 publicou uma curva plana no eixo errado.
 
+O eixo que NENHUM benchmark deste repositório varria: DURAÇÃO
+=============================================================
+A auditoria R4 achou a 5a casa do mesmo defeito — `_registrar_preco` empilhava
+sem dedup e sem teto — e ela atravessou uma onda inteira de builders que
+estavam profilando ESTE módulo. Não passou por descuido: passou porque todo
+benchmark daqui varre TAXA ou TAMANHO DE ESTRUTURA, com no máximo 40.000
+passos, e mede MÉDIA. Enquanto o heap inflava para 2,4 milhões de entradas,
+o us/passo médio CAÍA (33,54 -> 23,01): a média melhorava enquanto o sistema
+apodrecia, porque o trabalho extra ficava represado num evento raro em vez de
+diluído em todos.
+
+Por isso o estágio 6 (`retencao`) mede três coisas que a média esconde:
+
+* **(a) DURAÇÃO** — minutos de pregão simulado a 5.000 ev/s, não milhares de
+  passos.
+* **(b) RETENÇÃO** — `len` das estruturas internas ao fim, confrontado com o
+  número de níveis VIVOS que elas deveriam descrever. Se a razão cresce com o
+  tempo, há vazamento, esteja a média onde estiver.
+* **(c) LATÊNCIA DE CAUDA** — p99 e MÁXIMO por evento, jamais a média. Foi um
+  único evento de 244 ms — no tick em que o topo do book esvazia, ou seja, no
+  rompimento — que a média de 23 us escondia.
+
+Quem for otimizar este módulo: rode `retencao` ANTES e DEPOIS. Uma melhora de
+vazão com retenção subindo não é melhora, é dívida trocando de lugar.
+
 Uso:
-    python bench_inferencia.py                 # os 4 regimes + o eixo antigo
+    python bench_inferencia.py                 # os 4 regimes + eixo antigo + retenção
     python bench_inferencia.py taxa            # só o eixo que dói
+    python bench_inferencia.py retencao        # duração + retenção + cauda
     python bench_inferencia.py taxa OUTRO.py   # A/B contra outra implementação
+    python bench_inferencia.py retencao OUTRO.py
                                                # (ex.: a versão de `git show HEAD:`)
 """
 
@@ -43,7 +70,7 @@ import sys
 import time
 from collections import deque
 
-from fluxopro.core.eventos import AgressorSide, BookLevel, BookSnapshot, Trade
+from fluxopro.core.eventos import AgressorSide, BookLevel, BookSnapshot, Side, Trade
 from fluxopro.microestrutura.livro_mbo import LivroMBO
 
 SYMBOL = "WDOFUT"
@@ -54,6 +81,9 @@ BARRA = 10_000  # eventos/s que o produto precisa sustentar
 REPETICOES = 3
 
 TAXAS = (500, 1_000, 2_000, 5_000, 10_000)
+# Folga do veredito de retenção: o teto do heap tem um piso constante
+# (compactar um heap minúsculo não paga o custo). Ver `_PISO_TETO_HEAP`.
+_PISO_ESPERADO = 128
 
 
 # ----------------------------------------------------------------------
@@ -242,6 +272,175 @@ def eixo_largura(Inferidor, n_negocios: int = 20_000) -> None:
         )
 
 
+# ----------------------------------------------------------------------
+# O EIXO QUE NINGUÉM VARRIA — DURAÇÃO, RETENÇÃO E LATÊNCIA DE CAUDA
+# ----------------------------------------------------------------------
+MINUTOS = (1, 2, 4, 8, 16)
+TAXA_RETENCAO = 5_000  # ev/s
+ORCAMENTO_EVENTO_US = 200.0  # teto por evento da barra (100-200 us)
+
+
+def _percentil(ordenados: list[float], q: float) -> float:
+    if not ordenados:
+        return 0.0
+    idx = min(len(ordenados) - 1, max(0, int(round(q * (len(ordenados) - 1)))))
+    return ordenados[idx]
+
+
+def _tape_recarga(Inferidor, minutos: int) -> dict[str, float]:
+    """Pregão longo com um nível de FUNDO piscando `0 -> 300 -> 0` sem parar.
+
+    É o regime real do WDO e é exatamente o que o produto existe para detectar
+    (recarga). O topo permanece OCUPADO durante todo o tape, então a poda
+    preguiçosa pela cabeça do heap nunca cobra nada — a dívida fica represada.
+    No último evento o topo esvazia: é aí que ela é cobrada de uma só vez, e é
+    esse evento (o rompimento) que o p99/máximo revela e a média não.
+    """
+    livro = LivroMBO(SYMBOL)
+    inf = Inferidor(SYMBOL, livro)
+    ts = BASE
+    intervalo = max(1, int(1e9 / TAXA_RETENCAO))
+    n_eventos = minutos * 60 * TAXA_RETENCAO
+    fundo = BID - 5
+
+    topo_qty = 10**9
+    inf.ao_snapshot(
+        BookSnapshot(ts, SYMBOL, (BookLevel(BID, topo_qty, 1),), (BookLevel(ASK, 10**9, 1),))
+    )
+    latencias: list[float] = []
+    gc.collect()
+    perf = time.perf_counter
+    t0 = perf()
+    for i in range(n_eventos):
+        ts += intervalo
+        # alterna 0 <-> 300 no nível de fundo: uma transição `0 -> qty` a cada
+        # dois eventos, e é ela que chama `_registrar_preco`.
+        qty_fundo = 300 if i % 2 == 0 else 0
+        bids = (BookLevel(BID, topo_qty, 1),)
+        if qty_fundo:
+            bids = bids + (BookLevel(fundo, qty_fundo, 1),)
+        e0 = perf()
+        inf.ao_snapshot(BookSnapshot(ts, SYMBOL, bids, (BookLevel(ASK, 10**9, 1),)))
+        latencias.append((perf() - e0) * 1e6)
+    dt_tape = perf() - t0
+
+    heap_antes = len(inf._heap_bids)
+
+    # O EVENTO DO ROMPIMENTO: o topo esvazia e o fundo some junto. Agora
+    # `melhor_bid` precisa descartar todo o backlog num único evento.
+    # São DOIS eventos, e o segundo é o que dói: no primeiro, `melhor_bid`
+    # ainda encontra os níveis vivos no topo do heap (a distância do topo é
+    # medida ANTES de a queda ser aplicada), então a dívida só é cobrada na
+    # PRÓXIMA consulta — quando toda a cabeça já está morta. Medir só o
+    # primeiro evento devolve 47 us e esconde o defeito inteiro.
+    ts += intervalo
+    e0 = perf()
+    inf.ao_snapshot(
+        BookSnapshot(ts, SYMBOL, (BookLevel(BID - 20, 50, 1),), (BookLevel(ASK, 10**9, 1),))
+    )
+    lat_a = (perf() - e0) * 1e6
+    ts += intervalo
+    e0 = perf()
+    inf.ao_snapshot(
+        BookSnapshot(ts, SYMBOL, (BookLevel(BID - 20, 10, 1),), (BookLevel(ASK, 10**9, 1),))
+    )
+    lat_b = (perf() - e0) * 1e6
+    lat_rompimento = max(lat_a, lat_b)
+    latencias.append(lat_a)
+    latencias.append(lat_b)
+
+    vivos = sum(1 for (lado, _), q in inf._qty_por_nivel.items() if lado is Side.BUY and q > 0)
+    ordenados = sorted(latencias)
+    return {
+        "eventos": float(n_eventos),
+        "heap": float(heap_antes),
+        "vivos": float(max(vivos, 1)),
+        "p50": _percentil(ordenados, 0.50),
+        "p99": _percentil(ordenados, 0.99),
+        "max": ordenados[-1],
+        "rompimento": lat_rompimento,
+        "media": sum(latencias) / len(latencias),
+        "vazao": n_eventos / dt_tape,
+    }
+
+
+def _ruido_da_maquina(n: int = 200_000) -> dict[str, float]:
+    """Piso de ruído: a MESMA medição, sobre trabalho de tamanho FIXO.
+
+    Sem isto o `max us` da tabela é ilegível. Nesta máquina, com outros
+    processos pesados em paralelo, um laço aritmético sem estrutura de dado
+    NENHUMA mede 86.735 us no pior evento — puro escalonamento do SO. Quem ler
+    um pico de 80 ms na tabela sem esta linha vai atribuir ao código o que é da
+    máquina, e quem "corrigir" esse pico vai declarar vitória sobre nada.
+
+    O número atribuível ao CÓDIGO é a coluna `rompimento`, que é um evento
+    determinístico e identificado: nele, e só nele, a dívida represada no heap
+    vence de uma vez. Compare `rompimento` com o orçamento; leia `max` e `p99`
+    com o desconto desta linha.
+    """
+    perf = time.perf_counter
+    latencias = []
+    x = 0
+    gc.collect()
+    for _ in range(n):
+        e0 = perf()
+        for _ in range(40):
+            x = (x * 31 + 7) % 1000003
+        latencias.append((perf() - e0) * 1e6)
+    ordenados = sorted(latencias)
+    return {
+        "p50": _percentil(ordenados, 0.50),
+        "p99": _percentil(ordenados, 0.99),
+        "max": ordenados[-1],
+    }
+
+
+def eixo_retencao(Inferidor, minutos=MINUTOS) -> None:
+    print("\n6. DURAÇÃO x RETENÇÃO x LATÊNCIA DE CAUDA (o eixo que escondeu a 5a casa)")
+    print(f"  nível de fundo recarregando `0->300->0` a {TAXA_RETENCAO:,} ev/s;"
+          " topo ocupado até o último evento")
+    print("  a MÉDIA é o eixo amigável: ela CAI enquanto a estrutura infla."
+          " Olhe heap/vivos e rompimento.")
+    ruido = _ruido_da_maquina()
+    print(
+        f"  piso de ruido desta maquina (trabalho fixo, sem estrutura):"
+        f" p50 {ruido['p50']:.1f} us | p99 {ruido['p99']:.1f} us | max {ruido['max']:,.1f} us"
+    )
+    print("  => `max` e `p99` abaixo carregam esse ruido; a coluna ATRIBUIVEL ao"
+          " codigo e `rompimento`.")
+    print(
+        f"\n{'min':>4} {'eventos':>11} {'len(heap)':>11} {'vivos':>6} {'heap/vivo':>10} "
+        f"{'media us':>9} {'p99 us':>9} {'max us':>12} {'rompim. us':>12} {'ev/s':>10}  veredito"
+    )
+    for m in minutos:
+        r = _tape_recarga(Inferidor, m)
+        # Dois vereditos independentes, porque um esconde o outro:
+        # retenção (heap tem de descrever níveis vivos) e cauda (nenhum evento
+        # pode estourar o orçamento da barra).
+        vaza = r["heap"] > 4 * r["vivos"] + _PISO_ESPERADO
+        # O veredito de cauda usa o evento ATRIBUÍVEL (o rompimento), não o
+        # `max` bruto: numa máquina carregada o `max` é escalonamento do SO, e
+        # julgar por ele torna o benchmark um gerador de falso alarme.
+        estoura = r["rompimento"] > 1_000.0
+        if vaza and estoura:
+            ok = "*** VAZA E ESTOURA ***"
+        elif vaza:
+            ok = "*** VAZA ***"
+        elif estoura:
+            ok = "*** ESTOURA A CAUDA ***"
+        else:
+            ok = "PASSA"
+        print(
+            f"{m:>4} {r['eventos']:>11,.0f} {r['heap']:>11,.0f} {r['vivos']:>6,.0f} "
+            f"{r['heap'] / r['vivos']:>10,.1f} {r['media']:>9.2f} {r['p99']:>9.2f} "
+            f"{r['max']:>12,.1f} {r['rompimento']:>12,.1f} {r['vazao']:>10,.0f}  {ok}"
+        )
+    print(f"\n  orçamento por evento da barra: {ORCAMENTO_EVENTO_US:.0f} us."
+          " Alvo do rompimento: < 1.000 us (1 ms).")
+    print("  ANTES da correcao do heap (R5), 16 min de tape: len(heap) 2.400.001"
+          " para 1 nivel vivo, rompimento 5.328.847 us (5,3 s).")
+
+
 def main() -> None:
     alvo = sys.argv[1] if len(sys.argv) > 1 else "tudo"
     alternativa = sys.argv[2] if len(sys.argv) > 2 else None
@@ -256,6 +455,8 @@ def main() -> None:
         eixo_taxa(Inferidor)
     if alvo in ("tudo", "largura"):
         eixo_largura(Inferidor)
+    if alvo in ("tudo", "retencao"):
+        eixo_retencao(Inferidor)
     print()
 
 
