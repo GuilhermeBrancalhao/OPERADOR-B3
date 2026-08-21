@@ -20,6 +20,11 @@ Não há varredura de lista grande em nenhum desses caminhos. As APIs de
 inspeção (`nivel`, `niveis_ordenados`) percorrem a fila e são de diagnóstico,
 não de caminho quente.
 
+Integridade: um livro CRUZADO (melhor bid >= melhor ask) é dado corrompido ou
+evento perdido. O livro aceita o estado — recusar derrubaria a ingestão — mas
+nunca em silêncio: ver `esta_cruzado`, `n_cruzamentos_detectados` e
+`assinar_cruzamento`. A verificação é O(1) e roda só onde o topo pode mudar.
+
 Determinismo: a mesma sequência de chamadas produz sempre o mesmo estado e a
 mesma sequência de eventos. Nenhuma estrutura depende de ordem de iteração de
 `set`, de `hash` de objeto ou de relógio de parede.
@@ -70,6 +75,23 @@ class ConfigLivroMBO:
     exigir_mesmo_broker_para_reposicao: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class CruzamentoLivro:
+    """Alerta de livro cruzado (ou travado): o melhor bid alcançou o melhor ask.
+
+    Não é um `OrdemEvento` de propósito: não é um fato do ciclo de vida de
+    nenhuma ordem, é um diagnóstico sobre a INTEGRIDADE do livro. Misturá-lo no
+    fluxo de `OrdemEvento` faria detectores que assinam eventos de ordem
+    receberem algo que não é ordem.
+    """
+
+    timestamp_ns: int
+    symbol: str
+    melhor_bid: int
+    melhor_ask: int
+    n_cruzamentos: int
+
+
 @dataclass(slots=True)
 class _NivelInterno:
     price: int
@@ -95,6 +117,14 @@ class _NivelInterno:
     ts_ultimo_consumo_ns: int | None = None
     broker_ultimo_consumo: str = ""
 
+    # O preço deste nível tem entrada VIVA no heap do lado? A remoção do heap é
+    # preguiçosa: `melhor_bid`/`melhor_ask` descartam o topo quando o nível está
+    # zerado. Sem esta marca, um nível esvaziado e depois REPOVOADO ficaria fora
+    # do heap para sempre — o dicionário guarda o nível (histórico), então
+    # `_obter_nivel` não republicava o preço e o topo de livro ficava errado em
+    # silêncio.
+    no_heap: bool = False
+
 
 class LivroMBO:
     """Livro completo por ordem, com fila FIFO por nível de preço."""
@@ -117,6 +147,11 @@ class LivroMBO:
         self._heap_bids: list[int] = []
         self._heap_asks: list[int] = []
 
+        # Integridade: livro cruzado. Ver `esta_cruzado`.
+        self.n_cruzamentos_detectados = 0
+        self._cruzado = False
+        self._ouvintes_cruzamento: list[Callable[[CruzamentoLivro], None]] = []
+
     # ------------------------------------------------------------------
     # publicação
     # ------------------------------------------------------------------
@@ -131,6 +166,74 @@ class LivroMBO:
             self._barramento.publicar(evento)
 
     # ------------------------------------------------------------------
+    # integridade — livro cruzado
+    # ------------------------------------------------------------------
+    def assinar_cruzamento(self, callback: Callable[[CruzamentoLivro], None]) -> None:
+        """Registra ouvinte de alerta de livro cruzado. Opcional."""
+        self._ouvintes_cruzamento.append(callback)
+
+    @property
+    def esta_cruzado(self) -> bool:
+        """`True` quando o melhor bid alcançou o melhor ask. O(1) amortizado.
+
+        POLÍTICA — sinalizar, nunca levantar exceção.
+
+        Num livro real de mercado casado isto não pode acontecer: significa dado
+        corrompido, evento perdido ou reordenação do feed. Ainda assim, levantar
+        exceção aqui seria a decisão errada: `adicionar`/`executar` rodam por
+        evento de book (a fonte mais volumosa do sistema) e um feed ruim de
+        madrugada derrubaria a aplicação inteira em vez de degradar. Pior:
+        estouraria dentro do laço de ingestão, deixando o livro num estado
+        parcialmente aplicado — exatamente a corrupção que se queria evitar.
+
+        Então a política é: o livro ACEITA o estado cruzado (é o que o feed
+        disse), mas nunca em silêncio. Quem consome escolhe o rigor:
+
+        * `esta_cruzado` — leitura barata de gate ("não operar com livro sujo");
+        * `n_cruzamentos_detectados` — contador de saúde da sessão;
+        * `assinar_cruzamento` — alerta empurrado, para quem quer reagir na hora.
+
+        Cruzado (`bid > ask`) e TRAVADO (`bid == ask`) contam igual: nos dois
+        casos existe negócio possível que o feed não reportou, e o spread
+        calculado a jusante fica <= 0. `>=` é a comparação certa.
+
+        Custo: dois `heapq` peek com limpeza preguiçosa (o mesmo trabalho de
+        `melhor_bid`/`melhor_ask`) e dois `dict.get`. Não varre fila, não varre
+        nível, não itera dicionário — o custo NÃO cresce com a profundidade do
+        livro.
+        """
+        bid = self.melhor_bid()
+        if bid is None:
+            return False
+        ask = self.melhor_ask()
+        return ask is not None and bid >= ask
+
+    def _verificar_cruzamento(self, timestamp_ns: int) -> None:
+        """Atualiza o latch de cruzamento. Chamado só onde o topo pode mudar.
+
+        O contador é por TRANSIÇÃO (não-cruzado -> cruzado), não por evento:
+        um feed que fica cruzado por mil mensagens é UMA anomalia, e contar mil
+        transformaria o contador em ruído proporcional ao volume.
+        """
+        cruzado = self.esta_cruzado
+        if cruzado and not self._cruzado:
+            self.n_cruzamentos_detectados += 1
+            if self._ouvintes_cruzamento:
+                bid = self.melhor_bid()
+                ask = self.melhor_ask()
+                if bid is not None and ask is not None:
+                    alerta = CruzamentoLivro(
+                        timestamp_ns=timestamp_ns,
+                        symbol=self.symbol,
+                        melhor_bid=bid,
+                        melhor_ask=ask,
+                        n_cruzamentos=self.n_cruzamentos_detectados,
+                    )
+                    for ouvinte in self._ouvintes_cruzamento:
+                        ouvinte(alerta)
+        self._cruzado = cruzado
+
+    # ------------------------------------------------------------------
     # estrutura interna
     # ------------------------------------------------------------------
     def _lado(self, side: Side) -> dict[int, _NivelInterno]:
@@ -142,10 +245,15 @@ class LivroMBO:
         if nivel is None:
             nivel = _NivelInterno(price=price, side=side)
             lado[price] = nivel
+        if not nivel.no_heap:
+            # Preço novo, OU nível que ressuscitou depois de ser esvaziado e
+            # descartado do heap pela limpeza preguiçosa. Sem este segundo caso
+            # o preço sumia do topo de livro permanentemente.
             if side is Side.BUY:
                 heapq.heappush(self._heap_bids, -price)
             else:
                 heapq.heappush(self._heap_asks, price)
+            nivel.no_heap = True
         return nivel
 
     def _descartar_nivel_se_vazio(self, nivel: _NivelInterno) -> None:
@@ -217,6 +325,9 @@ class LivroMBO:
                 evidencia=self._com_reposicao(evidencia, ordem),
             )
         )
+        # Única operação que pode CRIAR um cruzamento: só entrar liquidez nova
+        # move um topo na direção do outro lado.
+        self._verificar_cruzamento(timestamp_ns)
         return ordem
 
     def _eh_reposicao(self, nivel: _NivelInterno, timestamp_ns: int, broker: str) -> bool:
@@ -279,6 +390,9 @@ class LivroMBO:
                 evidencia=dict(evidencia) if evidencia else {},
             )
         )
+        # Saída de liquidez não cria cruzamento, mas DESFAZ um — sem isto o
+        # latch ficaria preso e o próximo cruzamento real não seria contado.
+        self._verificar_cruzamento(timestamp_ns)
         return ordem
 
     def expirar(self, order_id: str, timestamp_ns: int) -> Ordem | None:
@@ -496,6 +610,9 @@ class LivroMBO:
             self._emitir(evento)
 
         self._descartar_nivel_se_vazio(nivel)
+        # Uma varredura pode desfazer o cruzamento (foi ela que "resolveu" o
+        # negócio que faltava). Uma checagem por CHAMADA, não por contrato.
+        self._verificar_cruzamento(timestamp_ns)
         return tuple(eventos)
 
     # ------------------------------------------------------------------
@@ -580,6 +697,10 @@ class LivroMBO:
             if nivel is not None and nivel.qty_total > 0:
                 return price
             heapq.heappop(self._heap_bids)
+            if nivel is not None:
+                # O nível continua no dicionário (guarda histórico), mas saiu do
+                # heap. Se voltar a receber ordem, `_obter_nivel` republica.
+                nivel.no_heap = False
         return None
 
     def melhor_ask(self) -> int | None:
@@ -589,6 +710,8 @@ class LivroMBO:
             if nivel is not None and nivel.qty_total > 0:
                 return price
             heapq.heappop(self._heap_asks)
+            if nivel is not None:
+                nivel.no_heap = False
         return None
 
     def niveis_ordenados(self, side: Side, profundidade: int = 10) -> tuple[NivelDetalhado, ...]:

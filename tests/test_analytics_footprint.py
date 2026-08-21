@@ -90,6 +90,30 @@ def test_absorcao_no_fundo_no_limiar_exato() -> None:
     assert fp.absorcao_topo() is False
 
 
+def test_volume_total_inclui_agressor_desconhecido() -> None:
+    fp = Footprint()
+    fp.registrar_trade(_trade(100, 5, AgressorSide.BUY, 0, "T1"))
+    fp.registrar_trade(_trade(100, 3, AgressorSide.SELL, 1, "T2"))
+    # leilao/RLP: agressor desconhecido - some do delta, nao pode sumir do total
+    fp.registrar_trade(_trade(100, 7, AgressorSide.UNKNOWN, 2, "T3"))
+
+    nivel = fp.nivel(100)
+    assert nivel is not None
+    assert nivel.qty_comprador == 5
+    assert nivel.qty_vendedor == 3
+    assert nivel.qty_nao_atribuida == 7
+    assert nivel.volume_total == 15
+
+    assert fp.volume_total == 15
+    assert fp.volume_nao_atribuido == 7
+    # delta ignora o nao atribuido (correto: nao ha lado pra somar)
+    assert fp.delta == 5 - 3
+    # invariante: nada conta no total sem cair em algum dos tres baldes
+    assert fp.volume_total == (
+        nivel.qty_comprador + nivel.qty_vendedor + fp.volume_nao_atribuido
+    )
+
+
 def test_absorcao_nao_confirma_sem_reversao_suficiente() -> None:
     fp = Footprint(config=ConfigFootprint(multiplo_absorcao=2.0, reversao_ticks_absorcao=2))
     fp.registrar_trade(_trade(100, 5, AgressorSide.BUY, 0, "T1"))

@@ -26,7 +26,15 @@ incremental (O(1) por trade, sem realocar histórico):
    bucket de tempo fixo (`period_ns`), fechando o bucket anterior e abrindo
    um novo a cada trade que cruza a fronteira (mesmo padrão de
    `_CandleEmFormacao` em `estado_mercado.py`). Com `period_ns` igual à
-   duração do pregão, o "período" vira o perfil de sessão.
+   duração do pregão, o "período" vira o perfil de sessão. `nova_sessao()`
+   força a virada manualmente (mesma política de `EstadoMercado.iniciar_nova_sessao`:
+   virada explícita, sem detecção automática por data); `periodos_fechados`
+   sobrevive à virada, só `periodo_atual` zera.
+
+Trade com `AgressorSide.UNKNOWN` (leilão de abertura/fechamento, RLP) conta
+no `volume_total` do perfil e do nível, mas não em `volume_comprador`/
+`volume_vendedor` — veja `NivelVolume.volume_nao_atribuido` e
+`VolumeProfile.volume_nao_atribuido`.
 """
 
 from __future__ import annotations
@@ -54,14 +62,22 @@ class ConfigVolumeProfile:
 
 @dataclass(slots=True)
 class NivelVolume:
-    """Volume acumulado em um único nível de preço, separado por agressor."""
+    """Volume acumulado em um único nível de preço, separado por agressor.
+
+    `volume_nao_atribuido` guarda trades com `AgressorSide.UNKNOWN` (leilão
+    de abertura/fechamento, RLP anonimizando parte do volume de WDO/WIN na
+    B3) — antes esse volume contava no `volume_total` do perfil mas não
+    aparecia em nível nenhum (nem comprador nem vendedor), então a soma dos
+    níveis ficava menor que `VolumeProfile.volume_total`. Agora
+    `volume_total` do nível é sempre `comprador + vendedor + nao_atribuido`."""
 
     volume_comprador: int = 0
     volume_vendedor: int = 0
+    volume_nao_atribuido: int = 0
 
     @property
     def volume_total(self) -> int:
-        return self.volume_comprador + self.volume_vendedor
+        return self.volume_comprador + self.volume_vendedor + self.volume_nao_atribuido
 
     @property
     def delta(self) -> int:
@@ -79,6 +95,9 @@ class VolumeProfile:
     config: ConfigVolumeProfile = field(default_factory=ConfigVolumeProfile)
     _niveis: dict[int, NivelVolume] = field(default_factory=dict, repr=False)
     _volume_total: int = field(default=0, repr=False)
+    _volume_comprador_total: int = field(default=0, repr=False)
+    _volume_vendedor_total: int = field(default=0, repr=False)
+    _volume_nao_atribuido_total: int = field(default=0, repr=False)
 
     @classmethod
     def de_trades(
@@ -99,13 +118,35 @@ class VolumeProfile:
         nivel = self._niveis.setdefault(trade.price, NivelVolume())
         if trade.side_agressor is AgressorSide.BUY:
             nivel.volume_comprador += trade.qty
+            self._volume_comprador_total += trade.qty
         elif trade.side_agressor is AgressorSide.SELL:
             nivel.volume_vendedor += trade.qty
+            self._volume_vendedor_total += trade.qty
+        else:
+            nivel.volume_nao_atribuido += trade.qty
+            self._volume_nao_atribuido_total += trade.qty
         self._volume_total += trade.qty
 
     @property
     def volume_total(self) -> int:
         return self._volume_total
+
+    @property
+    def volume_comprador(self) -> int:
+        return self._volume_comprador_total
+
+    @property
+    def volume_vendedor(self) -> int:
+        return self._volume_vendedor_total
+
+    @property
+    def volume_nao_atribuido(self) -> int:
+        """Qty total do perfil com `side_agressor is AgressorSide.UNKNOWN`.
+
+        `volume_total == volume_comprador + volume_vendedor +
+        volume_nao_atribuido` vale sempre — é o mesmo invariante mantido
+        nível a nível em `NivelVolume.volume_total`."""
+        return self._volume_nao_atribuido_total
 
     def nivel(self, price: int) -> NivelVolume | None:
         return self._niveis.get(price)

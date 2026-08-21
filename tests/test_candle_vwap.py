@@ -71,3 +71,53 @@ def test_sessao_vazia_tem_vwap_zero() -> None:
     estado = EstadoMercado(barramento, symbol="WDOFUT")
     assert estado.sessao.vwap == 0.0
     assert estado.candle_atual is None
+
+
+def test_sessao_separa_volume_por_agressor_incluindo_desconhecido() -> None:
+    barramento = Barramento()
+    estado = EstadoMercado(barramento, symbol="WDOFUT")
+
+    barramento.publicar(_trade(0, 10000, 5, AgressorSide.BUY, "T1"))
+    barramento.publicar(_trade(1, 10000, 3, AgressorSide.SELL, "T2"))
+    # leilao/RLP: agressor desconhecido - entra no volume, nao no lado comprador/vendedor
+    barramento.publicar(_trade(2, 10000, 7, AgressorSide.UNKNOWN, "T3"))
+
+    sessao = estado.sessao
+    assert sessao.volume_comprador == 5
+    assert sessao.volume_vendedor == 3
+    assert sessao.volume_nao_atribuido == 7
+    assert sessao.volume_total == 15
+    # invariante: nada conta no total sem cair em algum dos tres baldes
+    assert sessao.volume_total == (
+        sessao.volume_comprador + sessao.volume_vendedor + sessao.volume_nao_atribuido
+    )
+
+
+def test_iniciar_nova_sessao_zera_sessao_e_candle_em_formacao() -> None:
+    barramento = Barramento()
+    estado = EstadoMercado(barramento, symbol="WDOFUT")
+
+    barramento.publicar(_trade(0, 10000, 5, AgressorSide.BUY, "T1"))
+    barramento.publicar(_trade(1, 10050, 3, AgressorSide.SELL, "T2"))
+    assert estado.sessao.volume_total == 8
+    assert estado.candle_atual is not None
+
+    estado.iniciar_nova_sessao(timestamp_ns=2)
+
+    assert estado.sessao.high is None
+    assert estado.sessao.low is None
+    assert estado.sessao.volume_comprador == 0
+    assert estado.sessao.volume_vendedor == 0
+    assert estado.sessao.volume_nao_atribuido == 0
+    assert estado.sessao.volume_total == 0
+    assert estado.sessao.vwap == 0.0
+    assert estado.candle_atual is None
+
+    # a sessao nova nao herda nada da anterior
+    barramento.publicar(_trade(3, 9000, 2, AgressorSide.BUY, "T3"))
+    assert estado.sessao.volume_total == 2
+    assert estado.sessao.high == 9000
+    assert estado.sessao.low == 9000
+    assert estado.candle_atual is not None
+    assert estado.candle_atual.open == 9000
+    assert estado.candle_atual.volume == 2

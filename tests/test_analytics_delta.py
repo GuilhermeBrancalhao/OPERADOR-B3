@@ -91,3 +91,54 @@ def test_divergencia_exige_historico_minimo_da_janela() -> None:
 
     # so 1 candle fechado, janela pede 5 -> nao ha dados suficientes
     assert delta.delta_divergente() is False
+
+
+def test_volume_total_sessao_inclui_agressor_desconhecido() -> None:
+    barramento = Barramento()
+    delta = CumulativeDelta(barramento, symbol="WDOFUT")
+
+    barramento.publicar(_trade(0, 100, 5, AgressorSide.BUY, "T1"))
+    barramento.publicar(_trade(1, 100, 3, AgressorSide.SELL, "T2"))
+    # leilao/RLP: agressor desconhecido - nao entra no delta, mas tem que
+    # entrar em algum contador visivel de volume
+    barramento.publicar(_trade(2, 100, 7, AgressorSide.UNKNOWN, "T3"))
+
+    assert delta.delta_sessao == 5 - 3
+    assert delta.volume_comprador_sessao == 5
+    assert delta.volume_vendedor_sessao == 3
+    assert delta.volume_nao_atribuido_sessao == 7
+    assert delta.volume_total_sessao == 15
+    # invariante: nada conta no total sem cair em algum dos tres baldes
+    assert delta.volume_total_sessao == (
+        delta.volume_comprador_sessao
+        + delta.volume_vendedor_sessao
+        + delta.volume_nao_atribuido_sessao
+    )
+
+
+def test_iniciar_nova_sessao_zera_delta_preserva_historico() -> None:
+    barramento = Barramento()
+    config = ConfigDelta(timeframe_ns=NS_POR_MINUTO)
+    delta = CumulativeDelta(barramento, symbol="WDOFUT", config=config)
+
+    barramento.publicar(_trade(0, 100, 10, AgressorSide.BUY, "T1"))
+    # cruza para o proximo candle -> fecha o candle A no historico
+    barramento.publicar(_trade(NS_POR_MINUTO, 105, 20, AgressorSide.SELL, "T2"))
+    assert len(delta.historico) == 1
+    historico_antes = delta.historico
+
+    delta.iniciar_nova_sessao(timestamp_ns=2 * NS_POR_MINUTO)
+
+    assert delta.delta_sessao == 0
+    assert delta.volume_comprador_sessao == 0
+    assert delta.volume_vendedor_sessao == 0
+    assert delta.volume_nao_atribuido_sessao == 0
+    assert delta.candle_atual is None
+    # historico e log, nao acumulador de sessao -> sobrevive a virada
+    assert delta.historico == historico_antes
+
+    # a sessao nova nao herda nada da anterior
+    barramento.publicar(_trade(2 * NS_POR_MINUTO, 200, 4, AgressorSide.BUY, "T3"))
+    assert delta.delta_sessao == 4
+    assert delta.candle_atual is not None
+    assert delta.candle_atual.delta == 4

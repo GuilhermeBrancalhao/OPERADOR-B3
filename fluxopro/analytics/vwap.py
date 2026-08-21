@@ -23,6 +23,24 @@ tendência (preço colado na banda superior = tendência forte).
 
 Tudo incremental: cada acumulador guarda só três somas (Σqty, Σpreço·qty,
 Σpreço²·qty) — O(1) por trade, independente de quantos trades já passaram.
+As três somas são inteiras (preço já chega em ticks `int`, ver
+`core/eventos.py`): nada aqui precisa de `float` até a divisão final do
+`vwap`/`variancia`, então usar `int` elimina de vez qualquer risco de perda
+de precisão por acúmulo — o `float` anterior só era seguro *combinado* com o
+reset de sessão abaixo (sem reset, o acumulador de um símbolo rodando dia
+após dia cruzaria os 2⁵³ do float64 por volta do 43º pregão contínuo).
+
+## Ciclo de vida de sessão
+
+`_sessao` acumulava para sempre — o "VWAP de sessão" nunca fechava sessão
+nenhuma. `iniciar_nova_sessao()` zera `_sessao` (mesma política de
+`EstadoMercado.iniciar_nova_sessao`: virada explícita pelo chamador, nunca
+detecção automática por data — ver docstring lá para o porquê). As âncoras
+(`_ancoras`) **não** são tocadas por padrão: uma âncora é criada por
+intenção explícita do usuário (`ancorar(nome)`) e pode legitimamente
+atravessar uma virada de sessão (ex.: "VWAP desde a notícia X", publicada
+antes do fechamento); passe `limpar_ancoras=True` se o seu caso de uso quer
+o oposto.
 """
 
 from __future__ import annotations
@@ -47,8 +65,8 @@ class ConfigVWAP:
 @dataclass(slots=True)
 class _AcumuladorVWAP:
     soma_qty: int = 0
-    soma_preco_qty: float = 0.0
-    soma_preco2_qty: float = 0.0
+    soma_preco_qty: int = 0
+    soma_preco2_qty: int = 0
 
     def registrar(self, preco: int, qty: int) -> None:
         self.soma_qty += qty
@@ -106,6 +124,16 @@ class VWAP:
         self._sessao.registrar(trade.price, trade.qty)
         for acumulador in self._ancoras.values():
             acumulador.registrar(trade.price, trade.qty)
+
+    def iniciar_nova_sessao(
+        self, timestamp_ns: int | None = None, *, limpar_ancoras: bool = False
+    ) -> None:
+        """Zera o VWAP de sessão. Ver docstring do módulo para a política de
+        virada (explícita pelo chamador) e o motivo de `limpar_ancoras`
+        vir `False` por padrão."""
+        self._sessao = _AcumuladorVWAP()
+        if limpar_ancoras:
+            self._ancoras.clear()
 
     def ancorar(self, nome: str) -> None:
         """Cria (ou reinicia) uma âncora `nome`, zerada a partir do próximo

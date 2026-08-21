@@ -58,6 +58,20 @@ def test_janela_por_tempo_expira_trades_antigos() -> None:
     assert medidor.saldo_agressao == 5
 
 
+def test_janela_por_tempo_nao_expira_exatamente_no_limite() -> None:
+    barramento = Barramento()
+    config = ConfigAgressao(janela_ns=10, janela_n_trades=None)
+    medidor = MedidorAgressao(barramento, symbol="WDOFUT", config=config)
+
+    barramento.publicar(_trade(0, 100, 10, AgressorSide.BUY, "T1"))
+    # 10 - 0 = 10, EXATAMENTE janela_ns(10) -> a regra e estritamente ">"
+    # (so expira quando ultrapassa a janela, nao quando so a atinge) ->
+    # T1 ainda deve estar dentro
+    barramento.publicar(_trade(10, 100, 5, AgressorSide.BUY, "T2"))
+
+    assert medidor.saldo_agressao == 10 + 5
+
+
 def test_percentil_e_clip_grande_no_limiar_exato() -> None:
     barramento = Barramento()
     # reservatorio grande o bastante para caber todos os trades sem amostragem
@@ -80,3 +94,48 @@ def test_sem_trades_nao_ha_clip_grande() -> None:
     medidor = MedidorAgressao(barramento, symbol="WDOFUT")
     assert medidor.limiar_clip_grande() is None
     assert medidor.is_clip_grande(100) is False
+
+
+def test_volume_nao_atribuido_e_invariante_do_volume_total_da_janela() -> None:
+    barramento = Barramento()
+    config = ConfigAgressao(janela_ns=None, janela_n_trades=None)
+    medidor = MedidorAgressao(barramento, symbol="WDOFUT", config=config)
+
+    barramento.publicar(_trade(0, 100, 10, AgressorSide.BUY, "T1"))
+    barramento.publicar(_trade(1, 100, 4, AgressorSide.SELL, "T2"))
+    # leilao/RLP: agressor desconhecido - some do saldo, mas nao pode
+    # desaparecer do volume total da janela
+    barramento.publicar(_trade(2, 100, 7, AgressorSide.UNKNOWN, "T3"))
+
+    assert medidor.saldo_agressao == 10 - 4
+    assert medidor.volume_nao_atribuido == 7
+    assert medidor.n_nao_atribuido == 1
+    assert medidor.volume_total_janela == 10 + 4 + 7
+
+
+def test_iniciar_nova_sessao_zera_janela_e_reservatorio() -> None:
+    barramento = Barramento()
+    config = ConfigAgressao(
+        janela_ns=None, janela_n_trades=None, tamanho_reservatorio=10
+    )
+    medidor = MedidorAgressao(barramento, symbol="WDOFUT", config=config)
+
+    barramento.publicar(_trade(0, 100, 10, AgressorSide.BUY, "T1"))
+    barramento.publicar(_trade(1, 100, 4, AgressorSide.SELL, "T2"))
+    barramento.publicar(_trade(2, 100, 7, AgressorSide.UNKNOWN, "T3"))
+    assert medidor.volume_total_janela == 21
+    assert medidor.limiar_clip_grande() is not None
+
+    medidor.iniciar_nova_sessao(timestamp_ns=3)
+
+    assert medidor.saldo_agressao == 0
+    assert medidor.volume_nao_atribuido == 0
+    assert medidor.n_nao_atribuido == 0
+    assert medidor.volume_total_janela == 0
+    # o reservoir sampling tambem zera - nao ha amostra da sessao anterior
+    assert medidor.limiar_clip_grande() is None
+
+    # a sessao nova nao herda nada da anterior
+    barramento.publicar(_trade(3, 100, 2, AgressorSide.BUY, "T4"))
+    assert medidor.saldo_agressao == 2
+    assert medidor.volume_total_janela == 2

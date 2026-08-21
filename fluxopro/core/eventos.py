@@ -102,6 +102,24 @@ class BookDelta:
 
 @dataclass(frozen=True, slots=True)
 class Candle:
+    """OHLCV do período, com o delta líquido e o volume sem agressor conhecido.
+
+    `volume` conta TODO trade do período; `delta` só soma BUY e subtrai SELL.
+    Sem `volume_nao_atribuido`, trades `AgressorSide.UNKNOWN` (leilão de
+    abertura/fechamento, e o RLP que anonimiza parte do volume de WDO/WIN na
+    B3) entrariam no volume e sumiriam do delta em silêncio — quem lesse o
+    candle não teria como saber que parte do volume não foi atribuída a lado
+    nenhum. Com o campo, vale sempre:
+
+        volume == volume_comprador + volume_vendedor + volume_nao_atribuido
+
+    e `delta == volume_comprador - volume_vendedor` continua sendo o líquido
+    só do volume atribuído.
+
+    Default 0 para não quebrar quem constrói `Candle` sem o campo (o valor
+    correto quando não há trade anônimo é justamente zero).
+    """
+
     timestamp_ns: int
     open: int
     high: int
@@ -109,3 +127,4 @@ class Candle:
     close: int
     volume: int
     delta: int
+    volume_nao_atribuido: int = 0

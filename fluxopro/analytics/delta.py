@@ -20,6 +20,28 @@ esconde.
 Tudo incremental: cada trade atualiza o delta da sessão e do candle corrente
 em O(1); a checagem de divergência olha só os últimos `janela_divergencia`
 candles já fechados (não o histórico inteiro).
+
+## Volume não atribuído (`AgressorSide.UNKNOWN`)
+
+Trade com agressor desconhecido (leilão de abertura/fechamento, RLP — que na
+B3 anonimiza até 15% do volume de WDO/WIN) não entra no `delta_sessao` (nem
+`+` nem `-`: não dá para saber de que lado somar). Isso é correto para o
+delta, mas antes esse volume também não aparecia em lugar nenhum — ele
+simplesmente desaparecia do sistema. Agora `volume_comprador_sessao`,
+`volume_vendedor_sessao` e `volume_nao_atribuido_sessao` são mantidos à
+parte, e `volume_total_sessao` (soma dos três) é sempre igual à soma de
+`qty` de todo trade recebido — o invariante
+`volume_total_sessao == volume_comprador_sessao + volume_vendedor_sessao +
+volume_nao_atribuido_sessao` vale por construção e é testado.
+
+## Ciclo de vida de sessão
+
+`delta_sessao` acumulava para sempre (nunca zerava). `iniciar_nova_sessao()`
+zera `delta_sessao`, os três contadores de volume acima e o candle em
+formação (`candle_atual` volta a `None`) — mesma política de
+`EstadoMercado.iniciar_nova_sessao` (virada explícita pelo chamador; ver
+docstring lá). O histórico de candles já fechados (`historico`) **não** é
+apagado, no mesmo padrão de `VolumeProfilePorPeriodo.periodos_fechados`.
 """
 
 from __future__ import annotations
@@ -93,6 +115,9 @@ class CumulativeDelta:
         self._symbol = symbol
         self.config = config or ConfigDelta()
         self.delta_sessao: int = 0
+        self.volume_comprador_sessao: int = 0
+        self.volume_vendedor_sessao: int = 0
+        self.volume_nao_atribuido_sessao: int = 0
         self._candle_atual: _CandleDeltaEmFormacao | None = None
         self._historico: list[CandleDelta] = []
 
@@ -112,16 +137,43 @@ class CumulativeDelta:
 
         if trade.side_agressor is AgressorSide.BUY:
             incremento = trade.qty
+            self.volume_comprador_sessao += trade.qty
         elif trade.side_agressor is AgressorSide.SELL:
             incremento = -trade.qty
+            self.volume_vendedor_sessao += trade.qty
         else:
             incremento = 0
+            self.volume_nao_atribuido_sessao += trade.qty
 
         self.delta_sessao += incremento
         candle.delta += incremento
         candle.delta_maximo = max(candle.delta_maximo, candle.delta)
         candle.delta_minimo = min(candle.delta_minimo, candle.delta)
         candle.preco_fechamento = trade.price
+
+    @property
+    def volume_total_sessao(self) -> int:
+        """Soma de qty de todo trade da sessão, independente de agressor.
+
+        Sempre igual a `volume_comprador_sessao + volume_vendedor_sessao +
+        volume_nao_atribuido_sessao` — o invariante que garante que nenhum
+        volume "some" silenciosamente do total só porque o agressor era
+        `UNKNOWN`."""
+        return (
+            self.volume_comprador_sessao
+            + self.volume_vendedor_sessao
+            + self.volume_nao_atribuido_sessao
+        )
+
+    def iniciar_nova_sessao(self, timestamp_ns: int | None = None) -> None:
+        """Zera `delta_sessao`, os três contadores de volume e o candle em
+        formação. Ver docstring do módulo para a política de virada
+        (explícita pelo chamador) e o motivo de `historico` sobreviver."""
+        self.delta_sessao = 0
+        self.volume_comprador_sessao = 0
+        self.volume_vendedor_sessao = 0
+        self.volume_nao_atribuido_sessao = 0
+        self._candle_atual = None
 
     @property
     def candle_atual(self) -> CandleDelta | None:

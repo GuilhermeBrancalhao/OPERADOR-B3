@@ -12,10 +12,11 @@ Termos usados de propósito NEUTROS: `LiquidezFantasma` em vez de "spoofing"
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from enum import Enum, unique
 
-from fluxopro.core.eventos import Side, Trade
+from fluxopro.core.eventos import AgressorSide, Side, Trade
 from fluxopro.microestrutura.eventos_mbo import FonteMicro, Ordem
 from fluxopro.microestrutura.livro_mbo import LivroMBO
 
@@ -55,62 +56,178 @@ class ConfigAbsorcao:
     janela_ns: int = 5_000_000_000
 
 
+@dataclass(slots=True)
+class _TradeJanela:
+    """Só o que a janela precisa — evita segurar o `Trade` inteiro vivo."""
+
+    seq: int
+    timestamp_ns: int
+    price: int
+    qty: int
+    lado: AgressorSide
+
+
 class DetectorAbsorcao:
-    """Absorção de compra: vendedores agridem, preço não cai (e vice-versa)."""
+    """Absorção de compra: vendedores agridem, preço não cai (e vice-versa).
+
+    Custo: **O(1) amortizado por trade**. Cada trade entra e sai da janela
+    `deque` exatamente uma vez, e `volume_buy`/`volume_sell` são contadores
+    incrementais — mesmo padrão de `analytics/agressao.py`. Máximo e mínimo de
+    preço na janela saem de duas *monotonic deques* (`_max_precos` decrescente,
+    `_min_precos` crescente), cada uma com no máximo uma inserção e uma remoção
+    amortizada por trade. A implementação anterior refazia cinco varreduras
+    completas da janela por trade (expiração + max + min + duas somas), o que a
+    5–10 mil trades/s significava 25–50 mil elementos varridos cinco vezes por
+    evento: custo total quadrático na taxa do mercado.
+
+    **Deduplicação (`_ja_sinalizado`).** Sem ela o detector re-emite o mesmo
+    alerta a cada trade enquanto a condição durar — a crítica R1 mediu 98,2% dos
+    trades sinalizados num tape lateral. Absorção é um EPISÓDIO (um player
+    segurando uma faixa de preço), não um estado instantâneo, então vale um
+    alerta por episódio. Diferente de `DetectorEscora`/`DetectorIceberg`, que
+    usam um `set` que nunca é podado (vaza um item por nível ao longo do
+    pregão), aqui basta **um único slot** `(lado_absorvedor, preço_âncora)`:
+    a janela deslizante só consegue sustentar um episódio por vez.
+
+    Regra de rearme — explícita, três gatilhos, todos significando "o episódio
+    anterior acabou":
+
+    1. **O preço deslocou** (`deslocamento > deslocamento_maximo_ticks`): a
+       própria condição de absorção quebrou — quem estava segurando cedeu ou
+       saiu. É o análogo direto do `discard` que `DetectorEscora` faz quando
+       `n_reposicoes` cai abaixo do mínimo.
+    2. **O preço-âncora saiu da faixa da janela**: o mercado migrou para outro
+       preço; uma absorção no preço novo é um fenômeno novo, não a repetição
+       do antigo.
+    3. **A janela esvaziou** (buraco no tape ≥ `janela_ns`, ou virada de lado
+       dominante): não há continuidade a preservar.
+
+    Só rearma por evento observado — nunca por decurso de tempo isolado —, de
+    modo que um episódio contínuo produz exatamente um alerta.
+
+    PENDENTE(config): `volume_minimo` é absoluto e, na escala real do WDO
+    (~125 mil lotes numa janela de 5s a 5 mil trades/s), o default de 300 é
+    ultrapassado 400x e não filtra nada — o limiar deveria ser relativo ao
+    volume da janela. Fora do escopo deste conserto (que é custo + dedup); o
+    item está no backlog #4 da crítica R1.
+    """
 
     def __init__(self, symbol: str, config: ConfigAbsorcao | None = None) -> None:
         self.symbol = symbol
         self.config = config if config is not None else ConfigAbsorcao()
-        self._trades: list[Trade] = []
+
+        self._janela: deque[_TradeJanela] = deque()
+        self._volume_buy = 0
+        self._volume_sell = 0
+        # Monotonic deques: guardam (seq, price). `_max_precos` é decrescente e
+        # `_min_precos` crescente, então o extremo da janela está sempre em [0].
+        self._max_precos: deque[tuple[int, int]] = deque()
+        self._min_precos: deque[tuple[int, int]] = deque()
+        self._seq = 0
+        # (lado que absorve, preço no momento do alerta) do episódio em curso.
+        self._ja_sinalizado: tuple[Side, int] | None = None
 
     def ao_trade(self, trade: Trade) -> Deteccao | None:
         if trade.symbol != self.symbol:
             return None
         cfg = self.config
-        self._trades.append(trade)
-        limite = trade.timestamp_ns - cfg.janela_ns
-        self._trades = [t for t in self._trades if t.timestamp_ns >= limite]
 
-        precos = [t.price for t in self._trades]
-        deslocamento = max(precos) - min(precos)
+        seq = self._seq
+        self._seq += 1
+        self._janela.append(
+            _TradeJanela(seq, trade.timestamp_ns, trade.price, trade.qty, trade.side_agressor)
+        )
+        if trade.side_agressor is AgressorSide.BUY:
+            self._volume_buy += trade.qty
+        elif trade.side_agressor is AgressorSide.SELL:
+            self._volume_sell += trade.qty
+
+        preco = trade.price
+        while self._max_precos and self._max_precos[-1][1] <= preco:
+            self._max_precos.pop()
+        self._max_precos.append((seq, preco))
+        while self._min_precos and self._min_precos[-1][1] >= preco:
+            self._min_precos.pop()
+        self._min_precos.append((seq, preco))
+
+        self._expirar(trade.timestamp_ns)
+
+        if len(self._janela) == 1:
+            # Gatilho 3: a janela esvaziou antes deste trade (buraco no tape
+            # maior que a janela) — não há episódio anterior a continuar.
+            self._ja_sinalizado = None
+
+        preco_max = self._max_precos[0][1]
+        preco_min = self._min_precos[0][1]
+        deslocamento = preco_max - preco_min
         if deslocamento > cfg.deslocamento_maximo_ticks:
+            # Gatilho 1: o preço deslocou — a condição de absorção quebrou.
+            self._ja_sinalizado = None
             return None
 
-        volume_buy = sum(t.qty for t in self._trades if t.side_agressor.name == "BUY")
-        volume_sell = sum(t.qty for t in self._trades if t.side_agressor.name == "SELL")
+        volume_buy = self._volume_buy
+        volume_sell = self._volume_sell
 
         if volume_sell >= cfg.volume_minimo and volume_sell > volume_buy:
             # vendedores agridem, preço não cai → COMPRADOR está absorvendo
-            return Deteccao(
-                timestamp_ns=trade.timestamp_ns,
-                symbol=self.symbol,
-                tipo=TipoDeteccao.ABSORCAO,
-                side=Side.BUY,
-                price=trade.price,
-                confianca=1.0,
-                evidencia={
-                    "volume_agressao_dominante": volume_sell,
-                    "volume_lado_oposto": volume_buy,
-                    "deslocamento_ticks": deslocamento,
-                    "n_trades_janela": len(self._trades),
-                },
-            )
+            return self._emitir(trade, Side.BUY, volume_sell, volume_buy,
+                                deslocamento, preco_min, preco_max)
         if volume_buy >= cfg.volume_minimo and volume_buy > volume_sell:
-            return Deteccao(
-                timestamp_ns=trade.timestamp_ns,
-                symbol=self.symbol,
-                tipo=TipoDeteccao.ABSORCAO,
-                side=Side.SELL,
-                price=trade.price,
-                confianca=1.0,
-                evidencia={
-                    "volume_agressao_dominante": volume_buy,
-                    "volume_lado_oposto": volume_sell,
-                    "deslocamento_ticks": deslocamento,
-                    "n_trades_janela": len(self._trades),
-                },
-            )
+            return self._emitir(trade, Side.SELL, volume_buy, volume_sell,
+                                deslocamento, preco_min, preco_max)
         return None
+
+    def _expirar(self, agora_ns: int) -> None:
+        limite = agora_ns - self.config.janela_ns
+        janela = self._janela
+        while janela and janela[0].timestamp_ns < limite:
+            antigo = janela.popleft()
+            if antigo.lado is AgressorSide.BUY:
+                self._volume_buy -= antigo.qty
+            elif antigo.lado is AgressorSide.SELL:
+                self._volume_sell -= antigo.qty
+            # O extremo só sai da monotonic deque se for justamente este trade.
+            if self._max_precos and self._max_precos[0][0] == antigo.seq:
+                self._max_precos.popleft()
+            if self._min_precos and self._min_precos[0][0] == antigo.seq:
+                self._min_precos.popleft()
+
+    def _emitir(
+        self,
+        trade: Trade,
+        side: Side,
+        volume_dominante: int,
+        volume_oposto: int,
+        deslocamento: int,
+        preco_min: int,
+        preco_max: int,
+    ) -> Deteccao | None:
+        anterior = self._ja_sinalizado
+        if anterior is not None:
+            lado_anterior, preco_ancora = anterior
+            # Gatilhos 2 e 3: âncora fora da faixa atual, ou o lado que absorve
+            # virou — episódio novo, rearma.
+            if lado_anterior is not side or not (preco_min <= preco_ancora <= preco_max):
+                anterior = None
+                self._ja_sinalizado = None
+        if anterior is not None:
+            return None  # mesmo episódio, já alertado
+
+        self._ja_sinalizado = (side, trade.price)
+        return Deteccao(
+            timestamp_ns=trade.timestamp_ns,
+            symbol=self.symbol,
+            tipo=TipoDeteccao.ABSORCAO,
+            side=side,
+            price=trade.price,
+            confianca=1.0,
+            evidencia={
+                "volume_agressao_dominante": volume_dominante,
+                "volume_lado_oposto": volume_oposto,
+                "deslocamento_ticks": deslocamento,
+                "n_trades_janela": len(self._janela),
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -166,50 +283,54 @@ class ConfigIceberg:
     volume_executado_minimo: int = 200
 
 
-class DetectorIceberg:
-    """Nível que executa muito mais volume do que a quantidade exibida."""
-
-    def __init__(self, config: ConfigIceberg | None = None) -> None:
-        self.config = config if config is not None else ConfigIceberg()
-        self._ja_sinalizado: set[tuple[Side, int]] = set()
-
-    def verificar(
-        self, livro: LivroMBO, side: Side, price: int, timestamp_ns: int
-    ) -> Deteccao | None:
-        nivel = livro.nivel(side, price)
-        exibido_max = livro.qty_exibida_max(side, price)
-        if exibido_max <= 0:
-            return None
-        # volume executado = pico exibido acumulado ao longo da vida do nível
-        # não é rastreado diretamente aqui; usamos o proxy de qty_total atual
-        # vs. exibido_max quando há execução recente (ver nível interno via
-        # n_reposicoes como sinal auxiliar de atividade).
-        executado_estimado = livro.n_reposicoes(side, price) * exibido_max
-        if executado_estimado < self.config.volume_executado_minimo:
-            return None
-        razao = executado_estimado / exibido_max if exibido_max else 0.0
-        chave = (side, price)
-        if razao < self.config.razao_minima or chave in self._ja_sinalizado:
-            return None
-        self._ja_sinalizado.add(chave)
-        return Deteccao(
-            timestamp_ns=timestamp_ns,
-            symbol=livro.symbol,
-            tipo=TipoDeteccao.ICEBERG,
-            side=side,
-            price=price,
-            confianca=0.6,  # proxy indireto — não é recarga de order_id observada
-            evidencia={
-                "qty_exibida_max": exibido_max,
-                "volume_executado_estimado": executado_estimado,
-                "razao": razao,
-                "n_ordens_no_nivel": 0 if nivel is None else nivel.n_ordens,
-            },
-        )
+# DELETADO: `DetectorIceberg` (proxy por nível de preço).
+#
+# Ele calculava `executado_estimado = n_reposicoes * qty_exibida_max` e depois
+# `razao = executado_estimado / qty_exibida_max`. O `qty_exibida_max` CANCELA:
+# a razão era identicamente `n_reposicoes`. Consequências, todas verificadas
+# em execução pela crítica R1 (seção 5.1):
+#
+# 1. A grandeza anunciada pela docstring — "executa muito mais volume do que a
+#    quantidade exibida" — era a única que a fórmula garantidamente ignorava:
+#    um nível exibindo 10 lotes e outro exibindo 5.000 recebiam a mesma razão.
+# 2. `razao_minima=3.0` virava, na prática, `n_reposicoes >= 3` — literalmente
+#    o gatilho de `DetectorEscora` (`n_reposicoes_minimo=3`). A mesma sequência
+#    emitia ICEBERG e ESCORA, e o operador lia isso como confluência.
+# 3. `evidencia["volume_executado_estimado"]` publicava um número fabricado com
+#    nome de medição: `n_reposicoes` conta ORDENS NOVAS que chegaram depois de
+#    o nível ser varrido, não contratos executados. Num dicionário chamado
+#    `evidencia`, cuja finalidade declarada é permitir auditoria, isso enganava
+#    o auditor. Confiança 0.6 não conserta um número que mede outra coisa.
+#
+# A opção "consertar em vez de deletar" exigiria o volume REALMENTE executado
+# por nível. Esse número existe (`_NivelInterno.consumido_acumulado`), mas é
+# privado: `LivroMBO` expõe `qty_total`, `n_reposicoes` e `qty_exibida_max` e
+# nada mais.
+#
+# PENDENTE(livro): para reconstruir um iceberg por NÍVEL (o único caminho em
+# feed agregado, onde não há `order_id` e portanto não há `n_recargas`),
+# `LivroMBO` precisa expor `consumido_acumulado(side, price) -> int`. Com ele a
+# razão honesta é `consumido_acumulado / qty_exibida_max`, e aí sim o tamanho
+# exibido entra na conta. Enquanto não existir, este arquivo NÃO tem como medir
+# o fenômeno por nível — e um detector que não mede o que diz medir é pior que
+# detector nenhum, porque consome a atenção do operador com falsa confluência.
+#
+# Fica de pé apenas `DetectorIcebergPorRecarga`, que é honesto: mede
+# `Ordem.qty_executada` contra `Ordem.qty_original` e EXIGE `n_recargas > 0`
+# observada. Ele só funciona em feed MBO real — o que é a verdade, não uma
+# limitação a ser disfarçada por proxy.
 
 
 class DetectorIcebergPorRecarga:
-    """Versão observada (feed MBO real): usa `Ordem.n_recargas`, não proxy."""
+    """Versão observada (feed MBO real): usa `Ordem.n_recargas`, não proxy.
+
+    É o único detector de iceberg do módulo. A recarga observada — mesma
+    `order_id` sendo reabastecida — é a assinatura do fenômeno; sem ela, uma
+    execução grande é só uma ordem grande. Por isso `n_recargas == 0` barra a
+    emissão mesmo quando a razão executado/exibido é alta: essa combinação é
+    alcançável (ex.: `LivroMBO.modificar` para cima recria a `Ordem` com
+    `qty_original` novo e `qty_executada` herdado) e NÃO é iceberg.
+    """
 
     def __init__(self, config: ConfigIceberg | None = None) -> None:
         self.config = config if config is not None else ConfigIceberg()

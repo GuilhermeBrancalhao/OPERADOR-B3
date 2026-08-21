@@ -27,6 +27,15 @@ limiar cravado no código):
 Todo o histograma é mantido incremental (`registrar_trade` é O(1)); as
 detecções (imbalance/divergência/absorção) são calculadas sob demanda a
 partir do estado acumulado do candle — O(níveis do candle), não O(histórico).
+
+Trade com `AgressorSide.UNKNOWN` (leilão de abertura/fechamento, RLP) conta
+em `volume_total` mas não em `delta` nem nos baldes comprador/vendedor de
+`NivelFootprint` — isso é correto (não dá pra saber de que lado somar no
+delta). O que não é opcional é o volume aparecer em algum lugar: veja
+`NivelFootprint.qty_nao_atribuida` e `Footprint.volume_nao_atribuido`.
+Footprint é por candle (não por sessão) — cada `FootprintPorTimeframe` já
+fecha e abre um novo a cada bucket de `timeframe_ns`, então não há
+acumulador de sessão aqui para resetar.
 """
 
 from __future__ import annotations
@@ -60,14 +69,23 @@ class ConfigFootprint:
 
 @dataclass(slots=True)
 class NivelFootprint:
-    """Histograma bid×ask de um único nível de preço dentro de um candle."""
+    """Histograma bid×ask de um único nível de preço dentro de um candle.
+
+    `qty_nao_atribuida` guarda trades com `AgressorSide.UNKNOWN` (leilão de
+    abertura/fechamento, RLP). Antes esse volume entrava no
+    `Footprint._volume_total` do candle mas em nível nenhum — o nível podia
+    existir (criado por `setdefault`) com `volume_total == 0` enquanto o
+    footprint inteiro contava o trade. Agora `volume_total` do nível inclui
+    o balde não atribuído, então a soma dos níveis bate com o total do
+    footprint."""
 
     qty_comprador: int = 0
     qty_vendedor: int = 0
+    qty_nao_atribuida: int = 0
 
     @property
     def volume_total(self) -> int:
-        return self.qty_comprador + self.qty_vendedor
+        return self.qty_comprador + self.qty_vendedor + self.qty_nao_atribuida
 
     @property
     def delta(self) -> int:
@@ -81,6 +99,7 @@ class Footprint:
         self.config = config or ConfigFootprint()
         self._niveis: dict[int, NivelFootprint] = {}
         self._volume_total = 0
+        self._volume_nao_atribuido = 0
         self._delta = 0
         self.preco_abertura: int | None = None
         self.preco_fechamento: int | None = None
@@ -95,6 +114,9 @@ class Footprint:
         elif trade.side_agressor is AgressorSide.SELL:
             nivel.qty_vendedor += trade.qty
             self._delta -= trade.qty
+        else:
+            nivel.qty_nao_atribuida += trade.qty
+            self._volume_nao_atribuido += trade.qty
         self._volume_total += trade.qty
 
         if self.preco_abertura is None:
@@ -110,6 +132,15 @@ class Footprint:
     @property
     def volume_total(self) -> int:
         return self._volume_total
+
+    @property
+    def volume_nao_atribuido(self) -> int:
+        """Qty do candle com `side_agressor is AgressorSide.UNKNOWN`.
+
+        `volume_total == qty_comprador_total + qty_vendedor_total +
+        volume_nao_atribuido` (some os níveis para conferir) — mesmo
+        invariante de `NivelFootprint.volume_total`."""
+        return self._volume_nao_atribuido
 
     @property
     def delta(self) -> int:

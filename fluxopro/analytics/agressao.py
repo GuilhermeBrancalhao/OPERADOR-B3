@@ -20,6 +20,27 @@ quantidade de trades, ou ambos) mede:
 Tudo incremental: a janela expira por tempo e/ou contagem a cada trade
 (O(1) amortizado — cada trade entra e sai da janela deque exatamente uma
 vez), e o reservoir sampling atualiza a amostra em O(1) por trade.
+
+## Volume não atribuído (`AgressorSide.UNKNOWN`)
+
+Trade com agressor desconhecido entrava na janela (`_janela.append`, conta
+para velocidade/tape) mas não incrementava nenhum dos contadores de
+compra/venda — o volume simplesmente não aparecia em `saldo_agressao` nem em
+lugar nenhum que o operador pudesse ver. `_qty_nao_atribuida_janela` e
+`_n_nao_atribuida_janela` fecham essa lacuna, expostos via
+`volume_nao_atribuido` e `n_nao_atribuido`; `volume_total_janela` (soma dos
+três baldes) é sempre igual à soma de `qty` de todo trade na janela.
+
+## Ciclo de vida de sessão
+
+A janela deslizante se autolimpa por tempo/contagem, mas o reservoir
+sampling (`_reservatorio`/`_n_visto`) nunca resetava — a amostra usada para
+estimar o percentil de "clip grande" ia se diluindo com trades de sessões
+cada vez mais antigas, e nada garantia que a janela deslizante estivesse
+vazia exatamente na virada (trades do fim da sessão anterior podem
+continuar dentro do critério de tempo/contagem por mais alguns trades da
+sessão nova). `iniciar_nova_sessao()` zera janela, os três baldes de volume
+e o reservoir sampling — reset completo, sem herança da sessão anterior.
 """
 
 from __future__ import annotations
@@ -77,8 +98,10 @@ class MedidorAgressao:
         self._janela: deque[_TradeJanela] = deque()
         self._qty_compra_janela = 0
         self._qty_venda_janela = 0
+        self._qty_nao_atribuida_janela = 0
         self._n_compra_janela = 0
         self._n_venda_janela = 0
+        self._n_nao_atribuida_janela = 0
 
         self._reservatorio: list[int] = []
         self._rng = random.Random(self.config.seed_reservatorio)
@@ -99,6 +122,9 @@ class MedidorAgressao:
         elif trade.side_agressor is AgressorSide.SELL:
             self._qty_venda_janela += trade.qty
             self._n_venda_janela += 1
+        else:
+            self._qty_nao_atribuida_janela += trade.qty
+            self._n_nao_atribuida_janela += 1
 
         self._expirar_janela(trade.timestamp_ns)
         self._atualizar_reservatorio(trade.qty)
@@ -120,6 +146,9 @@ class MedidorAgressao:
             elif antigo.lado is AgressorSide.SELL:
                 self._qty_venda_janela -= antigo.qty
                 self._n_venda_janela -= 1
+            else:
+                self._qty_nao_atribuida_janela -= antigo.qty
+                self._n_nao_atribuida_janela -= 1
 
     def _atualizar_reservatorio(self, qty: int) -> None:
         """Reservoir sampling (algoritmo R): mantém uma amostra uniforme de
@@ -136,6 +165,26 @@ class MedidorAgressao:
     @property
     def saldo_agressao(self) -> int:
         return self._qty_compra_janela - self._qty_venda_janela
+
+    @property
+    def volume_nao_atribuido(self) -> int:
+        """Qty na janela com `side_agressor is AgressorSide.UNKNOWN`."""
+        return self._qty_nao_atribuida_janela
+
+    @property
+    def n_nao_atribuido(self) -> int:
+        return self._n_nao_atribuida_janela
+
+    @property
+    def volume_total_janela(self) -> int:
+        """Sempre igual a `qty_compra + qty_venda + volume_nao_atribuido` —
+        nenhum trade da janela conta no total sem cair em algum dos três
+        baldes."""
+        return (
+            self._qty_compra_janela
+            + self._qty_venda_janela
+            + self._qty_nao_atribuida_janela
+        )
 
     @property
     def taxa_compra(self) -> float:
@@ -188,3 +237,19 @@ class MedidorAgressao:
         if limiar is None:
             return False
         return qty >= limiar
+
+    def iniciar_nova_sessao(self, timestamp_ns: int | None = None) -> None:
+        """Reset completo: esvazia a janela deslizante (com os três baldes
+        de volume/contagem) e o reservoir sampling. Ver docstring do módulo
+        para o porquê do reservoir também zerar (sem reset, a amostra usada
+        para o percentil de clip grande se diluiria entre sessões, e a
+        janela deslizante sozinha não garante estar vazia bem na virada)."""
+        self._janela.clear()
+        self._qty_compra_janela = 0
+        self._qty_venda_janela = 0
+        self._qty_nao_atribuida_janela = 0
+        self._n_compra_janela = 0
+        self._n_venda_janela = 0
+        self._n_nao_atribuida_janela = 0
+        self._reservatorio = []
+        self._n_visto = 0

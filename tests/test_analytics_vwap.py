@@ -93,3 +93,39 @@ def test_sessao_vazia_tem_vwap_zero_e_bandas_zero() -> None:
     vwap = VWAP(barramento, symbol="WDOFUT")
     assert vwap.vwap_sessao() == 0.0
     assert vwap.bandas_sessao() == (0.0, 0.0, 0.0, 0.0, 0.0)
+
+
+def test_iniciar_nova_sessao_zera_vwap_de_sessao_preserva_ancoras_por_padrao() -> None:
+    barramento = Barramento()
+    vwap = VWAP(barramento, symbol="WDOFUT")
+
+    barramento.publicar(_trade(0, 100, 10, "T1"))
+    vwap.ancorar("desde_T1")
+    barramento.publicar(_trade(1, 200, 10, "T2"))
+
+    assert vwap.vwap_sessao() == 150.0
+    assert vwap.vwap_ancorado("desde_T1") == 200.0
+
+    vwap.iniciar_nova_sessao(timestamp_ns=2)
+
+    assert vwap.vwap_sessao() == 0.0
+    assert vwap.bandas_sessao() == (0.0, 0.0, 0.0, 0.0, 0.0)
+    # ancora e intencao explicita do usuario, nao acumulador de sessao -> sobrevive
+    assert vwap.vwap_ancorado("desde_T1") == 200.0
+
+    # a sessao nova nao herda nada da anterior
+    barramento.publicar(_trade(3, 300, 10, "T3"))
+    assert vwap.vwap_sessao() == 300.0
+
+
+def test_iniciar_nova_sessao_pode_limpar_ancoras_explicitamente() -> None:
+    barramento = Barramento()
+    vwap = VWAP(barramento, symbol="WDOFUT")
+    vwap.ancorar("x")
+    barramento.publicar(_trade(0, 100, 10, "T1"))
+    assert vwap.vwap_ancorado("x") == 100.0
+
+    vwap.iniciar_nova_sessao(limpar_ancoras=True)
+
+    assert vwap.vwap_ancorado("x") is None
+    assert vwap.nomes_ancoras == ()
