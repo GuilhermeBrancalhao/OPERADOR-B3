@@ -1,0 +1,4552 @@
+WEBVTT
+Kind: captions
+Language: pt-PT
+
+00:00:00.520 --> 00:00:02.710 align:start position:0%
+ 
+Olá, <00:00:00.853><c>tudo </c><00:00:01.186><c>bem? </c><00:00:01.519><c>Bem-vindos </c><00:00:01.852><c>a </c><00:00:02.185><c>mais </c><00:00:02.518><c>uma</c>
+
+00:00:02.710 --> 00:00:02.720 align:start position:0%
+Olá, tudo bem? Bem-vindos a mais uma
+ 
+
+00:00:02.720 --> 00:00:05.349 align:start position:0%
+Olá, tudo bem? Bem-vindos a mais uma
+aula. <00:00:03.106><c>Aqui </c><00:00:03.492><c>fala </c><00:00:03.878><c>o </c><00:00:04.264><c>Sérgio, </c><00:00:04.650><c>desenvolvedor </c><00:00:05.036><c>da</c>
+
+00:00:05.349 --> 00:00:05.359 align:start position:0%
+aula. Aqui fala o Sérgio, desenvolvedor da
+ 
+
+00:00:05.359 --> 00:00:07.909 align:start position:0%
+aula. Aqui fala o Sérgio, desenvolvedor da
+ASG. <00:00:05.745><c>Nesta </c><00:00:06.131><c>aula, </c><00:00:06.517><c>vamos </c><00:00:06.903><c>falar </c><00:00:07.289><c>um </c><00:00:07.675><c>pouco</c>
+
+00:00:07.909 --> 00:00:07.919 align:start position:0%
+ASG. Nesta aula, vamos falar um pouco
+ 
+
+00:00:07.919 --> 00:00:10.549 align:start position:0%
+ASG. Nesta aula, vamos falar um pouco
+mais <00:00:08.325><c>sobre </c><00:00:08.731><c>a </c><00:00:09.137><c>parte </c><00:00:09.543><c>da </c><00:00:09.949><c>arquitetura </c><00:00:10.355><c>do</c>
+
+00:00:10.549 --> 00:00:10.559 align:start position:0%
+mais sobre a parte da arquitetura do
+ 
+
+00:00:10.559 --> 00:00:13.669 align:start position:0%
+mais sobre a parte da arquitetura do
+projeto <00:00:11.039><c>ASG </c><00:00:11.519><c>para </c><00:00:11.999><c>que </c><00:00:12.479><c>perceba </c><00:00:12.959><c>o </c><00:00:13.439><c>que</c>
+
+00:00:13.669 --> 00:00:13.679 align:start position:0%
+projeto ASG para que perceba o que
+ 
+
+00:00:13.679 --> 00:00:17.150 align:start position:0%
+projeto ASG para que perceba o que
+verá <00:00:14.142><c>no </c><00:00:14.605><c>dia </c><00:00:15.068><c>a </c><00:00:15.531><c>dia </c><00:00:15.994><c>e </c><00:00:16.457><c>para </c><00:00:16.920><c>que</c>
+
+00:00:17.150 --> 00:00:17.160 align:start position:0%
+verá no dia a dia e para que
+ 
+
+00:00:17.160 --> 00:00:19.429 align:start position:0%
+verá no dia a dia e para que
+consiga <00:00:17.669><c>perceber </c><00:00:18.178><c>melhor </c><00:00:18.687><c>como </c><00:00:19.196><c>vai</c>
+
+00:00:19.429 --> 00:00:19.439 align:start position:0%
+consiga perceber melhor como vai
+ 
+
+00:00:19.439 --> 00:00:23.790 align:start position:0%
+consiga perceber melhor como vai
+pensar <00:00:20.111><c>sobre </c><00:00:20.783><c>a </c><00:00:21.455><c>forma </c><00:00:22.127><c>como </c><00:00:22.799><c>desenvolvi</c>
+
+00:00:23.790 --> 00:00:23.800 align:start position:0%
+pensar sobre a forma como desenvolvi
+ 
+
+00:00:23.800 --> 00:00:26.190 align:start position:0%
+pensar sobre a forma como desenvolvi
+este <00:00:24.270><c>sistema, </c><00:00:24.740><c>não </c><00:00:25.210><c>é? </c><00:00:25.680><c>Então,</c>
+
+00:00:26.190 --> 00:00:26.200 align:start position:0%
+este sistema, não é? Então,
+ 
+
+00:00:26.200 --> 00:00:26.950 align:start position:0%
+este sistema, não é? Então,
+[pigarreia] <00:00:26.285><c>eh, </c><00:00:26.370><c>o </c><00:00:26.455><c>que </c><00:00:26.540><c>é </c><00:00:26.625><c>que </c><00:00:26.710><c>eu </c><00:00:26.795><c>fiz</c>
+
+00:00:26.950 --> 00:00:26.960 align:start position:0%
+[pigarreia] eh, o que é que eu fiz
+ 
+
+00:00:26.960 --> 00:00:30.669 align:start position:0%
+[pigarreia] eh, o que é que eu fiz
+aqui? <00:00:27.360><c>Eu </c><00:00:27.760><c>fiz </c><00:00:28.160><c>um </c><00:00:28.560><c>um </c><00:00:28.960><c>desenho </c><00:00:29.360><c>para </c><00:00:29.760><c>que </c><00:00:30.160><c>tu</c>
+
+00:00:30.669 --> 00:00:30.679 align:start position:0%
+aqui? Eu fiz um um desenho para que tu
+ 
+
+00:00:30.679 --> 00:00:32.670 align:start position:0%
+aqui? Eu fiz um um desenho para que tu
+consiga <00:00:30.992><c>de </c><00:00:31.305><c>forma </c><00:00:31.618><c>muito </c><00:00:31.931><c>direta </c><00:00:32.244><c>compreender </c><00:00:32.557><c>o</c>
+
+00:00:32.670 --> 00:00:32.680 align:start position:0%
+consiga de forma muito direta compreender o
+ 
+
+00:00:32.680 --> 00:00:37.670 align:start position:0%
+consiga de forma muito direta compreender o
+que <00:00:33.432><c>temos </c><00:00:34.184><c>nos </c><00:00:34.936><c>dois </c><00:00:35.688><c>principais </c><00:00:36.440><c>gráficos</c>
+
+00:00:37.670 --> 00:00:37.680 align:start position:0%
+que temos nos dois principais gráficos
+ 
+
+00:00:37.680 --> 00:00:39.950 align:start position:0%
+que temos nos dois principais gráficos
+que <00:00:37.965><c>lhe </c><00:00:38.250><c>servirão </c><00:00:38.535><c>para </c><00:00:38.820><c>ter </c><00:00:39.105><c>uma </c><00:00:39.390><c>boa </c><00:00:39.675><c>ideia</c>
+
+00:00:39.950 --> 00:00:39.960 align:start position:0%
+que lhe servirão para ter uma boa ideia
+ 
+
+00:00:39.960 --> 00:00:43.470 align:start position:0%
+que lhe servirão para ter uma boa ideia
+de <00:00:40.346><c>como </c><00:00:40.732><c>vai </c><00:00:41.118><c>melhorar </c><00:00:41.504><c>as </c><00:00:41.890><c>suas </c><00:00:42.276><c>operações</c>
+
+00:00:43.470 --> 00:00:43.480 align:start position:0%
+de como vai melhorar as suas operações
+ 
+
+00:00:43.480 --> 00:00:45.470 align:start position:0%
+de como vai melhorar as suas operações
+e <00:00:43.731><c>como </c><00:00:43.982><c>é </c><00:00:44.233><c>que </c><00:00:44.484><c>vai </c><00:00:44.735><c>pensar </c><00:00:44.986><c>sobre </c><00:00:45.237><c>as</c>
+
+00:00:45.470 --> 00:00:45.480 align:start position:0%
+e como é que vai pensar sobre as
+ 
+
+00:00:45.480 --> 00:00:47.670 align:start position:0%
+e como é que vai pensar sobre as
+operações. <00:00:45.806><c>Assim, </c><00:00:46.132><c>vou </c><00:00:46.458><c>tentar </c><00:00:46.784><c>ser </c><00:00:47.110><c>o </c><00:00:47.436><c>mais</c>
+
+00:00:47.670 --> 00:00:47.680 align:start position:0%
+operações. Assim, vou tentar ser o mais
+ 
+
+00:00:47.680 --> 00:00:50.270 align:start position:0%
+operações. Assim, vou tentar ser o mais
+breve <00:00:47.950><c>aqui </c><00:00:48.220><c>nesta </c><00:00:48.490><c>aula, </c><00:00:48.760><c>ok?</c>
+
+00:00:50.270 --> 00:00:50.280 align:start position:0%
+breve aqui nesta aula, ok?
+ 
+
+00:00:50.280 --> 00:00:53.549 align:start position:0%
+breve aqui nesta aula, ok?
+Eh, <00:00:50.633><c>temos </c><00:00:50.986><c>o </c><00:00:51.339><c>gráfico </c><00:00:51.692><c>de </c><00:00:52.045><c>Renco </c><00:00:52.398><c>que</c>
+
+00:00:53.549 --> 00:00:53.559 align:start position:0%
+Eh, temos o gráfico de Renco que
+ 
+
+00:00:53.559 --> 00:00:56.950 align:start position:0%
+Eh, temos o gráfico de Renco que
+todos <00:00:54.143><c>os </c><00:00:54.727><c>dias </c><00:00:55.311><c>ele </c><00:00:55.895><c>tem </c><00:00:56.479><c>regiões</c>
+
+00:00:56.950 --> 00:00:56.960 align:start position:0%
+todos os dias ele tem regiões
+ 
+
+00:00:56.960 --> 00:00:59.790 align:start position:0%
+todos os dias ele tem regiões
+específicas <00:00:57.393><c>que </c><00:00:57.826><c>se </c><00:00:58.259><c>referem </c><00:00:58.692><c>às </c><00:00:59.125><c>regiões </c><00:00:59.558><c>de</c>
+
+00:00:59.790 --> 00:00:59.800 align:start position:0%
+específicas que se referem às regiões de
+ 
+
+00:00:59.800 --> 00:01:03.430 align:start position:0%
+específicas que se referem às regiões de
+alvos, <00:01:00.274><c>não </c><00:01:00.748><c>é? </c><00:01:01.222><c>Ou </c><00:01:01.696><c>seja, </c><00:01:02.170><c>eh, </c><00:01:02.644><c>verá </c><00:01:03.118><c>o</c>
+
+00:01:03.430 --> 00:01:03.440 align:start position:0%
+alvos, não é? Ou seja, eh, verá o
+ 
+
+00:01:03.440 --> 00:01:06.390 align:start position:0%
+alvos, não é? Ou seja, eh, verá o
+preço <00:01:03.866><c>a </c><00:01:04.292><c>movimentar-se </c><00:01:04.718><c>e </c><00:01:05.144><c>em </c><00:01:05.570><c>algum </c><00:01:05.996><c>momento</c>
+
+00:01:06.390 --> 00:01:06.400 align:start position:0%
+preço a movimentar-se e em algum momento
+ 
+
+00:01:06.400 --> 00:01:09.070 align:start position:0%
+preço a movimentar-se e em algum momento
+ele <00:01:06.806><c>ele </c><00:01:07.212><c>vem </c><00:01:07.618><c>para </c><00:01:08.024><c>estas </c><00:01:08.430><c>regiões </c><00:01:08.836><c>aqui,</c>
+
+00:01:09.070 --> 00:01:09.080 align:start position:0%
+ele ele vem para estas regiões aqui,
+ 
+
+00:01:09.080 --> 00:01:12.789 align:start position:0%
+ele ele vem para estas regiões aqui,
+seja <00:01:09.497><c>do </c><00:01:09.914><c>A1, </c><00:01:10.331><c>A2, </c><00:01:10.748><c>A3 </c><00:01:11.165><c>positivo </c><00:01:11.582><c>ou </c><00:01:11.999><c>negativo,</c>
+
+00:01:12.789 --> 00:01:12.799 align:start position:0%
+seja do A1, A2, A3 positivo ou negativo,
+ 
+
+00:01:12.799 --> 00:01:14.190 align:start position:0%
+seja do A1, A2, A3 positivo ou negativo,
+tá?
+
+00:01:14.190 --> 00:01:14.200 align:start position:0%
+tá?
+ 
+
+00:01:14.200 --> 00:01:16.870 align:start position:0%
+tá?
+As <00:01:14.519><c>regiões </c><00:01:14.838><c>que </c><00:01:15.157><c>possuem </c><00:01:15.476><c>as </c><00:01:15.795><c>sinalizações,</c>
+
+00:01:16.870 --> 00:01:16.880 align:start position:0%
+As regiões que possuem as sinalizações,
+ 
+
+00:01:16.880 --> 00:01:21.710 align:start position:0%
+As regiões que possuem as sinalizações,
+as <00:01:17.502><c>sinalizações </c><00:01:18.124><c>de </c><00:01:18.746><c>mais, </c><00:01:19.368><c>ou </c><00:01:19.990><c>seja, </c><00:01:20.612><c>A1+ </c><00:01:21.234><c>A1</c>
+
+00:01:21.710 --> 00:01:21.720 align:start position:0%
+as sinalizações de mais, ou seja, A1+ A1
+ 
+
+00:01:21.720 --> 00:01:28.789 align:start position:0%
+as sinalizações de mais, ou seja, A1+ A1
+2, <00:01:22.474><c>A3+ </c><00:01:23.228><c>são </c><00:01:23.982><c>o </c><00:01:24.736><c>quê? </c><00:01:25.490><c>Alvos, </c><00:01:26.244><c>ok? </c><00:01:26.998><c>Alvos </c><00:01:27.752><c>do</c>
+
+00:01:28.789 --> 00:01:28.799 align:start position:0%
+2, A3+ são o quê? Alvos, ok? Alvos do
+ 
+
+00:01:28.799 --> 00:01:30.630 align:start position:0%
+2, A3+ são o quê? Alvos, ok? Alvos do
+comprador.
+
+00:01:30.630 --> 00:01:30.640 align:start position:0%
+comprador.
+ 
+
+00:01:30.640 --> 00:01:32.109 align:start position:0%
+comprador.
+Então, <00:01:30.904><c>se </c><00:01:31.168><c>formos </c><00:01:31.432><c>buscar </c><00:01:31.696><c>aqui, </c><00:01:31.960><c>a</c>
+
+00:01:32.109 --> 00:01:32.119 align:start position:0%
+Então, se formos buscar aqui, a
+ 
+
+00:01:32.119 --> 00:01:34.950 align:start position:0%
+Então, se formos buscar aqui, a
+gente <00:01:32.383><c>até </c><00:01:32.647><c>pode </c><00:01:32.911><c>escrever </c><00:01:33.175><c>aqui, </c><00:01:33.439><c>ó,</c>
+
+00:01:34.950 --> 00:01:34.960 align:start position:0%
+gente até pode escrever aqui, ó,
+ 
+
+00:01:34.960 --> 00:01:38.630 align:start position:0%
+gente até pode escrever aqui, ó,
+alvo <00:01:35.655><c>comprador </c><00:01:36.350><c>nesta </c><00:01:37.045><c>região, </c><00:01:37.740><c>ok? </c><00:01:38.435><c>Toda</c>
+
+00:01:38.630 --> 00:01:38.640 align:start position:0%
+alvo comprador nesta região, ok? Toda
+ 
+
+00:01:38.640 --> 00:01:41.789 align:start position:0%
+alvo comprador nesta região, ok? Toda
+esta <00:01:38.930><c>região </c><00:01:39.220><c>para </c><00:01:39.510><c>cima </c><00:01:39.800><c>ali </c><00:01:40.090><c>é </c><00:01:40.380><c>o </c><00:01:40.670><c>alvo </c><00:01:40.960><c>do</c>
+
+00:01:41.789 --> 00:01:41.799 align:start position:0%
+esta região para cima ali é o alvo do
+ 
+
+00:01:41.799 --> 00:01:45.870 align:start position:0%
+esta região para cima ali é o alvo do
+comprador, <00:01:42.439><c>está </c><00:01:43.079><c>bom? </c><00:01:43.719><c>E </c><00:01:44.359><c>abaixo </c><00:01:44.999><c>temos </c><00:01:45.639><c>a</c>
+
+00:01:45.870 --> 00:01:45.880 align:start position:0%
+comprador, está bom? E abaixo temos a
+ 
+
+00:01:45.880 --> 00:01:49.109 align:start position:0%
+comprador, está bom? E abaixo temos a
+região <00:01:46.680><c>do</c>
+
+00:01:49.109 --> 00:01:49.119 align:start position:0%
+região do
+ 
+
+00:01:49.119 --> 00:01:53.429 align:start position:0%
+região do
+alvo <00:01:49.707><c>de </c><00:01:50.295><c>quem </c><00:01:50.883><c>está </c><00:01:51.471><c>vendido, </c><00:01:52.059><c>certo? </c><00:01:52.647><c>Então </c><00:01:53.235><c>nós</c>
+
+00:01:53.429 --> 00:01:53.439 align:start position:0%
+alvo de quem está vendido, certo? Então nós
+ 
+
+00:01:53.439 --> 00:01:57.270 align:start position:0%
+alvo de quem está vendido, certo? Então nós
+teremos <00:01:54.026><c>o </c><00:01:54.613><c>quê? </c><00:01:55.200><c>Alvo</c>
+
+00:01:57.270 --> 00:01:57.280 align:start position:0%
+teremos o quê? Alvo
+ 
+
+00:01:57.280 --> 00:01:59.670 align:start position:0%
+teremos o quê? Alvo
+vendedor, <00:01:58.159><c>ok?</c>
+
+00:01:59.670 --> 00:01:59.680 align:start position:0%
+vendedor, ok?
+ 
+
+00:01:59.680 --> 00:02:03.310 align:start position:0%
+vendedor, ok?
+Beleza? <00:02:00.159><c>O </c><00:02:00.638><c>preço </c><00:02:01.117><c>e </c><00:02:01.596><c>ele </c><00:02:02.075><c>trabalha </c><00:02:02.554><c>sempre </c><00:02:03.033><c>em</c>
+
+00:02:03.310 --> 00:02:03.320 align:start position:0%
+Beleza? O preço e ele trabalha sempre em
+ 
+
+00:02:03.320 --> 00:02:06.270 align:start position:0%
+Beleza? O preço e ele trabalha sempre em
+frequências, <00:02:03.848><c>certo? </c><00:02:04.376><c>Se </c><00:02:04.904><c>o </c><00:02:05.432><c>preço </c><00:02:05.960><c>trabalha</c>
+
+00:02:06.270 --> 00:02:06.280 align:start position:0%
+frequências, certo? Se o preço trabalha
+ 
+
+00:02:06.280 --> 00:02:07.630 align:start position:0%
+frequências, certo? Se o preço trabalha
+em <00:02:06.434><c>frequência, </c><00:02:06.588><c>o </c><00:02:06.742><c>que </c><00:02:06.896><c>é </c><00:02:07.050><c>que </c><00:02:07.204><c>eu </c><00:02:07.358><c>preciso</c>
+
+00:02:07.630 --> 00:02:07.640 align:start position:0%
+em frequência, o que é que eu preciso
+ 
+
+00:02:07.640 --> 00:02:10.630 align:start position:0%
+em frequência, o que é que eu preciso
+perceber <00:02:08.152><c>sobre </c><00:02:08.664><c>o </c><00:02:09.176><c>preço? </c><00:02:09.688><c>que </c><00:02:10.200><c>existem</c>
+
+00:02:10.630 --> 00:02:10.640 align:start position:0%
+perceber sobre o preço? que existem
+ 
+
+00:02:10.640 --> 00:02:13.270 align:start position:0%
+perceber sobre o preço? que existem
+também <00:02:10.959><c>as </c><00:02:11.278><c>regiões </c><00:02:11.597><c>que </c><00:02:11.916><c>eh </c><00:02:12.235><c>são </c><00:02:12.554><c>os </c><00:02:12.873><c>meios</c>
+
+00:02:13.270 --> 00:02:13.280 align:start position:0%
+também as regiões que eh são os meios
+ 
+
+00:02:13.280 --> 00:02:16.350 align:start position:0%
+também as regiões que eh são os meios
+das <00:02:13.824><c>frequências. </c><00:02:14.368><c>Portanto, </c><00:02:14.912><c>aqui </c><00:02:15.456><c>dentro </c><00:02:16.000><c>deste</c>
+
+00:02:16.350 --> 00:02:16.360 align:start position:0%
+das frequências. Portanto, aqui dentro deste
+ 
+
+00:02:16.360 --> 00:02:18.869 align:start position:0%
+das frequências. Portanto, aqui dentro deste
+gráfico <00:02:16.820><c>vamos </c><00:02:17.280><c>considerar</c>
+
+00:02:18.869 --> 00:02:18.879 align:start position:0%
+gráfico vamos considerar
+ 
+
+00:02:18.879 --> 00:02:21.550 align:start position:0%
+gráfico vamos considerar
+dois <00:02:19.327><c>pontos </c><00:02:19.775><c>de </c><00:02:20.223><c>referência </c><00:02:20.671><c>de </c><00:02:21.119><c>atuação,</c>
+
+00:02:21.550 --> 00:02:21.560 align:start position:0%
+dois pontos de referência de atuação,
+ 
+
+00:02:21.560 --> 00:02:25.070 align:start position:0%
+dois pontos de referência de atuação,
+que <00:02:22.133><c>são </c><00:02:22.706><c>pontos </c><00:02:23.279><c>estatisticamente</c>
+
+00:02:25.070 --> 00:02:25.080 align:start position:0%
+que são pontos estatisticamente
+ 
+
+00:02:25.080 --> 00:02:27.670 align:start position:0%
+que são pontos estatisticamente
+mais <00:02:25.560><c>favoráveis ​​</c><00:02:26.040><c>para </c><00:02:26.520><c>que </c><00:02:27.000><c>tenha </c><00:02:27.480><c>uma</c>
+
+00:02:27.670 --> 00:02:27.680 align:start position:0%
+mais favoráveis ​​para que tenha uma
+ 
+
+00:02:27.680 --> 00:02:31.190 align:start position:0%
+mais favoráveis ​​para que tenha uma
+melhor <00:02:28.310><c>assertividade. </c><00:02:28.940><c>Primeiro </c><00:02:29.570><c>ponto </c><00:02:30.200><c>é</c>
+
+00:02:31.190 --> 00:02:31.200 align:start position:0%
+melhor assertividade. Primeiro ponto é
+ 
+
+00:02:31.200 --> 00:02:34.350 align:start position:0%
+melhor assertividade. Primeiro ponto é
+só <00:02:31.792><c>considerando </c><00:02:32.384><c>o </c><00:02:32.976><c>renco, </c><00:02:33.568><c>agora </c><00:02:34.160><c>não</c>
+
+00:02:34.350 --> 00:02:34.360 align:start position:0%
+só considerando o renco, agora não
+ 
+
+00:02:34.360 --> 00:02:36.470 align:start position:0%
+só considerando o renco, agora não
+Estou <00:02:34.728><c>a </c><00:02:35.096><c>falar </c><00:02:35.464><c>gráfico </c><00:02:35.832><c>temporal, </c><00:02:36.200><c>os</c>
+
+00:02:36.470 --> 00:02:36.480 align:start position:0%
+Estou a falar gráfico temporal, os
+ 
+
+00:02:36.480 --> 00:02:38.910 align:start position:0%
+Estou a falar gráfico temporal, os
+melhores <00:02:36.833><c>preços </c><00:02:37.186><c>para </c><00:02:37.539><c>que </c><00:02:37.892><c>possa </c><00:02:38.245><c>atuar </c><00:02:38.598><c>sempre</c>
+
+00:02:38.910 --> 00:02:38.920 align:start position:0%
+melhores preços para que possa atuar sempre
+ 
+
+00:02:38.920 --> 00:02:42.149 align:start position:0%
+melhores preços para que possa atuar sempre
+serão <00:02:39.470><c>nessas </c><00:02:40.020><c>extremidades, </c><00:02:40.570><c>procurando </c><00:02:41.120><c>a</c>
+
+00:02:42.149 --> 00:02:42.159 align:start position:0%
+serão nessas extremidades, procurando a
+ 
+
+00:02:42.159 --> 00:02:44.550 align:start position:0%
+serão nessas extremidades, procurando a
+inversão <00:02:42.652><c>do </c><00:02:43.145><c>movimento, </c><00:02:43.638><c>ok?</c>
+
+00:02:44.550 --> 00:02:44.560 align:start position:0%
+inversão do movimento, ok?
+ 
+
+00:02:44.560 --> 00:02:47.949 align:start position:0%
+inversão do movimento, ok?
+Ou <00:02:45.192><c>seja, </c><00:02:45.824><c>o </c><00:02:46.456><c>mercado </c><00:02:47.088><c>abre, </c><00:02:47.720><c>vai</c>
+
+00:02:47.949 --> 00:02:47.959 align:start position:0%
+Ou seja, o mercado abre, vai
+ 
+
+00:02:47.959 --> 00:02:50.270 align:start position:0%
+Ou seja, o mercado abre, vai
+transitar <00:02:48.379><c>aqui </c><00:02:48.799><c>dentro </c><00:02:49.219><c>destas </c><00:02:49.639><c>regiões,</c>
+
+00:02:50.270 --> 00:02:50.280 align:start position:0%
+transitar aqui dentro destas regiões,
+ 
+
+00:02:50.280 --> 00:02:55.149 align:start position:0%
+transitar aqui dentro destas regiões,
+tá? <00:02:51.033><c>Dentro </c><00:02:51.786><c>desta </c><00:02:52.539><c>região, </c><00:02:53.292><c>neste </c><00:02:54.045><c>meio, </c><00:02:54.798><c>é</c>
+
+00:02:55.149 --> 00:02:55.159 align:start position:0%
+tá? Dentro desta região, neste meio, é
+ 
+
+00:02:55.159 --> 00:02:57.710 align:start position:0%
+tá? Dentro desta região, neste meio, é
+sempre <00:02:55.769><c>mais </c><00:02:56.379><c>difícil </c><00:02:56.989><c>acertar. </c><00:02:57.599><c>Por</c>
+
+00:02:57.710 --> 00:02:57.720 align:start position:0%
+sempre mais difícil acertar. Por
+ 
+
+00:02:57.720 --> 00:02:59.869 align:start position:0%
+sempre mais difícil acertar. Por
+quê? <00:02:58.088><c>Porque </c><00:02:58.456><c>o </c><00:02:58.824><c>preço </c><00:02:59.192><c>pode </c><00:02:59.560><c>ficar</c>
+
+00:02:59.869 --> 00:02:59.879 align:start position:0%
+quê? Porque o preço pode ficar
+ 
+
+00:02:59.879 --> 00:03:02.790 align:start position:0%
+quê? Porque o preço pode ficar
+a <00:03:00.147><c>abanar </c><00:03:00.415><c>bem </c><00:03:00.683><c>rápido </c><00:03:00.951><c>aqui </c><00:03:01.219><c>dentro, </c><00:03:01.487><c>não </c><00:03:01.755><c>é?</c>
+
+00:03:02.790 --> 00:03:02.800 align:start position:0%
+a abanar bem rápido aqui dentro, não é?
+ 
+
+00:03:02.800 --> 00:03:05.509 align:start position:0%
+a abanar bem rápido aqui dentro, não é?
+em <00:03:03.000><c>contrapartida.</c>
+
+00:03:05.509 --> 00:03:05.519 align:start position:0%
+em contrapartida.
+ 
+
+00:03:05.519 --> 00:03:07.869 align:start position:0%
+em contrapartida.
+Dentro <00:03:05.872><c>destas </c><00:03:06.225><c>regiões, </c><00:03:06.578><c>se </c><00:03:06.931><c>nós </c><00:03:07.284><c>tivermos </c><00:03:07.637><c>as</c>
+
+00:03:07.869 --> 00:03:07.879 align:start position:0%
+Dentro destas regiões, se nós tivermos as
+ 
+
+00:03:07.879 --> 00:03:10.309 align:start position:0%
+Dentro destas regiões, se nós tivermos as
+referências <00:03:08.532><c>dos </c><00:03:09.185><c>alvos, </c><00:03:09.838><c>sabemos</c>
+
+00:03:10.309 --> 00:03:10.319 align:start position:0%
+referências dos alvos, sabemos
+ 
+
+00:03:10.319 --> 00:03:13.710 align:start position:0%
+referências dos alvos, sabemos
+onde, <00:03:10.770><c>em </c><00:03:11.221><c>teoria </c><00:03:11.672><c>o </c><00:03:12.123><c>mercado </c><00:03:12.574><c>tende </c><00:03:13.025><c>a </c><00:03:13.476><c>fazer</c>
+
+00:03:13.710 --> 00:03:13.720 align:start position:0%
+onde, em teoria o mercado tende a fazer
+ 
+
+00:03:13.720 --> 00:03:18.830 align:start position:0%
+onde, em teoria o mercado tende a fazer
+um <00:03:14.440><c>movimento </c><00:03:15.160><c>e </c><00:03:15.880><c>voltar </c><00:03:16.600><c>o </c><00:03:17.320><c>movimento, </c><00:03:18.040><c>ok?</c>
+
+00:03:18.830 --> 00:03:18.840 align:start position:0%
+um movimento e voltar o movimento, ok?
+ 
+
+00:03:18.840 --> 00:03:22.509 align:start position:0%
+um movimento e voltar o movimento, ok?
+Assim <00:03:19.150><c>ele </c><00:03:19.460><c>trabalha </c><00:03:19.770><c>sempre </c><00:03:20.080><c>ondulando</c>
+
+00:03:22.509 --> 00:03:22.519 align:start position:0%
+Assim ele trabalha sempre ondulando
+ 
+
+00:03:22.519 --> 00:03:24.910 align:start position:0%
+Assim ele trabalha sempre ondulando
+dentro <00:03:22.919><c>dessas </c><00:03:23.319><c>regiões.</c>
+
+00:03:24.910 --> 00:03:24.920 align:start position:0%
+dentro dessas regiões.
+ 
+
+00:03:24.920 --> 00:03:26.670 align:start position:0%
+dentro dessas regiões.
+O <00:03:25.137><c>que </c><00:03:25.354><c>é </c><00:03:25.571><c>que </c><00:03:25.788><c>nós </c><00:03:26.005><c>vamos </c><00:03:26.222><c>buscar </c><00:03:26.439><c>dentro</c>
+
+00:03:26.670 --> 00:03:26.680 align:start position:0%
+O que é que nós vamos buscar dentro
+ 
+
+00:03:26.680 --> 00:03:28.910 align:start position:0%
+O que é que nós vamos buscar dentro
+dessas <00:03:26.928><c>regiões? </c><00:03:27.176><c>a </c><00:03:27.424><c>gente </c><00:03:27.672><c>vai </c><00:03:27.920><c>buscar</c>
+
+00:03:28.910 --> 00:03:28.920 align:start position:0%
+dessas regiões? a gente vai buscar
+ 
+
+00:03:28.920 --> 00:03:32.910 align:start position:0%
+dessas regiões? a gente vai buscar
+operações <00:03:29.439><c>no </c><00:03:29.958><c>sentido </c><00:03:30.477><c>inverso </c><00:03:30.996><c>do </c><00:03:31.515><c>preço.</c>
+
+00:03:32.910 --> 00:03:32.920 align:start position:0%
+operações no sentido inverso do preço.
+ 
+
+00:03:32.920 --> 00:03:34.869 align:start position:0%
+operações no sentido inverso do preço.
+Então,
+
+00:03:34.869 --> 00:03:34.879 align:start position:0%
+Então,
+ 
+
+00:03:34.879 --> 00:03:37.990 align:start position:0%
+Então,
+estas <00:03:35.509><c>referências </c><00:03:36.139><c>servem </c><00:03:36.769><c>como </c><00:03:37.399><c>pontos</c>
+
+00:03:37.990 --> 00:03:38.000 align:start position:0%
+estas referências servem como pontos
+ 
+
+00:03:38.000 --> 00:03:39.630 align:start position:0%
+estas referências servem como pontos
+interessantes <00:03:38.329><c>para </c><00:03:38.658><c>nós </c><00:03:38.987><c>pensarmos </c><00:03:39.316><c>em</c>
+
+00:03:39.630 --> 00:03:39.640 align:start position:0%
+interessantes para nós pensarmos em
+ 
+
+00:03:39.640 --> 00:03:43.309 align:start position:0%
+interessantes para nós pensarmos em
+comprar <00:03:40.539><c>ou </c><00:03:41.438><c>vender.</c>
+
+00:03:43.309 --> 00:03:43.319 align:start position:0%
+comprar ou vender.
+ 
+
+00:03:43.319 --> 00:03:45.630 align:start position:0%
+comprar ou vender.
+E <00:03:43.604><c>aqui </c><00:03:43.889><c>acaba </c><00:03:44.174><c>por </c><00:03:44.459><c>ser </c><00:03:44.744><c>no </c><00:03:45.029><c>sentido </c><00:03:45.314><c>oposto,</c>
+
+00:03:45.630 --> 00:03:45.640 align:start position:0%
+E aqui acaba por ser no sentido oposto,
+ 
+
+00:03:45.640 --> 00:03:47.350 align:start position:0%
+E aqui acaba por ser no sentido oposto,
+porque <00:03:45.943><c>assim, </c><00:03:46.246><c>a </c><00:03:46.549><c>região </c><00:03:46.852><c>alvo </c><00:03:47.155><c>do</c>
+
+00:03:47.350 --> 00:03:47.360 align:start position:0%
+porque assim, a região alvo do
+ 
+
+00:03:47.360 --> 00:03:52.470 align:start position:0%
+porque assim, a região alvo do
+vendedor <00:03:48.319><c>torna-se </c><00:03:49.278><c>também </c><00:03:50.237><c>a </c><00:03:51.196><c>região </c><00:03:52.155><c>de</c>
+
+00:03:52.470 --> 00:03:52.480 align:start position:0%
+vendedor torna-se também a região de
+ 
+
+00:03:52.480 --> 00:03:55.110 align:start position:0%
+vendedor torna-se também a região de
+interesse <00:03:52.900><c>do </c><00:03:53.320><c>comprador. </c><00:03:53.740><c>Então, </c><00:03:54.160><c>se </c><00:03:54.580><c>aqui </c><00:03:55.000><c>é</c>
+
+00:03:55.110 --> 00:03:55.120 align:start position:0%
+interesse do comprador. Então, se aqui é
+ 
+
+00:03:55.120 --> 00:03:57.990 align:start position:0%
+interesse do comprador. Então, se aqui é
+um <00:03:55.579><c>alvo </c><00:03:56.038><c>do </c><00:03:56.497><c>vendedor, </c><00:03:56.956><c>abaixo </c><00:03:57.415><c>temos </c><00:03:57.874><c>o</c>
+
+00:03:57.990 --> 00:03:58.000 align:start position:0%
+um alvo do vendedor, abaixo temos o
+ 
+
+00:03:58.000 --> 00:04:02.470 align:start position:0%
+um alvo do vendedor, abaixo temos o
+quê? <00:03:58.706><c>A </c><00:03:59.412><c>referência </c><00:04:00.118><c>de </c><00:04:00.824><c>região </c><00:04:01.530><c>onde </c><00:04:02.236><c>o</c>
+
+00:04:02.470 --> 00:04:02.480 align:start position:0%
+quê? A referência de região onde o
+ 
+
+00:04:02.480 --> 00:04:05.589 align:start position:0%
+quê? A referência de região onde o
+comprador <00:04:03.079><c>também </c><00:04:03.678><c>beneficia. </c><00:04:04.277><c>Por </c><00:04:04.876><c>quê?</c>
+
+00:04:05.589 --> 00:04:05.599 align:start position:0%
+comprador também beneficia. Por quê?
+ 
+
+00:04:05.599 --> 00:04:08.509 align:start position:0%
+comprador também beneficia. Por quê?
+Porque <00:04:05.834><c>se </c><00:04:06.069><c>é </c><00:04:06.304><c>o </c><00:04:06.539><c>alvo </c><00:04:06.774><c>de </c><00:04:07.009><c>quem </c><00:04:07.244><c>está </c><00:04:07.479><c>vendido,</c>
+
+00:04:08.509 --> 00:04:08.519 align:start position:0%
+Porque se é o alvo de quem está vendido,
+ 
+
+00:04:08.519 --> 00:04:10.869 align:start position:0%
+Porque se é o alvo de quem está vendido,
+quem <00:04:08.879><c>vendeu </c><00:04:09.239><c>vai </c><00:04:09.599><c>realizar. </c><00:04:09.959><c>No </c><00:04:10.319><c>que </c><00:04:10.679><c>ele</c>
+
+00:04:10.869 --> 00:04:10.879 align:start position:0%
+quem vendeu vai realizar. No que ele
+ 
+
+00:04:10.879 --> 00:04:13.149 align:start position:0%
+quem vendeu vai realizar. No que ele
+realiza, <00:04:11.179><c>ele </c><00:04:11.479><c>manda </c><00:04:11.779><c>o </c><00:04:12.079><c>preço </c><00:04:12.379><c>para </c><00:04:12.679><c>cima,</c>
+
+00:04:13.149 --> 00:04:13.159 align:start position:0%
+realiza, ele manda o preço para cima,
+ 
+
+00:04:13.159 --> 00:04:15.589 align:start position:0%
+realiza, ele manda o preço para cima,
+tá?
+
+00:04:15.589 --> 00:04:15.599 align:start position:0%
+tá?
+ 
+
+00:04:15.599 --> 00:04:18.870 align:start position:0%
+tá?
+Beleza? <00:04:16.033><c>Este </c><00:04:16.467><c>é </c><00:04:16.901><c>o </c><00:04:17.335><c>ponto </c><00:04:17.769><c>básico </c><00:04:18.203><c>aqui </c><00:04:18.637><c>para</c>
+
+00:04:18.870 --> 00:04:18.880 align:start position:0%
+Beleza? Este é o ponto básico aqui para
+ 
+
+00:04:18.880 --> 00:04:21.670 align:start position:0%
+Beleza? Este é o ponto básico aqui para
+o <00:04:19.293><c>entendimento </c><00:04:19.706><c>de </c><00:04:20.119><c>região. </c><00:04:20.532><c>Só </c><00:04:20.945><c>um </c><00:04:21.358><c>pormenor</c>
+
+00:04:21.670 --> 00:04:21.680 align:start position:0%
+o entendimento de região. Só um pormenor
+ 
+
+00:04:21.680 --> 00:04:23.790 align:start position:0%
+o entendimento de região. Só um pormenor
+importante, <00:04:21.942><c>isto </c><00:04:22.204><c>aqui </c><00:04:22.466><c>não </c><00:04:22.728><c>é </c><00:04:22.990><c>um </c><00:04:23.252><c>setup </c><00:04:23.514><c>de</c>
+
+00:04:23.790 --> 00:04:23.800 align:start position:0%
+importante, isto aqui não é um setup de
+ 
+
+00:04:23.800 --> 00:04:26.230 align:start position:0%
+importante, isto aqui não é um setup de
+tipo <00:04:24.173><c>chegou </c><00:04:24.546><c>à </c><00:04:24.919><c>linha, </c><00:04:25.292><c>compras </c><00:04:25.665><c>e </c><00:04:26.038><c>tu</c>
+
+00:04:26.230 --> 00:04:26.240 align:start position:0%
+tipo chegou à linha, compras e tu
+ 
+
+00:04:26.240 --> 00:04:29.550 align:start position:0%
+tipo chegou à linha, compras e tu
+vende <00:04:26.712><c>sem </c><00:04:27.184><c>analisar </c><00:04:27.656><c>mais </c><00:04:28.128><c>nada, </c><00:04:28.600><c>ok?</c>
+
+00:04:29.550 --> 00:04:29.560 align:start position:0%
+vende sem analisar mais nada, ok?
+ 
+
+00:04:29.560 --> 00:04:31.749 align:start position:0%
+vende sem analisar mais nada, ok?
+Segundo <00:04:29.919><c>fator</c>
+
+00:04:31.749 --> 00:04:31.759 align:start position:0%
+Segundo fator
+ 
+
+00:04:31.759 --> 00:04:34.070 align:start position:0%
+Segundo fator
+para <00:04:32.112><c>validar </c><00:04:32.465><c>a </c><00:04:32.818><c>entrada </c><00:04:33.171><c>virá </c><00:04:33.524><c>sempre </c><00:04:33.877><c>da</c>
+
+00:04:34.070 --> 00:04:34.080 align:start position:0%
+para validar a entrada virá sempre da
+ 
+
+00:04:34.080 --> 00:04:36.590 align:start position:0%
+para validar a entrada virá sempre da
+onde? <00:04:34.411><c>Lá </c><00:04:34.742><c>do </c><00:04:35.073><c>contexto </c><00:04:35.404><c>da </c><00:04:35.735><c>micro, </c><00:04:36.066><c>não </c><00:04:36.397><c>é?</c>
+
+00:04:36.590 --> 00:04:36.600 align:start position:0%
+onde? Lá do contexto da micro, não é?
+ 
+
+00:04:36.600 --> 00:04:39.749 align:start position:0%
+onde? Lá do contexto da micro, não é?
+Então, <00:04:36.942><c>a </c><00:04:37.284><c>micro </c><00:04:37.626><c>ela </c><00:04:37.968><c>não </c><00:04:38.310><c>pode </c><00:04:38.652><c>estar </c><00:04:38.994><c>eh</c>
+
+00:04:39.749 --> 00:04:39.759 align:start position:0%
+Então, a micro ela não pode estar eh
+ 
+
+00:04:39.759 --> 00:04:42.110 align:start position:0%
+Então, a micro ela não pode estar eh
+distorcida <00:04:40.119><c>do </c><00:04:40.479><c>que </c><00:04:40.839><c>está </c><00:04:41.199><c>a </c><00:04:41.559><c>pensar. </c><00:04:41.919><c>Ou</c>
+
+00:04:42.110 --> 00:04:42.120 align:start position:0%
+distorcida do que está a pensar. Ou
+ 
+
+00:04:42.120 --> 00:04:44.990 align:start position:0%
+distorcida do que está a pensar. Ou
+seja, <00:04:42.535><c>se </c><00:04:42.950><c>tiver </c><00:04:43.365><c>uma </c><00:04:43.780><c>micro </c><00:04:44.195><c>vendedora</c>
+
+00:04:44.990 --> 00:04:45.000 align:start position:0%
+seja, se tiver uma micro vendedora
+ 
+
+00:04:45.000 --> 00:04:48.390 align:start position:0%
+seja, se tiver uma micro vendedora
+muito <00:04:45.526><c>forte, </c><00:04:46.052><c>mesmo </c><00:04:46.578><c>o </c><00:04:47.104><c>preço </c><00:04:47.630><c>estando </c><00:04:48.156><c>na</c>
+
+00:04:48.390 --> 00:04:48.400 align:start position:0%
+muito forte, mesmo o preço estando na
+ 
+
+00:04:48.400 --> 00:04:51.870 align:start position:0%
+muito forte, mesmo o preço estando na
+região <00:04:48.880><c>do </c><00:04:49.360><c>alvo, </c><00:04:49.840><c>você </c><00:04:50.320><c>obviamente</c>
+
+00:04:51.870 --> 00:04:51.880 align:start position:0%
+região do alvo, você obviamente
+ 
+
+00:04:51.880 --> 00:04:54.469 align:start position:0%
+região do alvo, você obviamente
+não <00:04:52.246><c>vai </c><00:04:52.612><c>fazer </c><00:04:52.978><c>uma </c><00:04:53.344><c>compra </c><00:04:53.710><c>aqui </c><00:04:54.076><c>dentro,</c>
+
+00:04:54.469 --> 00:04:54.479 align:start position:0%
+não vai fazer uma compra aqui dentro,
+ 
+
+00:04:54.479 --> 00:04:57.510 align:start position:0%
+não vai fazer uma compra aqui dentro,
+porque <00:04:54.862><c>se </c><00:04:55.245><c>ela </c><00:04:55.628><c>estiver </c><00:04:56.011><c>muito </c><00:04:56.394><c>forte, </c><00:04:56.777><c>o </c><00:04:57.160><c>preço</c>
+
+00:04:57.510 --> 00:04:57.520 align:start position:0%
+porque se ela estiver muito forte, o preço
+ 
+
+00:04:57.520 --> 00:05:01.189 align:start position:0%
+porque se ela estiver muito forte, o preço
+vai <00:04:57.977><c>continuar </c><00:04:58.434><c>a </c><00:04:58.891><c>cair, </c><00:04:59.348><c>tá? </c><00:04:59.805><c>Mas </c><00:05:00.262><c>se </c><00:05:00.719><c>você</c>
+
+00:05:01.189 --> 00:05:01.199 align:start position:0%
+vai continuar a cair, tá? Mas se você
+ 
+
+00:05:01.199 --> 00:05:04.870 align:start position:0%
+vai continuar a cair, tá? Mas se você
+perceber <00:05:01.895><c>a </c><00:05:02.591><c>ineficiência </c><00:05:03.287><c>da </c><00:05:03.983><c>micro, </c><00:05:04.679><c>ou</c>
+
+00:05:04.870 --> 00:05:04.880 align:start position:0%
+perceber a ineficiência da micro, ou
+ 
+
+00:05:04.880 --> 00:05:07.230 align:start position:0%
+perceber a ineficiência da micro, ou
+seja, <00:05:05.320><c>ela </c><00:05:05.760><c>ficar </c><00:05:06.200><c>verde, </c><00:05:06.640><c>começar </c><00:05:07.080><c>a</c>
+
+00:05:07.230 --> 00:05:07.240 align:start position:0%
+seja, ela ficar verde, começar a
+ 
+
+00:05:07.240 --> 00:05:10.310 align:start position:0%
+seja, ela ficar verde, começar a
+acelerar, <00:05:07.736><c>estando </c><00:05:08.232><c>o </c><00:05:08.728><c>preço </c><00:05:09.224><c>nesta </c><00:05:09.720><c>região,</c>
+
+00:05:10.310 --> 00:05:10.320 align:start position:0%
+acelerar, estando o preço nesta região,
+ 
+
+00:05:10.320 --> 00:05:13.990 align:start position:0%
+acelerar, estando o preço nesta região,
+opa, <00:05:10.749><c>aí </c><00:05:11.178><c>já </c><00:05:11.607><c>é </c><00:05:12.036><c>outra </c><00:05:12.465><c>história, </c><00:05:12.894><c>não </c><00:05:13.323><c>é? </c><00:05:13.752><c>Aí</c>
+
+00:05:13.990 --> 00:05:14.000 align:start position:0%
+opa, aí já é outra história, não é? Aí
+ 
+
+00:05:14.000 --> 00:05:16.550 align:start position:0%
+opa, aí já é outra história, não é? Aí
+consegue <00:05:14.549><c>fazer </c><00:05:15.098><c>uma </c><00:05:15.647><c>entrada </c><00:05:16.196><c>dentro</c>
+
+00:05:16.550 --> 00:05:16.560 align:start position:0%
+consegue fazer uma entrada dentro
+ 
+
+00:05:16.560 --> 00:05:20.670 align:start position:0%
+consegue fazer uma entrada dentro
+da <00:05:17.051><c>região </c><00:05:17.542><c>do </c><00:05:18.033><c>alvo </c><00:05:18.524><c>do </c><00:05:19.015><c>vendedor, </c><00:05:19.506><c>ok? </c><00:05:19.997><c>Então</c>
+
+00:05:20.670 --> 00:05:20.680 align:start position:0%
+da região do alvo do vendedor, ok? Então
+ 
+
+00:05:20.680 --> 00:05:22.270 align:start position:0%
+da região do alvo do vendedor, ok? Então
+é <00:05:20.968><c>muito </c><00:05:21.256><c>importante </c><00:05:21.544><c>que </c><00:05:21.832><c>compreenda </c><00:05:22.120><c>que</c>
+
+00:05:22.270 --> 00:05:22.280 align:start position:0%
+é muito importante que compreenda que
+ 
+
+00:05:22.280 --> 00:05:24.710 align:start position:0%
+é muito importante que compreenda que
+para <00:05:22.528><c>não </c><00:05:22.776><c>se </c><00:05:23.024><c>tornar </c><00:05:23.272><c>só </c><00:05:23.520><c>um </c><00:05:23.768><c>setup </c><00:05:24.016><c>de </c><00:05:24.264><c>região, </c><00:05:24.512><c>está</c>
+
+00:05:24.710 --> 00:05:24.720 align:start position:0%
+para não se tornar só um setup de região, está
+ 
+
+00:05:24.720 --> 00:05:25.749 align:start position:0%
+para não se tornar só um setup de região, está
+bom?
+
+00:05:25.749 --> 00:05:25.759 align:start position:0%
+bom?
+ 
+
+00:05:25.759 --> 00:05:29.670 align:start position:0%
+bom?
+No <00:05:26.267><c>renco. </c><00:05:26.775><c>Esta </c><00:05:27.283><c>é </c><00:05:27.791><c>a </c><00:05:28.299><c>referência </c><00:05:28.807><c>em </c><00:05:29.315><c>relação</c>
+
+00:05:29.670 --> 00:05:29.680 align:start position:0%
+No renco. Esta é a referência em relação
+ 
+
+00:05:29.680 --> 00:05:33.110 align:start position:0%
+No renco. Esta é a referência em relação
+aos <00:05:30.206><c>preços. </c><00:05:30.732><c>Ou </c><00:05:31.258><c>seja, </c><00:05:31.784><c>estas </c><00:05:32.310><c>regiões </c><00:05:32.836><c>de</c>
+
+00:05:33.110 --> 00:05:33.120 align:start position:0%
+aos preços. Ou seja, estas regiões de
+ 
+
+00:05:33.120 --> 00:05:36.469 align:start position:0%
+aos preços. Ou seja, estas regiões de
+alvos <00:05:33.633><c>são </c><00:05:34.146><c>os </c><00:05:34.659><c>pontos </c><00:05:35.172><c>para </c><00:05:35.685><c>pensares </c><00:05:36.198><c>em</c>
+
+00:05:36.469 --> 00:05:36.479 align:start position:0%
+alvos são os pontos para pensares em
+ 
+
+00:05:36.479 --> 00:05:39.029 align:start position:0%
+alvos são os pontos para pensares em
+entrar <00:05:36.845><c>no </c><00:05:37.211><c>sentido </c><00:05:37.577><c>contrário. </c><00:05:37.943><c>Só </c><00:05:38.309><c>que </c><00:05:38.675><c>preste</c>
+
+00:05:39.029 --> 00:05:39.039 align:start position:0%
+entrar no sentido contrário. Só que preste
+ 
+
+00:05:39.039 --> 00:05:41.710 align:start position:0%
+entrar no sentido contrário. Só que preste
+atenção <00:05:39.535><c>num </c><00:05:40.031><c>pormenor </c><00:05:40.527><c>importante. </c><00:05:41.023><c>Você </c><00:05:41.519><c>tem</c>
+
+00:05:41.710 --> 00:05:41.720 align:start position:0%
+atenção num pormenor importante. Você tem
+ 
+
+00:05:41.720 --> 00:05:43.270 align:start position:0%
+atenção num pormenor importante. Você tem
+que <00:05:41.960><c>prestar </c><00:05:42.200><c>atenção </c><00:05:42.440><c>ao </c><00:05:42.680><c>fluxo. </c><00:05:42.920><c>Se </c><00:05:43.160><c>o</c>
+
+00:05:43.270 --> 00:05:43.280 align:start position:0%
+que prestar atenção ao fluxo. Se o
+ 
+
+00:05:43.280 --> 00:05:45.150 align:start position:0%
+que prestar atenção ao fluxo. Se o
+mercado <00:05:43.616><c>esver </c><00:05:43.952><c>hiper </c><00:05:44.288><c>vendedor, </c><00:05:44.624><c>não </c><00:05:44.960><c>se</c>
+
+00:05:45.150 --> 00:05:45.160 align:start position:0%
+mercado esver hiper vendedor, não se
+ 
+
+00:05:45.160 --> 00:05:47.230 align:start position:0%
+mercado esver hiper vendedor, não se
+vai <00:05:45.446><c>fazer </c><00:05:45.732><c>compra </c><00:05:46.018><c>aqui. </c><00:05:46.304><c>Se </c><00:05:46.590><c>ele </c><00:05:46.876><c>estiver</c>
+
+00:05:47.230 --> 00:05:47.240 align:start position:0%
+vai fazer compra aqui. Se ele estiver
+ 
+
+00:05:47.240 --> 00:05:49.270 align:start position:0%
+vai fazer compra aqui. Se ele estiver
+hipercrador,
+
+00:05:49.270 --> 00:05:49.280 align:start position:0%
+hipercrador,
+ 
+
+00:05:49.280 --> 00:05:51.870 align:start position:0%
+hipercrador,
+vai <00:05:49.686><c>evitar </c><00:05:50.092><c>fazer </c><00:05:50.498><c>venda </c><00:05:50.904><c>aqui. </c><00:05:51.310><c>A </c><00:05:51.716><c>não</c>
+
+00:05:51.870 --> 00:05:51.880 align:start position:0%
+vai evitar fazer venda aqui. A não
+ 
+
+00:05:51.880 --> 00:05:53.830 align:start position:0%
+vai evitar fazer venda aqui. A não
+ser <00:05:52.180><c>em </c><00:05:52.480><c>algum </c><00:05:52.780><c>momento </c><00:05:53.080><c>específico </c><00:05:53.380><c>que </c><00:05:53.680><c>lhe</c>
+
+00:05:53.830 --> 00:05:53.840 align:start position:0%
+ser em algum momento específico que lhe
+ 
+
+00:05:53.840 --> 00:05:56.590 align:start position:0%
+ser em algum momento específico que lhe
+já <00:05:54.199><c>tenha </c><00:05:54.558><c>treinado, </c><00:05:54.917><c>validado.</c>
+
+00:05:56.590 --> 00:05:56.600 align:start position:0%
+já tenha treinado, validado.
+ 
+
+00:05:56.600 --> 00:05:59.070 align:start position:0%
+já tenha treinado, validado.
+E <00:05:56.986><c>se </c><00:05:57.372><c>aí </c><00:05:57.758><c>tivermos </c><00:05:58.144><c>outra </c><00:05:58.530><c>regra, </c><00:05:58.916><c>por</c>
+
+00:05:59.070 --> 00:05:59.080 align:start position:0%
+E se aí tivermos outra regra, por
+ 
+
+00:05:59.080 --> 00:06:01.590 align:start position:0%
+E se aí tivermos outra regra, por
+exemplo, <00:05:59.453><c>a </c><00:05:59.826><c>própria </c><00:06:00.199><c>cor </c><00:06:00.572><c>interna </c><00:06:00.945><c>do </c><00:06:01.318><c>renco</c>
+
+00:06:01.590 --> 00:06:01.600 align:start position:0%
+exemplo, a própria cor interna do renco
+ 
+
+00:06:01.600 --> 00:06:04.230 align:start position:0%
+exemplo, a própria cor interna do renco
+que <00:06:01.857><c>já </c><00:06:02.114><c>expliquei </c><00:06:02.371><c>na </c><00:06:02.628><c>outra </c><00:06:02.885><c>aula, </c><00:06:03.142><c>não </c><00:06:03.399><c>é?</c>
+
+00:06:04.230 --> 00:06:04.240 align:start position:0%
+que já expliquei na outra aula, não é?
+ 
+
+00:06:04.240 --> 00:06:06.909 align:start position:0%
+que já expliquei na outra aula, não é?
+Aí <00:06:04.610><c>beleza, </c><00:06:04.980><c>tens </c><00:06:05.350><c>uma </c><00:06:05.720><c>justificação</c>
+
+00:06:06.909 --> 00:06:06.919 align:start position:0%
+Aí beleza, tens uma justificação
+ 
+
+00:06:06.919 --> 00:06:09.710 align:start position:0%
+Aí beleza, tens uma justificação
+dentro <00:06:07.299><c>da </c><00:06:07.679><c>região, </c><00:06:08.059><c>ok? </c><00:06:08.439><c>Então </c><00:06:08.819><c>só </c><00:06:09.199><c>estou</c>
+
+00:06:09.710 --> 00:06:09.720 align:start position:0%
+dentro da região, ok? Então só estou
+ 
+
+00:06:09.720 --> 00:06:11.430 align:start position:0%
+dentro da região, ok? Então só estou
+dizendo <00:06:10.024><c>isso </c><00:06:10.328><c>porque </c><00:06:10.632><c>senão </c><00:06:10.936><c>fica </c><00:06:11.240><c>assim,</c>
+
+00:06:11.430 --> 00:06:11.440 align:start position:0%
+dizendo isso porque senão fica assim,
+ 
+
+00:06:11.440 --> 00:06:13.670 align:start position:0%
+dizendo isso porque senão fica assim,
+ah, <00:06:11.702><c>é </c><00:06:11.964><c>só </c><00:06:12.226><c>chegar </c><00:06:12.488><c>lá </c><00:06:12.750><c>e </c><00:06:13.012><c>sair </c><00:06:13.274><c>fazendo</c>
+
+00:06:13.670 --> 00:06:13.680 align:start position:0%
+ah, é só chegar lá e sair fazendo
+ 
+
+00:06:13.680 --> 00:06:17.830 align:start position:0%
+ah, é só chegar lá e sair fazendo
+operação, <00:06:14.471><c>mas </c><00:06:15.262><c>deve </c><00:06:16.053><c>e </c><00:06:16.844><c>respeitar </c><00:06:17.635><c>de</c>
+
+00:06:17.830 --> 00:06:17.840 align:start position:0%
+operação, mas deve e respeitar de
+ 
+
+00:06:17.840 --> 00:06:21.510 align:start position:0%
+operação, mas deve e respeitar de
+facto <00:06:18.544><c>estas </c><00:06:19.248><c>combinações, </c><00:06:19.952><c>tá </c><00:06:20.656><c>beleza? </c><00:06:21.360><c>Se</c>
+
+00:06:21.510 --> 00:06:21.520 align:start position:0%
+facto estas combinações, tá beleza? Se
+ 
+
+00:06:21.520 --> 00:06:24.350 align:start position:0%
+facto estas combinações, tá beleza? Se
+estas <00:06:21.862><c>são </c><00:06:22.204><c>as </c><00:06:22.546><c>regiões </c><00:06:22.888><c>para </c><00:06:23.230><c>eu </c><00:06:23.572><c>pensar </c><00:06:23.914><c>em</c>
+
+00:06:24.350 --> 00:06:24.360 align:start position:0%
+estas são as regiões para eu pensar em
+ 
+
+00:06:24.360 --> 00:06:26.710 align:start position:0%
+estas são as regiões para eu pensar em
+contratendência,
+
+00:06:26.710 --> 00:06:26.720 align:start position:0%
+contratendência,
+ 
+
+00:06:26.720 --> 00:06:28.870 align:start position:0%
+contratendência,
+o <00:06:27.053><c>que </c><00:06:27.386><c>estas </c><00:06:27.719><c>regiões </c><00:06:28.052><c>também </c><00:06:28.385><c>sugerem </c><00:06:28.718><c>para</c>
+
+00:06:28.870 --> 00:06:28.880 align:start position:0%
+o que estas regiões também sugerem para
+ 
+
+00:06:28.880 --> 00:06:32.749 align:start position:0%
+o que estas regiões também sugerem para
+mim? <00:06:29.493><c>Que </c><00:06:30.106><c>estas </c><00:06:30.719><c>regiões </c><00:06:31.332><c>são </c><00:06:31.945><c>também </c><00:06:32.558><c>de</c>
+
+00:06:32.749 --> 00:06:32.759 align:start position:0%
+mim? Que estas regiões são também de
+ 
+
+00:06:32.759 --> 00:06:36.469 align:start position:0%
+mim? Que estas regiões são também de
+facto, <00:06:33.305><c>as </c><00:06:33.851><c>piores </c><00:06:34.397><c>regiões </c><00:06:34.943><c>para </c><00:06:35.489><c>você </c><00:06:36.035><c>atuar</c>
+
+00:06:36.469 --> 00:06:36.479 align:start position:0%
+facto, as piores regiões para você atuar
+ 
+
+00:06:36.479 --> 00:06:39.950 align:start position:0%
+facto, as piores regiões para você atuar
+a <00:06:37.012><c>favor </c><00:06:37.545><c>da </c><00:06:38.078><c>tendência. </c><00:06:38.611><c>Opá, </c><00:06:39.144><c>como </c><00:06:39.677><c>assim,</c>
+
+00:06:39.950 --> 00:06:39.960 align:start position:0%
+a favor da tendência. Opá, como assim,
+ 
+
+00:06:39.960 --> 00:06:43.990 align:start position:0%
+a favor da tendência. Opá, como assim,
+Sérgio? <00:06:40.728><c>Pior </c><00:06:41.496><c>referência </c><00:06:42.264><c>para </c><00:06:43.032><c>atuar </c><00:06:43.800><c>a</c>
+
+00:06:43.990 --> 00:06:44.000 align:start position:0%
+Sérgio? Pior referência para atuar a
+ 
+
+00:06:44.000 --> 00:06:46.029 align:start position:0%
+Sérgio? Pior referência para atuar a
+favor?
+
+00:06:46.029 --> 00:06:46.039 align:start position:0%
+favor?
+ 
+
+00:06:46.039 --> 00:06:47.670 align:start position:0%
+favor?
+Ué, <00:06:46.292><c>então </c><00:06:46.545><c>estás-me </c><00:06:46.798><c>a </c><00:06:47.051><c>indicar </c><00:06:47.304><c>para </c><00:06:47.557><c>eu</c>
+
+00:06:47.670 --> 00:06:47.680 align:start position:0%
+Ué, então estás-me a indicar para eu
+ 
+
+00:06:47.680 --> 00:06:50.510 align:start position:0%
+Ué, então estás-me a indicar para eu
+operar <00:06:48.074><c>contra </c><00:06:48.468><c>o </c><00:06:48.862><c>mercado? </c><00:06:49.256><c>Não, </c><00:06:49.650><c>mas </c><00:06:50.044><c>o </c><00:06:50.438><c>que</c>
+
+00:06:50.510 --> 00:06:50.520 align:start position:0%
+operar contra o mercado? Não, mas o que
+ 
+
+00:06:50.520 --> 00:06:52.790 align:start position:0%
+operar contra o mercado? Não, mas o que
+quero <00:06:50.873><c>dizer </c><00:06:51.226><c>é, </c><00:06:51.579><c>por </c><00:06:51.932><c>exemplo, </c><00:06:52.285><c>se </c><00:06:52.638><c>a</c>
+
+00:06:52.790 --> 00:06:52.800 align:start position:0%
+quero dizer é, por exemplo, se a
+ 
+
+00:06:52.800 --> 00:06:56.950 align:start position:0%
+quero dizer é, por exemplo, se a
+pessoa <00:06:53.340><c>fez </c><00:06:53.880><c>a </c><00:06:54.420><c>venda </c><00:06:54.960><c>aqui,</c>
+
+00:06:56.950 --> 00:06:56.960 align:start position:0%
+pessoa fez a venda aqui,
+ 
+
+00:06:56.960 --> 00:06:59.110 align:start position:0%
+pessoa fez a venda aqui,
+ela <00:06:57.293><c>vendeu </c><00:06:57.626><c>e </c><00:06:57.959><c>em </c><00:06:58.292><c>algum </c><00:06:58.625><c>momento </c><00:06:58.958><c>vai</c>
+
+00:06:59.110 --> 00:06:59.120 align:start position:0%
+ela vendeu e em algum momento vai
+ 
+
+00:06:59.120 --> 00:07:02.430 align:start position:0%
+ela vendeu e em algum momento vai
+realizar <00:06:59.653><c>a </c><00:07:00.186><c>operação </c><00:07:00.719><c>e </c><00:07:01.252><c>esse </c><00:07:01.785><c>preço </c><00:07:02.318><c>vai</c>
+
+00:07:02.430 --> 00:07:02.440 align:start position:0%
+realizar a operação e esse preço vai
+ 
+
+00:07:02.440 --> 00:07:04.589 align:start position:0%
+realizar a operação e esse preço vai
+voltar <00:07:02.599><c>a </c><00:07:02.758><c>subir.</c>
+
+00:07:04.589 --> 00:07:04.599 align:start position:0%
+voltar a subir.
+ 
+
+00:07:04.599 --> 00:07:08.629 align:start position:0%
+voltar a subir.
+Se <00:07:04.964><c>eu </c><00:07:05.329><c>sei </c><00:07:05.694><c>que </c><00:07:06.059><c>esta </c><00:07:06.424><c>região </c><00:07:06.789><c>é </c><00:07:07.154><c>uma </c><00:07:07.519><c>região</c>
+
+00:07:08.629 --> 00:07:08.639 align:start position:0%
+Se eu sei que esta região é uma região
+ 
+
+00:07:08.639 --> 00:07:11.029 align:start position:0%
+Se eu sei que esta região é uma região
+que <00:07:08.919><c>não </c><00:07:09.199><c>é </c><00:07:09.479><c>adequada</c>
+
+00:07:11.029 --> 00:07:11.039 align:start position:0%
+que não é adequada
+ 
+
+00:07:11.039 --> 00:07:14.670 align:start position:0%
+que não é adequada
+para <00:07:11.499><c>eu </c><00:07:11.959><c>trabalhar</c>
+
+00:07:14.670 --> 00:07:14.680 align:start position:0%
+para eu trabalhar
+ 
+
+00:07:14.680 --> 00:07:17.189 align:start position:0%
+para eu trabalhar
+a <00:07:14.942><c>favor </c><00:07:15.204><c>do </c><00:07:15.466><c>movimento, </c><00:07:15.728><c>o </c><00:07:15.990><c>que </c><00:07:16.252><c>é </c><00:07:16.514><c>que </c><00:07:16.776><c>eu </c><00:07:17.038><c>vou</c>
+
+00:07:17.189 --> 00:07:17.199 align:start position:0%
+a favor do movimento, o que é que eu vou
+ 
+
+00:07:17.199 --> 00:07:20.350 align:start position:0%
+a favor do movimento, o que é que eu vou
+pensar?
+
+00:07:20.350 --> 00:07:20.360 align:start position:0%
+ 
+ 
+
+00:07:20.360 --> 00:07:21.990 align:start position:0%
+ 
+Vamos <00:07:20.571><c>até </c><00:07:20.782><c>vou </c><00:07:20.993><c>fazer </c><00:07:21.204><c>aqui </c><00:07:21.415><c>um </c><00:07:21.626><c>desenho </c><00:07:21.837><c>para</c>
+
+00:07:21.990 --> 00:07:22.000 align:start position:0%
+Vamos até vou fazer aqui um desenho para
+ 
+
+00:07:22.000 --> 00:07:25.469 align:start position:0%
+Vamos até vou fazer aqui um desenho para
+vocês <00:07:22.446><c>entenderem. </c><00:07:22.892><c>Eu </c><00:07:23.338><c>vou </c><00:07:23.784><c>precisar </c><00:07:24.230><c>de </c><00:07:24.676><c>ter</c>
+
+00:07:25.469 --> 00:07:25.479 align:start position:0%
+vocês entenderem. Eu vou precisar de ter
+ 
+
+00:07:25.479 --> 00:07:30.230 align:start position:0%
+vocês entenderem. Eu vou precisar de ter
+uma <00:07:25.969><c>disciplina </c><00:07:26.459><c>de </c><00:07:26.949><c>não </c><00:07:27.439><c>fazer</c>
+
+00:07:30.230 --> 00:07:30.240 align:start position:0%
+uma disciplina de não fazer
+ 
+
+00:07:30.240 --> 00:07:33.629 align:start position:0%
+uma disciplina de não fazer
+vendas <00:07:30.733><c>aqui </c><00:07:31.226><c>dentro, </c><00:07:31.719><c>ok? </c><00:07:32.212><c>Se </c><00:07:32.705><c>eu </c><00:07:33.198><c>fizer</c>
+
+00:07:33.629 --> 00:07:33.639 align:start position:0%
+vendas aqui dentro, ok? Se eu fizer
+ 
+
+00:07:33.639 --> 00:07:36.909 align:start position:0%
+vendas aqui dentro, ok? Se eu fizer
+venda <00:07:34.145><c>aqui </c><00:07:34.651><c>dentro </c><00:07:35.157><c>desta </c><00:07:35.663><c>região, </c><00:07:36.169><c>o </c><00:07:36.675><c>meu</c>
+
+00:07:36.909 --> 00:07:36.919 align:start position:0%
+venda aqui dentro desta região, o meu
+ 
+
+00:07:36.919 --> 00:07:39.430 align:start position:0%
+venda aqui dentro desta região, o meu
+risco <00:07:37.299><c>é </c><00:07:37.679><c>muito </c><00:07:38.059><c>elevado. </c><00:07:38.439><c>Por </c><00:07:38.819><c>quê? </c><00:07:39.199><c>Porque</c>
+
+00:07:39.430 --> 00:07:39.440 align:start position:0%
+risco é muito elevado. Por quê? Porque
+ 
+
+00:07:39.440 --> 00:07:43.230 align:start position:0%
+risco é muito elevado. Por quê? Porque
+se <00:07:39.873><c>de </c><00:07:40.306><c>facto </c><00:07:40.739><c>não </c><00:07:41.172><c>houver </c><00:07:41.605><c>uma </c><00:07:42.038><c>continuidade</c>
+
+00:07:43.230 --> 00:07:43.240 align:start position:0%
+se de facto não houver uma continuidade
+ 
+
+00:07:43.240 --> 00:07:46.550 align:start position:0%
+se de facto não houver uma continuidade
+de <00:07:43.784><c>tendência, </c><00:07:44.328><c>vou </c><00:07:44.872><c>estar </c><00:07:45.416><c>a </c><00:07:45.960><c>vender</c>
+
+00:07:46.550 --> 00:07:46.560 align:start position:0%
+de tendência, vou estar a vender
+ 
+
+00:07:46.560 --> 00:07:50.589 align:start position:0%
+de tendência, vou estar a vender
+exatamente <00:07:47.249><c>onde </c><00:07:47.938><c>os </c><00:07:48.627><c>players </c><00:07:49.316><c>estão</c>
+
+00:07:50.589 --> 00:07:50.599 align:start position:0%
+exatamente onde os players estão
+ 
+
+00:07:50.599 --> 00:07:52.749 align:start position:0%
+exatamente onde os players estão
+enviando <00:07:50.919><c>o </c><00:07:51.239><c>preço</c>
+
+00:07:52.749 --> 00:07:52.759 align:start position:0%
+enviando o preço
+ 
+
+00:07:52.759 --> 00:07:56.350 align:start position:0%
+enviando o preço
+para <00:07:53.332><c>cima </c><00:07:53.905><c>depois, </c><00:07:54.478><c>ok? </c><00:07:55.051><c>E </c><00:07:55.624><c>precisa </c><00:07:56.197><c>o</c>
+
+00:07:56.350 --> 00:07:56.360 align:start position:0%
+para cima depois, ok? E precisa o
+ 
+
+00:07:56.360 --> 00:07:58.909 align:start position:0%
+para cima depois, ok? E precisa o
+tempo <00:07:56.639><c>todo </c><00:07:56.918><c>prestar </c><00:07:57.197><c>atenção </c><00:07:57.476><c>a </c><00:07:57.755><c>isso. </c><00:07:58.034><c>Então,</c>
+
+00:07:58.909 --> 00:07:58.919 align:start position:0%
+tempo todo prestar atenção a isso. Então,
+ 
+
+00:07:58.919 --> 00:08:04.990 align:start position:0%
+tempo todo prestar atenção a isso. Então,
+evite <00:07:59.671><c>operações </c><00:08:00.423><c>que </c><00:08:01.175><c>faça </c><00:08:01.927><c>eh </c><00:08:02.679><c>venda</c>
+
+00:08:04.990 --> 00:08:05.000 align:start position:0%
+evite operações que faça eh venda
+ 
+
+00:08:05.000 --> 00:08:07.749 align:start position:0%
+evite operações que faça eh venda
+exatamente <00:08:05.519><c>onde </c><00:08:06.038><c>seria </c><00:08:06.557><c>a </c><00:08:07.076><c>realização. </c><00:08:07.595><c>E</c>
+
+00:08:07.749 --> 00:08:07.759 align:start position:0%
+exatamente onde seria a realização. E
+ 
+
+00:08:07.759 --> 00:08:13.309 align:start position:0%
+exatamente onde seria a realização. E
+da <00:08:08.194><c>mesma </c><00:08:08.629><c>forma, </c><00:08:09.064><c>é </c><00:08:09.499><c>óbvio </c><00:08:09.934><c>que </c><00:08:10.369><c>na </c><00:08:10.804><c>região </c><00:08:11.239><c>de</c>
+
+00:08:13.309 --> 00:08:13.319 align:start position:0%
+da mesma forma, é óbvio que na região de
+ 
+
+00:08:13.319 --> 00:08:17.270 align:start position:0%
+da mesma forma, é óbvio que na região de
+compra,
+
+00:08:17.270 --> 00:08:17.280 align:start position:0%
+ 
+ 
+
+00:08:17.280 --> 00:08:19.670 align:start position:0%
+ 
+de <00:08:17.655><c>realização </c><00:08:18.030><c>da </c><00:08:18.405><c>compra, </c><00:08:18.780><c>vai </c><00:08:19.155><c>evitar</c>
+
+00:08:19.670 --> 00:08:19.680 align:start position:0%
+de realização da compra, vai evitar
+ 
+
+00:08:19.680 --> 00:08:22.869 align:start position:0%
+de realização da compra, vai evitar
+comprar, <00:08:20.166><c>ok? </c><00:08:20.652><c>Isto </c><00:08:21.138><c>é </c><00:08:21.624><c>importante </c><00:08:22.110><c>que </c><00:08:22.596><c>você</c>
+
+00:08:22.869 --> 00:08:22.879 align:start position:0%
+comprar, ok? Isto é importante que você
+ 
+
+00:08:22.879 --> 00:08:24.550 align:start position:0%
+comprar, ok? Isto é importante que você
+preste <00:08:23.139><c>atenção. </c><00:08:23.399><c>Por </c><00:08:23.659><c>quê? </c><00:08:23.919><c>Porque </c><00:08:24.179><c>às </c><00:08:24.439><c>vezes</c>
+
+00:08:24.550 --> 00:08:24.560 align:start position:0%
+preste atenção. Por quê? Porque às vezes
+ 
+
+00:08:24.560 --> 00:08:27.950 align:start position:0%
+preste atenção. Por quê? Porque às vezes
+vai <00:08:25.086><c>ver </c><00:08:25.612><c>o </c><00:08:26.138><c>fluxo </c><00:08:26.664><c>muito </c><00:08:27.190><c>forte, </c><00:08:27.716><c>depois</c>
+
+00:08:27.950 --> 00:08:27.960 align:start position:0%
+vai ver o fluxo muito forte, depois
+ 
+
+00:08:27.960 --> 00:08:30.029 align:start position:0%
+vai ver o fluxo muito forte, depois
+vai <00:08:28.266><c>pensar </c><00:08:28.572><c>assim: </c><00:08:28.878><c>"Ah, </c><00:08:29.184><c>o </c><00:08:29.490><c>mercado </c><00:08:29.796><c>está</c>
+
+00:08:30.029 --> 00:08:30.039 align:start position:0%
+vai pensar assim: "Ah, o mercado está
+ 
+
+00:08:30.039 --> 00:08:31.790 align:start position:0%
+vai pensar assim: "Ah, o mercado está
+muito <00:08:30.419><c>comprador, </c><00:08:30.799><c>vou </c><00:08:31.179><c>comprar". </c><00:08:31.559><c>Aí</c>
+
+00:08:31.790 --> 00:08:31.800 align:start position:0%
+muito comprador, vou comprar". Aí
+ 
+
+00:08:31.800 --> 00:08:34.389 align:start position:0%
+muito comprador, vou comprar". Aí
+compra <00:08:32.419><c>atrasado, </c><00:08:33.038><c>compra </c><00:08:33.657><c>aqui </c><00:08:34.276><c>em</c>
+
+00:08:34.389 --> 00:08:34.399 align:start position:0%
+compra atrasado, compra aqui em
+ 
+
+00:08:34.399 --> 00:08:37.310 align:start position:0%
+compra atrasado, compra aqui em
+cima. <00:08:34.782><c>Quando </c><00:08:35.165><c>chega </c><00:08:35.548><c>aqui </c><00:08:35.931><c>a </c><00:08:36.314><c>esta </c><00:08:36.697><c>região, </c><00:08:37.080><c>ao</c>
+
+00:08:37.310 --> 00:08:37.320 align:start position:0%
+cima. Quando chega aqui a esta região, ao
+ 
+
+00:08:37.320 --> 00:08:39.870 align:start position:0%
+cima. Quando chega aqui a esta região, ao
+em <00:08:37.640><c>vez </c><00:08:37.960><c>do </c><00:08:38.280><c>preço </c><00:08:38.600><c>continuar </c><00:08:38.920><c>a </c><00:08:39.240><c>subir, </c><00:08:39.560><c>ele</c>
+
+00:08:39.870 --> 00:08:39.880 align:start position:0%
+em vez do preço continuar a subir, ele
+ 
+
+00:08:39.880 --> 00:08:43.509 align:start position:0%
+em vez do preço continuar a subir, ele
+pode <00:08:40.446><c>voltar </c><00:08:41.012><c>a </c><00:08:41.578><c>cair, </c><00:08:42.144><c>ok? </c><00:08:42.710><c>Então, </c><00:08:43.276><c>essa</c>
+
+00:08:43.509 --> 00:08:43.519 align:start position:0%
+pode voltar a cair, ok? Então, essa
+ 
+
+00:08:43.519 --> 00:08:45.710 align:start position:0%
+pode voltar a cair, ok? Então, essa
+região <00:08:43.927><c>ela </c><00:08:44.335><c>não </c><00:08:44.743><c>é </c><00:08:45.151><c>estatisticamente </c><00:08:45.559><c>uma</c>
+
+00:08:45.710 --> 00:08:45.720 align:start position:0%
+região ela não é estatisticamente uma
+ 
+
+00:08:45.720 --> 00:08:48.790 align:start position:0%
+região ela não é estatisticamente uma
+região <00:08:46.186><c>boa </c><00:08:46.652><c>para </c><00:08:47.118><c>você </c><00:08:47.584><c>comprar, </c><00:08:48.050><c>bem </c><00:08:48.516><c>como</c>
+
+00:08:48.790 --> 00:08:48.800 align:start position:0%
+região boa para você comprar, bem como
+ 
+
+00:08:48.800 --> 00:08:52.150 align:start position:0%
+região boa para você comprar, bem como
+esta <00:08:49.272><c>não </c><00:08:49.744><c>é </c><00:08:50.216><c>uma </c><00:08:50.688><c>região </c><00:08:51.160><c>estatisticamente</c>
+
+00:08:52.150 --> 00:08:52.160 align:start position:0%
+esta não é uma região estatisticamente
+ 
+
+00:08:52.160 --> 00:08:57.110 align:start position:0%
+esta não é uma região estatisticamente
+boa <00:08:52.752><c>para </c><00:08:53.344><c>você </c><00:08:53.936><c>fazer </c><00:08:54.528><c>uma </c><00:08:55.120><c>operação</c>
+
+00:08:57.110 --> 00:08:57.120 align:start position:0%
+boa para você fazer uma operação
+ 
+
+00:08:57.120 --> 00:09:01.790 align:start position:0%
+boa para você fazer uma operação
+de <00:08:57.951><c>venda. </c><00:08:58.782><c>Ou </c><00:08:59.613><c>seja, </c><00:09:00.444><c>aqui </c><00:09:01.275><c>evita-se</c>
+
+00:09:01.790 --> 00:09:01.800 align:start position:0%
+de venda. Ou seja, aqui evita-se
+ 
+
+00:09:01.800 --> 00:09:05.630 align:start position:0%
+de venda. Ou seja, aqui evita-se
+vender <00:09:02.495><c>e </c><00:09:03.190><c>aqui </c><00:09:03.885><c>evita </c><00:09:04.580><c>comprar. </c><00:09:05.275><c>Ah,</c>
+
+00:09:05.630 --> 00:09:05.640 align:start position:0%
+vender e aqui evita comprar. Ah,
+ 
+
+00:09:05.640 --> 00:09:07.269 align:start position:0%
+vender e aqui evita comprar. Ah,
+mas <00:09:05.851><c>há </c><00:09:06.062><c>algum </c><00:09:06.273><c>dia </c><00:09:06.484><c>que </c><00:09:06.695><c>dá </c><00:09:06.906><c>para </c><00:09:07.117><c>fazer</c>
+
+00:09:07.269 --> 00:09:07.279 align:start position:0%
+mas há algum dia que dá para fazer
+ 
+
+00:09:07.279 --> 00:09:11.030 align:start position:0%
+mas há algum dia que dá para fazer
+isso? <00:09:07.793><c>até </c><00:09:08.307><c>tem, </c><00:09:08.821><c>mas </c><00:09:09.335><c>eu </c><00:09:09.849><c>digo </c><00:09:10.363><c>sempre </c><00:09:10.877><c>o</c>
+
+00:09:11.030 --> 00:09:11.040 align:start position:0%
+isso? até tem, mas eu digo sempre o
+ 
+
+00:09:11.040 --> 00:09:13.470 align:start position:0%
+isso? até tem, mas eu digo sempre o
+seguinte, <00:09:11.413><c>tem </c><00:09:11.786><c>de </c><00:09:12.159><c>ser </c><00:09:12.532><c>muito </c><00:09:12.905><c>honesto </c><00:09:13.278><c>com</c>
+
+00:09:13.470 --> 00:09:13.480 align:start position:0%
+seguinte, tem de ser muito honesto com
+ 
+
+00:09:13.480 --> 00:09:16.230 align:start position:0%
+seguinte, tem de ser muito honesto com
+vocês. <00:09:14.040><c>No </c><00:09:14.600><c>início, </c><00:09:15.160><c>quando </c><00:09:15.720><c>chegarem</c>
+
+00:09:16.230 --> 00:09:16.240 align:start position:0%
+vocês. No início, quando chegarem
+ 
+
+00:09:16.240 --> 00:09:19.350 align:start position:0%
+vocês. No início, quando chegarem
+na <00:09:16.651><c>SG, </c><00:09:17.062><c>é </c><00:09:17.473><c>muito </c><00:09:17.884><c>provável </c><00:09:18.295><c>que </c><00:09:18.706><c>não </c><00:09:19.117><c>vão</c>
+
+00:09:19.350 --> 00:09:19.360 align:start position:0%
+na SG, é muito provável que não vão
+ 
+
+00:09:19.360 --> 00:09:22.030 align:start position:0%
+na SG, é muito provável que não vão
+conseguir <00:09:19.766><c>ter </c><00:09:20.172><c>uma </c><00:09:20.578><c>perceção </c><00:09:20.984><c>a </c><00:09:21.390><c>100% </c><00:09:21.796><c>da</c>
+
+00:09:22.030 --> 00:09:22.040 align:start position:0%
+conseguir ter uma perceção a 100% da
+ 
+
+00:09:22.040 --> 00:09:24.550 align:start position:0%
+conseguir ter uma perceção a 100% da
+ferramenta <00:09:22.371><c>em </c><00:09:22.702><c>tão </c><00:09:23.033><c>pouco </c><00:09:23.364><c>tempo. </c><00:09:23.695><c>E </c><00:09:24.026><c>você </c><00:09:24.357><c>já</c>
+
+00:09:24.550 --> 00:09:24.560 align:start position:0%
+ferramenta em tão pouco tempo. E você já
+ 
+
+00:09:24.560 --> 00:09:25.910 align:start position:0%
+ferramenta em tão pouco tempo. E você já
+tem <00:09:24.731><c>que </c><00:09:24.902><c>se </c><00:09:25.073><c>perceber </c><00:09:25.244><c>isso. </c><00:09:25.415><c>Você </c><00:09:25.586><c>diz: </c><00:09:25.757><c>"Cara,</c>
+
+00:09:25.910 --> 00:09:25.920 align:start position:0%
+tem que se perceber isso. Você diz: "Cara,
+ 
+
+00:09:25.920 --> 00:09:29.069 align:start position:0%
+tem que se perceber isso. Você diz: "Cara,
+a <00:09:26.279><c>ferramenta </c><00:09:26.638><c>é </c><00:09:26.997><c>fixe". </c><00:09:27.356><c>Mas </c><00:09:27.715><c>assim, </c><00:09:28.074><c>eh,</c>
+
+00:09:29.069 --> 00:09:29.079 align:start position:0%
+a ferramenta é fixe". Mas assim, eh,
+ 
+
+00:09:29.079 --> 00:09:31.910 align:start position:0%
+a ferramenta é fixe". Mas assim, eh,
+nenhuma <00:09:29.649><c>atividade </c><00:09:30.219><c>que </c><00:09:30.789><c>queira </c><00:09:31.359><c>ser</c>
+
+00:09:31.910 --> 00:09:31.920 align:start position:0%
+nenhuma atividade que queira ser
+ 
+
+00:09:31.920 --> 00:09:34.269 align:start position:0%
+nenhuma atividade que queira ser
+profissional <00:09:32.380><c>e </c><00:09:32.840><c>dominá-la, </c><00:09:33.300><c>você </c><00:09:33.760><c>domina</c>
+
+00:09:34.269 --> 00:09:34.279 align:start position:0%
+profissional e dominá-la, você domina
+ 
+
+00:09:34.279 --> 00:09:36.350 align:start position:0%
+profissional e dominá-la, você domina
+numa <00:09:34.800><c>semana.</c>
+
+00:09:36.350 --> 00:09:36.360 align:start position:0%
+numa semana.
+ 
+
+00:09:36.360 --> 00:09:38.750 align:start position:0%
+numa semana.
+É <00:09:36.719><c>isso, </c><00:09:37.078><c>é </c><00:09:37.437><c>impossível, </c><00:09:37.796><c>certo? </c><00:09:38.155><c>Qualquer </c><00:09:38.514><c>coisa</c>
+
+00:09:38.750 --> 00:09:38.760 align:start position:0%
+É isso, é impossível, certo? Qualquer coisa
+ 
+
+00:09:38.760 --> 00:09:40.389 align:start position:0%
+É isso, é impossível, certo? Qualquer coisa
+da <00:09:38.986><c>vida </c><00:09:39.212><c>que </c><00:09:39.438><c>faça, </c><00:09:39.664><c>até </c><00:09:39.890><c>para </c><00:09:40.116><c>si</c>
+
+00:09:40.389 --> 00:09:40.399 align:start position:0%
+da vida que faça, até para si
+ 
+
+00:09:40.399 --> 00:09:44.190 align:start position:0%
+da vida que faça, até para si
+aprender, <00:09:40.705><c>aprender </c><00:09:41.011><c>a </c><00:09:41.317><c>fazer </c><00:09:41.623><c>arroz </c><00:09:41.929><c>e </c><00:09:42.235><c>feijão,</c>
+
+00:09:44.190 --> 00:09:44.200 align:start position:0%
+aprender, aprender a fazer arroz e feijão,
+ 
+
+00:09:44.200 --> 00:09:45.590 align:start position:0%
+aprender, aprender a fazer arroz e feijão,
+possivelmente <00:09:44.510><c>já </c><00:09:44.820><c>deve </c><00:09:45.130><c>ter </c><00:09:45.440><c>feito</c>
+
+00:09:45.590 --> 00:09:45.600 align:start position:0%
+possivelmente já deve ter feito
+ 
+
+00:09:45.600 --> 00:09:48.670 align:start position:0%
+possivelmente já deve ter feito
+esse <00:09:45.965><c>teste. </c><00:09:46.330><c>Se </c><00:09:46.695><c>hoje </c><00:09:47.060><c>o </c><00:09:47.425><c>faz </c><00:09:47.790><c>bem, </c><00:09:48.155><c>ele</c>
+
+00:09:48.670 --> 00:09:48.680 align:start position:0%
+esse teste. Se hoje o faz bem, ele
+ 
+
+00:09:48.680 --> 00:09:51.790 align:start position:0%
+esse teste. Se hoje o faz bem, ele
+deve <00:09:49.020><c>ter </c><00:09:49.360><c>demorado </c><00:09:49.700><c>algum </c><00:09:50.040><c>tempo </c><00:09:50.380><c>de </c><00:09:50.720><c>prática.</c>
+
+00:09:51.790 --> 00:09:51.800 align:start position:0%
+deve ter demorado algum tempo de prática.
+ 
+
+00:09:51.800 --> 00:09:53.829 align:start position:0%
+deve ter demorado algum tempo de prática.
+E <00:09:52.040><c>se </c><00:09:52.280><c>ainda </c><00:09:52.520><c>não </c><00:09:52.760><c>o </c><00:09:53.000><c>faz, </c><00:09:53.240><c>é </c><00:09:53.480><c>porque </c><00:09:53.720><c>o</c>
+
+00:09:53.829 --> 00:09:53.839 align:start position:0%
+E se ainda não o faz, é porque o
+ 
+
+00:09:53.839 --> 00:09:56.870 align:start position:0%
+E se ainda não o faz, é porque o
+não <00:09:54.179><c>praticou </c><00:09:54.519><c>bastante,</c>
+
+00:09:56.870 --> 00:09:56.880 align:start position:0%
+não praticou bastante,
+ 
+
+00:09:56.880 --> 00:09:59.310 align:start position:0%
+não praticou bastante,
+tá? <00:09:57.271><c>Então </c><00:09:57.662><c>vai </c><00:09:58.053><c>pegar </c><00:09:58.444><c>neste </c><00:09:58.835><c>exemplo</c>
+
+00:09:59.310 --> 00:09:59.320 align:start position:0%
+tá? Então vai pegar neste exemplo
+ 
+
+00:09:59.320 --> 00:10:01.590 align:start position:0%
+tá? Então vai pegar neste exemplo
+pro <00:09:59.590><c>mercado. </c><00:09:59.860><c>Por </c><00:10:00.130><c>que </c><00:10:00.400><c>que </c><00:10:00.670><c>o </c><00:10:00.940><c>arroz </c><00:10:01.210><c>e </c><00:10:01.480><c>o</c>
+
+00:10:01.590 --> 00:10:01.600 align:start position:0%
+pro mercado. Por que que o arroz e o
+ 
+
+00:10:01.600 --> 00:10:04.470 align:start position:0%
+pro mercado. Por que que o arroz e o
+feijão <00:10:01.902><c>que </c><00:10:02.204><c>a </c><00:10:02.506><c>tua </c><00:10:02.808><c>avó </c><00:10:03.110><c>fazia </c><00:10:03.412><c>era </c><00:10:03.714><c>tão </c><00:10:04.016><c>bom </c><00:10:04.318><c>e</c>
+
+00:10:04.470 --> 00:10:04.480 align:start position:0%
+feijão que a tua avó fazia era tão bom e
+ 
+
+00:10:04.480 --> 00:10:06.550 align:start position:0%
+feijão que a tua avó fazia era tão bom e
+o <00:10:04.715><c>seu </c><00:10:04.950><c>não </c><00:10:05.185><c>é? </c><00:10:05.420><c>porque </c><00:10:05.655><c>ela </c><00:10:05.890><c>tinha </c><00:10:06.125><c>tempo </c><00:10:06.360><c>para</c>
+
+00:10:06.550 --> 00:10:06.560 align:start position:0%
+o seu não é? porque ela tinha tempo para
+ 
+
+00:10:06.560 --> 00:10:09.710 align:start position:0%
+o seu não é? porque ela tinha tempo para
+prática <00:10:07.048><c>e </c><00:10:07.536><c>experiência, </c><00:10:08.024><c>ok? </c><00:10:08.512><c>Então, </c><00:10:09.000><c>isso</c>
+
+00:10:09.710 --> 00:10:09.720 align:start position:0%
+prática e experiência, ok? Então, isso
+ 
+
+00:10:09.720 --> 00:10:12.030 align:start position:0%
+prática e experiência, ok? Então, isso
+exige <00:10:10.136><c>que </c><00:10:10.552><c>já </c><00:10:10.968><c>comece </c><00:10:11.384><c>aqui </c><00:10:11.800><c>neste</c>
+
+00:10:12.030 --> 00:10:12.040 align:start position:0%
+exige que já comece aqui neste
+ 
+
+00:10:12.040 --> 00:10:15.509 align:start position:0%
+exige que já comece aqui neste
+projeto <00:10:12.525><c>com </c><00:10:13.010><c>o </c><00:10:13.495><c>pensamento </c><00:10:13.980><c>certo, </c><00:10:14.465><c>não </c><00:10:14.950><c>é? </c><00:10:15.435><c>O</c>
+
+00:10:15.509 --> 00:10:15.519 align:start position:0%
+projeto com o pensamento certo, não é? O
+ 
+
+00:10:15.519 --> 00:10:17.389 align:start position:0%
+projeto com o pensamento certo, não é? O
+pensamento <00:10:15.863><c>mais </c><00:10:16.207><c>errado </c><00:10:16.551><c>das </c><00:10:16.895><c>pessoas </c><00:10:17.239><c>a</c>
+
+00:10:17.389 --> 00:10:17.399 align:start position:0%
+pensamento mais errado das pessoas a
+ 
+
+00:10:17.399 --> 00:10:19.550 align:start position:0%
+pensamento mais errado das pessoas a
+chegarem <00:10:17.751><c>aqui, </c><00:10:18.103><c>olharem </c><00:10:18.455><c>para </c><00:10:18.807><c>uma </c><00:10:19.159><c>ferramenta</c>
+
+00:10:19.550 --> 00:10:19.560 align:start position:0%
+chegarem aqui, olharem para uma ferramenta
+ 
+
+00:10:19.560 --> 00:10:21.150 align:start position:0%
+chegarem aqui, olharem para uma ferramenta
+como <00:10:19.754><c>esta </c><00:10:19.948><c>e </c><00:10:20.142><c>pensar </c><00:10:20.336><c>que </c><00:10:20.530><c>uma </c><00:10:20.724><c>semana </c><00:10:20.918><c>elas</c>
+
+00:10:21.150 --> 00:10:21.160 align:start position:0%
+como esta e pensar que uma semana elas
+ 
+
+00:10:21.160 --> 00:10:24.190 align:start position:0%
+como esta e pensar que uma semana elas
+vão <00:10:21.626><c>dominar </c><00:10:22.092><c>todo </c><00:10:22.558><c>o </c><00:10:23.024><c>mercado. </c><00:10:23.490><c>Você </c><00:10:23.956><c>vai</c>
+
+00:10:24.190 --> 00:10:24.200 align:start position:0%
+vão dominar todo o mercado. Você vai
+ 
+
+00:10:24.200 --> 00:10:27.630 align:start position:0%
+vão dominar todo o mercado. Você vai
+dominar <00:10:24.580><c>a </c><00:10:24.960><c>100%. </c><00:10:25.340><c>Portanto, </c><00:10:25.720><c>isto </c><00:10:26.100><c>aqui </c><00:10:26.480><c>não </c><00:10:26.860><c>é </c><00:10:27.240><c>jogo</c>
+
+00:10:27.630 --> 00:10:27.640 align:start position:0%
+dominar a 100%. Portanto, isto aqui não é jogo
+ 
+
+00:10:27.640 --> 00:10:29.910 align:start position:0%
+dominar a 100%. Portanto, isto aqui não é jogo
+do <00:10:27.953><c>tigrinho, </c><00:10:28.266><c>isto </c><00:10:28.579><c>aqui </c><00:10:28.892><c>é </c><00:10:29.205><c>algo </c><00:10:29.518><c>grave.</c>
+
+00:10:29.910 --> 00:10:29.920 align:start position:0%
+do tigrinho, isto aqui é algo grave.
+ 
+
+00:10:29.920 --> 00:10:33.590 align:start position:0%
+do tigrinho, isto aqui é algo grave.
+Isto <00:10:30.345><c>daqui </c><00:10:30.770><c>é </c><00:10:31.195><c>algo </c><00:10:31.620><c>que </c><00:10:32.045><c>vai </c><00:10:32.470><c>eh </c><00:10:32.895><c>exigir </c><00:10:33.320><c>de</c>
+
+00:10:33.590 --> 00:10:33.600 align:start position:0%
+Isto daqui é algo que vai eh exigir de
+ 
+
+00:10:33.600 --> 00:10:35.949 align:start position:0%
+Isto daqui é algo que vai eh exigir de
+você <00:10:33.939><c>esse </c><00:10:34.278><c>conhecimento </c><00:10:34.617><c>que </c><00:10:34.956><c>está </c><00:10:35.295><c>a </c><00:10:35.634><c>ter</c>
+
+00:10:35.949 --> 00:10:35.959 align:start position:0%
+você esse conhecimento que está a ter
+ 
+
+00:10:35.959 --> 00:10:40.269 align:start position:0%
+você esse conhecimento que está a ter
+agora, <00:10:36.524><c>ok? </c><00:10:37.089><c>Então, </c><00:10:37.654><c>uma </c><00:10:38.219><c>vez </c><00:10:38.784><c>que </c><00:10:39.349><c>agora </c><00:10:39.914><c>já</c>
+
+00:10:40.269 --> 00:10:40.279 align:start position:0%
+agora, ok? Então, uma vez que agora já
+ 
+
+00:10:40.279 --> 00:10:43.110 align:start position:0%
+agora, ok? Então, uma vez que agora já
+tem <00:10:40.539><c>esse </c><00:10:40.799><c>conhecimento,</c>
+
+00:10:43.110 --> 00:10:43.120 align:start position:0%
+tem esse conhecimento,
+ 
+
+00:10:43.120 --> 00:10:45.269 align:start position:0%
+tem esse conhecimento,
+vais <00:10:43.382><c>respeitar </c><00:10:43.644><c>agora </c><00:10:43.906><c>o </c><00:10:44.168><c>que </c><00:10:44.430><c>está </c><00:10:44.692><c>a </c><00:10:44.954><c>ser</c>
+
+00:10:45.269 --> 00:10:45.279 align:start position:0%
+vais respeitar agora o que está a ser
+ 
+
+00:10:45.279 --> 00:10:48.069 align:start position:0%
+vais respeitar agora o que está a ser
+passado, <00:10:45.609><c>está </c><00:10:45.939><c>bom? </c><00:10:46.269><c>E </c><00:10:46.599><c>com </c><00:10:46.929><c>isto, </c><00:10:47.259><c>o </c><00:10:47.589><c>que </c><00:10:47.919><c>que</c>
+
+00:10:48.069 --> 00:10:48.079 align:start position:0%
+passado, está bom? E com isto, o que que
+ 
+
+00:10:48.079 --> 00:10:50.310 align:start position:0%
+passado, está bom? E com isto, o que que
+vai <00:10:48.469><c>acontecer? </c><00:10:48.859><c>você </c><00:10:49.249><c>naturalmente </c><00:10:49.639><c>vai</c>
+
+00:10:50.310 --> 00:10:50.320 align:start position:0%
+vai acontecer? você naturalmente vai
+ 
+
+00:10:50.320 --> 00:10:52.990 align:start position:0%
+vai acontecer? você naturalmente vai
+melhorar <00:10:50.816><c>a </c><00:10:51.312><c>sua </c><00:10:51.808><c>assertividade. </c><00:10:52.304><c>Então </c><00:10:52.800><c>você</c>
+
+00:10:52.990 --> 00:10:53.000 align:start position:0%
+melhorar a sua assertividade. Então você
+ 
+
+00:10:53.000 --> 00:10:58.629 align:start position:0%
+melhorar a sua assertividade. Então você
+já <00:10:53.464><c>sabe </c><00:10:53.928><c>que </c><00:10:54.392><c>as </c><00:10:54.856><c>regiões </c><00:10:55.320><c>alvo</c>
+
+00:10:58.629 --> 00:10:58.639 align:start position:0%
+ 
+ 
+
+00:10:58.639 --> 00:11:00.590 align:start position:0%
+ 
+não <00:10:58.912><c>são </c><00:10:59.185><c>os </c><00:10:59.458><c>melhores </c><00:10:59.731><c>pontos </c><00:11:00.004><c>para </c><00:11:00.277><c>si</c>
+
+00:11:00.590 --> 00:11:00.600 align:start position:0%
+não são os melhores pontos para si
+ 
+
+00:11:00.600 --> 00:11:03.670 align:start position:0%
+não são os melhores pontos para si
+fazer <00:11:01.260><c>boas </c><00:11:01.920><c>entradas.</c>
+
+00:11:03.670 --> 00:11:03.680 align:start position:0%
+fazer boas entradas.
+ 
+
+00:11:03.680 --> 00:11:05.750 align:start position:0%
+fazer boas entradas.
+Se <00:11:04.169><c>quiser </c><00:11:04.658><c>melhor </c><00:11:05.147><c>assertividade. </c><00:11:05.636><c>Por</c>
+
+00:11:05.750 --> 00:11:05.760 align:start position:0%
+Se quiser melhor assertividade. Por
+ 
+
+00:11:05.760 --> 00:11:08.990 align:start position:0%
+Se quiser melhor assertividade. Por
+quê? <00:11:06.171><c>Porque </c><00:11:06.582><c>é </c><00:11:06.993><c>nelas </c><00:11:07.404><c>que </c><00:11:07.815><c>se </c><00:11:08.226><c>o </c><00:11:08.637><c>mercado</c>
+
+00:11:08.990 --> 00:11:09.000 align:start position:0%
+quê? Porque é nelas que se o mercado
+ 
+
+00:11:09.000 --> 00:11:11.590 align:start position:0%
+quê? Porque é nelas que se o mercado
+não <00:11:09.346><c>está </c><00:11:09.692><c>num </c><00:11:10.038><c>dia </c><00:11:10.384><c>de </c><00:11:10.730><c>tendência </c><00:11:11.076><c>e</c>
+
+00:11:11.590 --> 00:11:11.600 align:start position:0%
+não está num dia de tendência e
+ 
+
+00:11:11.600 --> 00:11:14.350 align:start position:0%
+não está num dia de tendência e
+extremamente <00:11:12.293><c>direcional, </c><00:11:12.986><c>éonde </c><00:11:13.679><c>existem</c>
+
+00:11:14.350 --> 00:11:14.360 align:start position:0%
+extremamente direcional, éonde existem
+ 
+
+00:11:14.360 --> 00:11:17.949 align:start position:0%
+extremamente direcional, éonde existem
+os <00:11:15.032><c>movimentos </c><00:11:15.704><c>de </c><00:11:16.376><c>falso </c><00:11:17.048><c>rompimento. </c><00:11:17.720><c>Aí</c>
+
+00:11:17.949 --> 00:11:17.959 align:start position:0%
+os movimentos de falso rompimento. Aí
+ 
+
+00:11:17.959 --> 00:11:19.910 align:start position:0%
+os movimentos de falso rompimento. Aí
+parece <00:11:18.216><c>que </c><00:11:18.473><c>ele </c><00:11:18.730><c>vai </c><00:11:18.987><c>cair </c><00:11:19.244><c>tudo. </c><00:11:19.501><c>Que </c><00:11:19.758><c>que</c>
+
+00:11:19.910 --> 00:11:19.920 align:start position:0%
+parece que ele vai cair tudo. Que que
+ 
+
+00:11:19.920 --> 00:11:24.030 align:start position:0%
+parece que ele vai cair tudo. Que que
+acontece? <00:11:20.432><c>Chega </c><00:11:20.944><c>aquiele, </c><00:11:21.456><c>sobe, </c><00:11:21.968><c>não </c><00:11:22.480><c>é?</c>
+
+00:11:24.030 --> 00:11:24.040 align:start position:0%
+acontece? Chega aquiele, sobe, não é?
+ 
+
+00:11:24.040 --> 00:11:26.829 align:start position:0%
+acontece? Chega aquiele, sobe, não é?
+Ou <00:11:24.473><c>seja, </c><00:11:24.906><c>isto </c><00:11:25.339><c>vai </c><00:11:25.772><c>prejudicando </c><00:11:26.205><c>a </c><00:11:26.638><c>sua</c>
+
+00:11:26.829 --> 00:11:26.839 align:start position:0%
+Ou seja, isto vai prejudicando a sua
+ 
+
+00:11:26.839 --> 00:11:30.310 align:start position:0%
+Ou seja, isto vai prejudicando a sua
+assertividade, <00:11:27.439><c>está </c><00:11:28.039><c>bem? </c><00:11:28.639><c>Isso</c>
+
+00:11:30.310 --> 00:11:30.320 align:start position:0%
+assertividade, está bem? Isso
+ 
+
+00:11:30.320 --> 00:11:33.190 align:start position:0%
+assertividade, está bem? Isso
+Estou <00:11:30.726><c>a </c><00:11:31.132><c>falar </c><00:11:31.538><c>apenas </c><00:11:31.944><c>em </c><00:11:32.350><c>relação </c><00:11:32.756><c>ao</c>
+
+00:11:33.190 --> 00:11:33.200 align:start position:0%
+Estou a falar apenas em relação ao
+ 
+
+00:11:33.200 --> 00:11:36.262 align:start position:0%
+Estou a falar apenas em relação ao
+gráfico <00:11:33.870><c>de </c><00:11:34.540><c>Renco, </c><00:11:35.210><c>ok? </c><00:11:35.880><c>Então</c>
+
+00:11:36.262 --> 00:11:36.272 align:start position:0%
+gráfico de Renco, ok? Então
+ 
+
+00:11:36.272 --> 00:11:38.509 align:start position:0%
+gráfico de Renco, ok? Então
+[pigarreia] <00:11:36.607><c>vamos </c><00:11:36.942><c>anotar </c><00:11:37.277><c>aqui</c>
+
+00:11:38.509 --> 00:11:38.519 align:start position:0%
+[pigarreia] vamos anotar aqui
+ 
+
+00:11:38.519 --> 00:11:41.790 align:start position:0%
+[pigarreia] vamos anotar aqui
+para <00:11:38.799><c>ser </c><00:11:39.079><c>muito </c><00:11:39.359><c>fácil.</c>
+
+00:11:41.790 --> 00:11:41.800 align:start position:0%
+para ser muito fácil.
+ 
+
+00:11:41.800 --> 00:11:44.350 align:start position:0%
+para ser muito fácil.
+Então <00:11:42.099><c>aqui, </c><00:11:42.398><c>ó,</c>
+
+00:11:44.350 --> 00:11:44.360 align:start position:0%
+Então aqui, ó,
+ 
+
+00:11:44.360 --> 00:11:50.470 align:start position:0%
+Então aqui, ó,
+região.
+
+00:11:50.470 --> 00:11:50.480 align:start position:0%
+ 
+ 
+
+00:11:50.480 --> 00:11:54.430 align:start position:0%
+ 
+Vamos <00:11:50.890><c>colocar </c><00:11:51.300><c>aqui </c><00:11:51.710><c>evitar </c><00:11:52.120><c>compras</c>
+
+00:11:54.430 --> 00:11:54.440 align:start position:0%
+Vamos colocar aqui evitar compras
+ 
+
+00:11:54.440 --> 00:11:59.470 align:start position:0%
+Vamos colocar aqui evitar compras
+nesta <00:11:55.220><c>região, </c><00:11:56.000><c>ok?</c>
+
+00:11:59.470 --> 00:11:59.480 align:start position:0%
+ 
+ 
+
+00:11:59.480 --> 00:12:05.350 align:start position:0%
+ 
+E <00:12:00.599><c>abaixo </c><00:12:01.718><c>dela </c><00:12:02.837><c>vai</c>
+
+00:12:05.350 --> 00:12:05.360 align:start position:0%
+E abaixo dela vai
+ 
+
+00:12:05.360 --> 00:12:10.030 align:start position:0%
+E abaixo dela vai
+evitar <00:12:06.360><c>vendas, </c><00:12:07.360><c>está </c><00:12:08.360><c>bem?</c>
+
+00:12:10.030 --> 00:12:10.040 align:start position:0%
+evitar vendas, está bem?
+ 
+
+00:12:10.040 --> 00:12:11.870 align:start position:0%
+evitar vendas, está bem?
+Então, <00:12:10.280><c>assim, </c><00:12:10.520><c>percebeu </c><00:12:10.760><c>que </c><00:12:11.000><c>o </c><00:12:11.240><c>preço </c><00:12:11.480><c>está </c><00:12:11.720><c>no</c>
+
+00:12:11.870 --> 00:12:11.880 align:start position:0%
+Então, assim, percebeu que o preço está no
+ 
+
+00:12:11.880 --> 00:12:14.430 align:start position:0%
+Então, assim, percebeu que o preço está no
+alvo <00:12:12.217><c>um, </c><00:12:12.554><c>alvo </c><00:12:12.891><c>alvo </c><00:12:13.228><c>3 </c><00:12:13.565><c>com </c><00:12:13.902><c>sinalzinho </c><00:12:14.239><c>de</c>
+
+00:12:14.430 --> 00:12:14.440 align:start position:0%
+alvo um, alvo alvo 3 com sinalzinho de
+ 
+
+00:12:14.440 --> 00:12:17.629 align:start position:0%
+alvo um, alvo alvo 3 com sinalzinho de
+menos? <00:12:14.952><c>Opá, </c><00:12:15.464><c>o </c><00:12:15.976><c>Sérgio </c><00:12:16.488><c>disse </c><00:12:17.000><c>que</c>
+
+00:12:17.629 --> 00:12:17.639 align:start position:0%
+menos? Opá, o Sérgio disse que
+ 
+
+00:12:17.639 --> 00:12:20.990 align:start position:0%
+menos? Opá, o Sérgio disse que
+estatisticamente <00:12:18.519><c>estas </c><00:12:19.399><c>regiões, </c><00:12:20.279><c>exceto</c>
+
+00:12:20.990 --> 00:12:21.000 align:start position:0%
+estatisticamente estas regiões, exceto
+ 
+
+00:12:21.000 --> 00:12:23.030 align:start position:0%
+estatisticamente estas regiões, exceto
+caso <00:12:21.185><c>se </c><00:12:21.370><c>trate </c><00:12:21.555><c>de </c><00:12:21.740><c>um </c><00:12:21.925><c>dia </c><00:12:22.110><c>de </c><00:12:22.295><c>extrema </c><00:12:22.480><c>tendência,</c>
+
+00:12:23.030 --> 00:12:23.040 align:start position:0%
+caso se trate de um dia de extrema tendência,
+ 
+
+00:12:23.040 --> 00:12:26.030 align:start position:0%
+caso se trate de um dia de extrema tendência,
+tendem <00:12:23.592><c>a </c><00:12:24.144><c>falhar. </c><00:12:24.696><c>Então, </c><00:12:25.248><c>se </c><00:12:25.800><c>está</c>
+
+00:12:26.030 --> 00:12:26.040 align:start position:0%
+tendem a falhar. Então, se está
+ 
+
+00:12:26.040 --> 00:12:27.470 align:start position:0%
+tendem a falhar. Então, se está
+vendido, <00:12:26.370><c>quando </c><00:12:26.700><c>chegar </c><00:12:27.030><c>aqui, </c><00:12:27.360><c>vai</c>
+
+00:12:27.470 --> 00:12:27.480 align:start position:0%
+vendido, quando chegar aqui, vai
+ 
+
+00:12:27.480 --> 00:12:29.590 align:start position:0%
+vendido, quando chegar aqui, vai
+pôr <00:12:27.816><c>dinheiro </c><00:12:28.152><c>no </c><00:12:28.488><c>bolso, </c><00:12:28.824><c>vai </c><00:12:29.160><c>garantir</c>
+
+00:12:29.590 --> 00:12:29.600 align:start position:0%
+pôr dinheiro no bolso, vai garantir
+ 
+
+00:12:29.600 --> 00:12:31.430 align:start position:0%
+pôr dinheiro no bolso, vai garantir
+a <00:12:29.866><c>sua </c><00:12:30.132><c>operação, </c><00:12:30.398><c>vai </c><00:12:30.664><c>pôr </c><00:12:30.930><c>a </c><00:12:31.196><c>sua</c>
+
+00:12:31.430 --> 00:12:31.440 align:start position:0%
+a sua operação, vai pôr a sua
+ 
+
+00:12:31.440 --> 00:12:33.910 align:start position:0%
+a sua operação, vai pôr a sua
+parcial, <00:12:31.839><c>vai </c><00:12:32.238><c>repor </c><00:12:32.637><c>a </c><00:12:33.036><c>operação </c><00:12:33.435><c>com </c><00:12:33.834><c>o</c>
+
+00:12:33.910 --> 00:12:33.920 align:start position:0%
+parcial, vai repor a operação com o
+ 
+
+00:12:33.920 --> 00:12:36.230 align:start position:0%
+parcial, vai repor a operação com o
+passar <00:12:34.200><c>do </c><00:12:34.480><c>tempo.</c>
+
+00:12:36.230 --> 00:12:36.240 align:start position:0%
+passar do tempo.
+ 
+
+00:12:36.240 --> 00:12:38.350 align:start position:0%
+passar do tempo.
+Obviamente <00:12:36.468><c>que </c><00:12:36.696><c>esta </c><00:12:36.924><c>não </c><00:12:37.152><c>é </c><00:12:37.380><c>uma </c><00:12:37.608><c>regra </c><00:12:37.836><c>absoluta.</c>
+
+00:12:38.350 --> 00:12:38.360 align:start position:0%
+Obviamente que esta não é uma regra absoluta.
+ 
+
+00:12:38.360 --> 00:12:41.110 align:start position:0%
+Obviamente que esta não é uma regra absoluta.
+Portanto, <00:12:38.737><c>esta </c><00:12:39.114><c>aula </c><00:12:39.491><c>em </c><00:12:39.868><c>específico, </c><00:12:40.245><c>o </c><00:12:40.622><c>que </c><00:12:40.999><c>eu</c>
+
+00:12:41.110 --> 00:12:41.120 align:start position:0%
+Portanto, esta aula em específico, o que eu
+ 
+
+00:12:41.120 --> 00:12:43.110 align:start position:0%
+Portanto, esta aula em específico, o que eu
+quer <00:12:41.349><c>dizer </c><00:12:41.578><c>é </c><00:12:41.807><c>assim: </c><00:12:42.036><c>Eu </c><00:12:42.265><c>estou </c><00:12:42.494><c>a </c><00:12:42.723><c>dar-te </c><00:12:42.952><c>um</c>
+
+00:12:43.110 --> 00:12:43.120 align:start position:0%
+quer dizer é assim: Eu estou a dar-te um
+ 
+
+00:12:43.120 --> 00:12:45.550 align:start position:0%
+quer dizer é assim: Eu estou a dar-te um
+carro <00:12:43.486><c>de </c><00:12:43.852><c>Fórmula </c><00:12:44.218><c>1. </c><00:12:44.584><c>Vou </c><00:12:44.950><c>ensinar-te </c><00:12:45.316><c>a</c>
+
+00:12:45.550 --> 00:12:45.560 align:start position:0%
+carro de Fórmula 1. Vou ensinar-te a
+ 
+
+00:12:45.560 --> 00:12:48.470 align:start position:0%
+carro de Fórmula 1. Vou ensinar-te a
+como <00:12:46.112><c>o </c><00:12:46.664><c>pilotar </c><00:12:47.216><c>dentro </c><00:12:47.768><c>do </c><00:12:48.320><c>que</c>
+
+00:12:48.470 --> 00:12:48.480 align:start position:0%
+como o pilotar dentro do que
+ 
+
+00:12:48.480 --> 00:12:51.949 align:start position:0%
+como o pilotar dentro do que
+seria <00:12:48.920><c>a </c><00:12:49.360><c>normalidade </c><00:12:49.800><c>de </c><00:12:50.240><c>um </c><00:12:50.680><c>piloto </c><00:12:51.120><c>comum,</c>
+
+00:12:51.949 --> 00:12:51.959 align:start position:0%
+seria a normalidade de um piloto comum,
+ 
+
+00:12:51.959 --> 00:12:53.550 align:start position:0%
+seria a normalidade de um piloto comum,
+tá?
+
+00:12:53.550 --> 00:12:53.560 align:start position:0%
+tá?
+ 
+
+00:12:53.560 --> 00:12:55.829 align:start position:0%
+tá?
+Ou <00:12:53.862><c>seja, </c><00:12:54.164><c>você </c><00:12:54.466><c>não, </c><00:12:54.768><c>para </c><00:12:55.070><c>você </c><00:12:55.372><c>ser </c><00:12:55.674><c>um</c>
+
+00:12:55.829 --> 00:12:55.839 align:start position:0%
+Ou seja, você não, para você ser um
+ 
+
+00:12:55.839 --> 00:12:57.310 align:start position:0%
+Ou seja, você não, para você ser um
+trader <00:12:56.065><c>de </c><00:12:56.291><c>sucesso, </c><00:12:56.517><c>não </c><00:12:56.743><c>precisa </c><00:12:56.969><c>de </c><00:12:57.195><c>ser</c>
+
+00:12:57.310 --> 00:12:57.320 align:start position:0%
+trader de sucesso, não precisa de ser
+ 
+
+00:12:57.320 --> 00:13:00.670 align:start position:0%
+trader de sucesso, não precisa de ser
+um <00:12:57.813><c>trader </c><00:12:58.306><c>de </c><00:12:58.799><c>nível </c><00:12:59.292><c>Aton </c><00:12:59.785><c>Sena, </c><00:13:00.278><c>Micael</c>
+
+00:13:00.670 --> 00:13:00.680 align:start position:0%
+um trader de nível Aton Sena, Micael
+ 
+
+00:13:00.680 --> 00:13:04.430 align:start position:0%
+um trader de nível Aton Sena, Micael
+Schumacher, <00:13:01.376><c>certo? </c><00:13:02.072><c>um </c><00:13:02.768><c>Alan </c><00:13:03.464><c>Prost, </c><00:13:04.160><c>pode</c>
+
+00:13:04.430 --> 00:13:04.440 align:start position:0%
+Schumacher, certo? um Alan Prost, pode
+ 
+
+00:13:04.440 --> 00:13:07.790 align:start position:0%
+Schumacher, certo? um Alan Prost, pode
+ser <00:13:04.872><c>um </c><00:13:05.304><c>piloto </c><00:13:05.736><c>comum </c><00:13:06.168><c>e </c><00:13:06.600><c>consegue</c>
+
+00:13:07.790 --> 00:13:07.800 align:start position:0%
+ser um piloto comum e consegue
+ 
+
+00:13:07.800 --> 00:13:10.430 align:start position:0%
+ser um piloto comum e consegue
+participar <00:13:08.131><c>na </c><00:13:08.462><c>Fórmula </c><00:13:08.793><c>1 </c><00:13:09.124><c>e </c><00:13:09.455><c>ganhar </c><00:13:09.786><c>um </c><00:13:10.117><c>mega</c>
+
+00:13:10.430 --> 00:13:10.440 align:start position:0%
+participar na Fórmula 1 e ganhar um mega
+ 
+
+00:13:10.440 --> 00:13:14.790 align:start position:0%
+participar na Fórmula 1 e ganhar um mega
+salário. <00:13:11.139><c>Ora, </c><00:13:11.838><c>se </c><00:13:12.537><c>tem </c><00:13:13.236><c>a </c><00:13:13.935><c>ambição </c><00:13:14.634><c>e</c>
+
+00:13:14.790 --> 00:13:14.800 align:start position:0%
+salário. Ora, se tem a ambição e
+ 
+
+00:13:14.800 --> 00:13:18.030 align:start position:0%
+salário. Ora, se tem a ambição e
+o <00:13:15.142><c>desejo </c><00:13:15.484><c>de </c><00:13:15.826><c>ser </c><00:13:16.168><c>um </c><00:13:16.510><c>Airton </c><00:13:16.852><c>Sena, </c><00:13:17.194><c>aí </c><00:13:17.536><c>é </c><00:13:17.878><c>uma</c>
+
+00:13:18.030 --> 00:13:18.040 align:start position:0%
+o desejo de ser um Airton Sena, aí é uma
+ 
+
+00:13:18.040 --> 00:13:19.670 align:start position:0%
+o desejo de ser um Airton Sena, aí é uma
+outra <00:13:18.311><c>conversa. </c><00:13:18.582><c>Aí </c><00:13:18.853><c>vai </c><00:13:19.124><c>precisar </c><00:13:19.395><c>de</c>
+
+00:13:19.670 --> 00:13:19.680 align:start position:0%
+outra conversa. Aí vai precisar de
+ 
+
+00:13:19.680 --> 00:13:22.150 align:start position:0%
+outra conversa. Aí vai precisar de
+tempo, <00:13:20.088><c>dedicação, </c><00:13:20.496><c>fazer </c><00:13:20.904><c>replay </c><00:13:21.312><c>e </c><00:13:21.720><c>tal,</c>
+
+00:13:22.150 --> 00:13:22.160 align:start position:0%
+tempo, dedicação, fazer replay e tal,
+ 
+
+00:13:22.160 --> 00:13:23.870 align:start position:0%
+tempo, dedicação, fazer replay e tal,
+tá? <00:13:22.344><c>Mas </c><00:13:22.528><c>eu </c><00:13:22.712><c>estou </c><00:13:22.896><c>a </c><00:13:23.080><c>falar </c><00:13:23.264><c>assim, </c><00:13:23.448><c>no </c><00:13:23.632><c>pior</c>
+
+00:13:23.870 --> 00:13:23.880 align:start position:0%
+tá? Mas eu estou a falar assim, no pior
+ 
+
+00:13:23.880 --> 00:13:25.350 align:start position:0%
+tá? Mas eu estou a falar assim, no pior
+cenário, <00:13:24.190><c>se </c><00:13:24.500><c>for </c><00:13:24.810><c>essa </c><00:13:25.120><c>pessoa,</c>
+
+00:13:25.350 --> 00:13:25.360 align:start position:0%
+cenário, se for essa pessoa,
+ 
+
+00:13:25.360 --> 00:13:27.389 align:start position:0%
+cenário, se for essa pessoa,
+diz: <00:13:25.679><c>"Sérgio, </c><00:13:25.998><c>não </c><00:13:26.317><c>estou </c><00:13:26.636><c>muito </c><00:13:26.955><c>afim </c><00:13:27.274><c>de</c>
+
+00:13:27.389 --> 00:13:27.399 align:start position:0%
+diz: "Sérgio, não estou muito afim de
+ 
+
+00:13:27.399 --> 00:13:29.269 align:start position:0%
+diz: "Sérgio, não estou muito afim de
+dedicar-me <00:13:27.743><c>demasiado, </c><00:13:28.087><c>não, </c><00:13:28.431><c>só </c><00:13:28.775><c>quero </c><00:13:29.119><c>fazer</c>
+
+00:13:29.269 --> 00:13:29.279 align:start position:0%
+dedicar-me demasiado, não, só quero fazer
+ 
+
+00:13:29.279 --> 00:13:31.110 align:start position:0%
+dedicar-me demasiado, não, só quero fazer
+um <00:13:29.552><c>feijão </c><00:13:29.825><c>com </c><00:13:30.098><c>arroz </c><00:13:30.371><c>bem </c><00:13:30.644><c>feito". </c><00:13:30.917><c>Falou:</c>
+
+00:13:31.110 --> 00:13:31.120 align:start position:0%
+um feijão com arroz bem feito". Falou:
+ 
+
+00:13:31.120 --> 00:13:32.829 align:start position:0%
+um feijão com arroz bem feito". Falou:
+"Então <00:13:31.416><c>comece </c><00:13:31.712><c>por </c><00:13:32.008><c>respeitar </c><00:13:32.304><c>essa </c><00:13:32.600><c>regra</c>
+
+00:13:32.829 --> 00:13:32.839 align:start position:0%
+"Então comece por respeitar essa regra
+ 
+
+00:13:32.839 --> 00:13:34.829 align:start position:0%
+"Então comece por respeitar essa regra
+básica". <00:13:33.207><c>Se </c><00:13:33.575><c>chegou </c><00:13:33.943><c>agora, </c><00:13:34.311><c>mesmo </c><00:13:34.679><c>que</c>
+
+00:13:34.829 --> 00:13:34.839 align:start position:0%
+básica". Se chegou agora, mesmo que
+ 
+
+00:13:34.839 --> 00:13:38.310 align:start position:0%
+básica". Se chegou agora, mesmo que
+já <00:13:35.239><c>seja </c><00:13:35.639><c>um </c><00:13:36.039><c>mega </c><00:13:36.439><c>piloto, </c><00:13:36.839><c>avalie, </c><00:13:37.239><c>não </c><00:13:37.639><c>é,</c>
+
+00:13:38.310 --> 00:13:38.320 align:start position:0%
+já seja um mega piloto, avalie, não é,
+ 
+
+00:13:38.320 --> 00:13:40.710 align:start position:0%
+já seja um mega piloto, avalie, não é,
+é <00:13:38.560><c>isso </c><00:13:38.800><c>que </c><00:13:39.040><c>eu </c><00:13:39.280><c>estou </c><00:13:39.520><c>a </c><00:13:39.760><c>dizer </c><00:13:40.000><c>com </c><00:13:40.240><c>atenção </c><00:13:40.480><c>e</c>
+
+00:13:40.710 --> 00:13:40.720 align:start position:0%
+é isso que eu estou a dizer com atenção e
+ 
+
+00:13:40.720 --> 00:13:43.910 align:start position:0%
+é isso que eu estou a dizer com atenção e
+tenha <00:13:41.171><c>em </c><00:13:41.622><c>atenção </c><00:13:42.073><c>se </c><00:13:42.524><c>faz </c><00:13:42.975><c>sentido, </c><00:13:43.426><c>se </c><00:13:43.877><c>se</c>
+
+00:13:43.910 --> 00:13:43.920 align:start position:0%
+tenha em atenção se faz sentido, se se
+ 
+
+00:13:43.920 --> 00:13:46.430 align:start position:0%
+tenha em atenção se faz sentido, se se
+hoje <00:13:44.272><c>o </c><00:13:44.624><c>seu </c><00:13:44.976><c>operacional </c><00:13:45.328><c>é </c><00:13:45.680><c>rentável</c>
+
+00:13:46.430 --> 00:13:46.440 align:start position:0%
+hoje o seu operacional é rentável
+ 
+
+00:13:46.440 --> 00:13:48.430 align:start position:0%
+hoje o seu operacional é rentável
+mesmo, <00:13:46.669><c>não </c><00:13:46.898><c>é? </c><00:13:47.127><c>Ou </c><00:13:47.356><c>porque </c><00:13:47.585><c>às </c><00:13:47.814><c>vezes </c><00:13:48.043><c>o </c><00:13:48.272><c>gajo</c>
+
+00:13:48.430 --> 00:13:48.440 align:start position:0%
+mesmo, não é? Ou porque às vezes o gajo
+ 
+
+00:13:48.440 --> 00:13:50.539 align:start position:0%
+mesmo, não é? Ou porque às vezes o gajo
+pensa <00:13:48.650><c>que </c><00:13:48.860><c>é </c><00:13:49.070><c>e </c><00:13:49.280><c>não </c><00:13:49.490><c>é, </c><00:13:49.700><c>não </c><00:13:49.910><c>é? </c><00:13:50.120><c>Então</c>
+
+00:13:50.539 --> 00:13:50.549 align:start position:0%
+pensa que é e não é, não é? Então
+ 
+
+00:13:50.549 --> 00:13:52.310 align:start position:0%
+pensa que é e não é, não é? Então
+[pigarreia] <00:13:50.966><c>estas </c><00:13:51.383><c>regiões </c><00:13:51.800><c>são</c>
+
+00:13:52.310 --> 00:13:52.320 align:start position:0%
+[pigarreia] estas regiões são
+ 
+
+00:13:52.320 --> 00:13:55.230 align:start position:0%
+[pigarreia] estas regiões são
+as <00:13:52.773><c>regiões </c><00:13:53.226><c>piores </c><00:13:53.679><c>de </c><00:13:54.132><c>preço, </c><00:13:54.585><c>ok? </c><00:13:55.038><c>Para</c>
+
+00:13:55.230 --> 00:13:55.240 align:start position:0%
+as regiões piores de preço, ok? Para
+ 
+
+00:13:55.240 --> 00:13:56.910 align:start position:0%
+as regiões piores de preço, ok? Para
+você <00:13:55.506><c>entrar </c><00:13:55.772><c>no </c><00:13:56.038><c>movimento. </c><00:13:56.304><c>Que </c><00:13:56.570><c>que </c><00:13:56.836><c>eu</c>
+
+00:13:56.910 --> 00:13:56.920 align:start position:0%
+você entrar no movimento. Que que eu
+ 
+
+00:13:56.920 --> 00:13:58.030 align:start position:0%
+você entrar no movimento. Que que eu
+quero <00:13:57.059><c>dizer? </c><00:13:57.198><c>Vai </c><00:13:57.337><c>olhar </c><00:13:57.476><c>para </c><00:13:57.615><c>um </c><00:13:57.754><c>gráfico</c>
+
+00:13:58.030 --> 00:13:58.040 align:start position:0%
+quero dizer? Vai olhar para um gráfico
+ 
+
+00:13:58.040 --> 00:14:00.509 align:start position:0%
+quero dizer? Vai olhar para um gráfico
+de <00:13:58.284><c>5 </c><00:13:58.528><c>minutos, </c><00:13:58.772><c>portanto </c><00:13:59.016><c>ele </c><00:13:59.260><c>vai </c><00:13:59.504><c>estar </c><00:13:59.748><c>lá, </c><00:13:59.992><c>não </c><00:14:00.236><c>é,</c>
+
+00:14:00.509 --> 00:14:00.519 align:start position:0%
+de 5 minutos, portanto ele vai estar lá, não é,
+ 
+
+00:14:00.519 --> 00:14:03.990 align:start position:0%
+de 5 minutos, portanto ele vai estar lá, não é,
+os <00:14:00.894><c>candles </c><00:14:01.269><c>e </c><00:14:01.644><c>para </c><00:14:02.019><c>baixo </c><00:14:02.394><c>e </c><00:14:02.769><c>tal. </c><00:14:03.144><c>Aí </c><00:14:03.519><c>chega</c>
+
+00:14:03.990 --> 00:14:04.000 align:start position:0%
+os candles e para baixo e tal. Aí chega
+ 
+
+00:14:04.000 --> 00:14:06.590 align:start position:0%
+os candles e para baixo e tal. Aí chega
+onde? <00:14:04.310><c>Lá </c><00:14:04.620><c>no </c><00:14:04.930><c>alvo </c><00:14:05.240><c>um. </c><00:14:05.550><c>Então </c><00:14:05.860><c>é </c><00:14:06.170><c>como </c><00:14:06.480><c>se</c>
+
+00:14:06.590 --> 00:14:06.600 align:start position:0%
+onde? Lá no alvo um. Então é como se
+ 
+
+00:14:06.600 --> 00:14:08.150 align:start position:0%
+onde? Lá no alvo um. Então é como se
+tivesse <00:14:06.794><c>feito </c><00:14:06.988><c>isso </c><00:14:07.182><c>aqui </c><00:14:07.376><c>no </c><00:14:07.570><c>renco, </c><00:14:07.764><c>não </c><00:14:07.958><c>é?</c>
+
+00:14:08.150 --> 00:14:08.160 align:start position:0%
+tivesse feito isso aqui no renco, não é?
+ 
+
+00:14:08.160 --> 00:14:11.189 align:start position:0%
+tivesse feito isso aqui no renco, não é?
+Ele <00:14:08.577><c>p </c><00:14:08.994><c>abanou </c><00:14:09.411><c>e </c><00:14:09.828><c>depois </c><00:14:10.245><c>de </c><00:14:10.662><c>repente </c><00:14:11.079><c>está</c>
+
+00:14:11.189 --> 00:14:11.199 align:start position:0%
+Ele p abanou e depois de repente está
+ 
+
+00:14:11.199 --> 00:14:13.629 align:start position:0%
+Ele p abanou e depois de repente está
+aqui <00:14:11.496><c>no </c><00:14:11.793><c>renco. </c><00:14:12.090><c>E </c><00:14:12.387><c>aqui </c><00:14:12.684><c>tem </c><00:14:12.981><c>o </c><00:14:13.278><c>gráfico</c>
+
+00:14:13.629 --> 00:14:13.639 align:start position:0%
+aqui no renco. E aqui tem o gráfico
+ 
+
+00:14:13.639 --> 00:14:16.550 align:start position:0%
+aqui no renco. E aqui tem o gráfico
+temporal. <00:14:14.033><c>A </c><00:14:14.427><c>pessoa </c><00:14:14.821><c>olha </c><00:14:15.215><c>para </c><00:14:15.609><c>isto, </c><00:14:16.003><c>diz: </c><00:14:16.397><c>"Meu</c>
+
+00:14:16.550 --> 00:14:16.560 align:start position:0%
+temporal. A pessoa olha para isto, diz: "Meu
+ 
+
+00:14:16.560 --> 00:14:18.110 align:start position:0%
+temporal. A pessoa olha para isto, diz: "Meu
+Deus, <00:14:16.800><c>vou </c><00:14:17.040><c>vender </c><00:14:17.280><c>porque </c><00:14:17.520><c>o </c><00:14:17.760><c>mercado </c><00:14:18.000><c>não</c>
+
+00:14:18.110 --> 00:14:18.120 align:start position:0%
+Deus, vou vender porque o mercado não
+ 
+
+00:14:18.120 --> 00:14:19.710 align:start position:0%
+Deus, vou vender porque o mercado não
+vai <00:14:18.314><c>parar </c><00:14:18.508><c>mais </c><00:14:18.702><c>de </c><00:14:18.896><c>cair". </c><00:14:19.090><c>Depois </c><00:14:19.284><c>o </c><00:14:19.478><c>tipo</c>
+
+00:14:19.710 --> 00:14:19.720 align:start position:0%
+vai parar mais de cair". Depois o tipo
+ 
+
+00:14:19.720 --> 00:14:22.389 align:start position:0%
+vai parar mais de cair". Depois o tipo
+vende, <00:14:20.026><c>que </c><00:14:20.332><c>que </c><00:14:20.638><c>acontece?</c>
+
+00:14:22.389 --> 00:14:22.399 align:start position:0%
+vende, que que acontece?
+ 
+
+00:14:22.399 --> 00:14:24.269 align:start position:0%
+vende, que que acontece?
+Não <00:14:22.614><c>tem </c><00:14:22.829><c>noção </c><00:14:23.044><c>de </c><00:14:23.259><c>onde </c><00:14:23.474><c>está </c><00:14:23.689><c>a </c><00:14:23.904><c>entrar. </c><00:14:24.119><c>De</c>
+
+00:14:24.269 --> 00:14:24.279 align:start position:0%
+Não tem noção de onde está a entrar. De
+ 
+
+00:14:24.279 --> 00:14:27.230 align:start position:0%
+Não tem noção de onde está a entrar. De
+repente <00:14:24.969><c>teria </c><00:14:25.659><c>vendido </c><00:14:26.349><c>melhor </c><00:14:27.039><c>se</c>
+
+00:14:27.230 --> 00:14:27.240 align:start position:0%
+repente teria vendido melhor se
+ 
+
+00:14:27.240 --> 00:14:28.870 align:start position:0%
+repente teria vendido melhor se
+tivesse <00:14:27.543><c>tido </c><00:14:27.846><c>paciência </c><00:14:28.149><c>para </c><00:14:28.452><c>esperar </c><00:14:28.755><c>o</c>
+
+00:14:28.870 --> 00:14:28.880 align:start position:0%
+tivesse tido paciência para esperar o
+ 
+
+00:14:28.880 --> 00:14:31.310 align:start position:0%
+tivesse tido paciência para esperar o
+preço <00:14:29.171><c>voltar </c><00:14:29.462><c>lá </c><00:14:29.753><c>no </c><00:14:30.044><c>Aí </c><00:14:30.335><c>o </c><00:14:30.626><c>gajo </c><00:14:30.917><c>vende,</c>
+
+00:14:31.310 --> 00:14:31.320 align:start position:0%
+preço voltar lá no Aí o gajo vende,
+ 
+
+00:14:31.320 --> 00:14:33.550 align:start position:0%
+preço voltar lá no Aí o gajo vende,
+passa <00:14:31.585><c>um </c><00:14:31.850><c>calor </c><00:14:32.115><c>do </c><00:14:32.380><c>caraças, </c><00:14:32.645><c>faz </c><00:14:32.910><c>média, </c><00:14:33.175><c>faz </c><00:14:33.440><c>um</c>
+
+00:14:33.550 --> 00:14:33.560 align:start position:0%
+passa um calor do caraças, faz média, faz um
+ 
+
+00:14:33.560 --> 00:14:36.310 align:start position:0%
+passa um calor do caraças, faz média, faz um
+monte <00:14:33.993><c>de </c><00:14:34.426><c>lambança. </c><00:14:34.859><c>Depois </c><00:14:35.292><c>quando </c><00:14:35.725><c>volta </c><00:14:36.158><c>aqui,</c>
+
+00:14:36.310 --> 00:14:36.320 align:start position:0%
+monte de lambança. Depois quando volta aqui,
+ 
+
+00:14:36.320 --> 00:14:38.310 align:start position:0%
+monte de lambança. Depois quando volta aqui,
+sai <00:14:36.577><c>no </c><00:14:36.834><c>0 </c><00:14:37.091><c>a </c><00:14:37.348><c>zer </c><00:14:37.605><c>por </c><00:14:37.862><c>medo. </c><00:14:38.119><c>Fala:</c>
+
+00:14:38.310 --> 00:14:38.320 align:start position:0%
+sai no 0 a zer por medo. Fala:
+ 
+
+00:14:38.320 --> 00:14:39.990 align:start position:0%
+sai no 0 a zer por medo. Fala:
+"Putz, <00:14:38.573><c>vou </c><00:14:38.826><c>sair </c><00:14:39.079><c>deste </c><00:14:39.332><c>trade </c><00:14:39.585><c>porque </c><00:14:39.838><c>não</c>
+
+00:14:39.990 --> 00:14:40.000 align:start position:0%
+"Putz, vou sair deste trade porque não
+ 
+
+00:14:40.000 --> 00:14:41.790 align:start position:0%
+"Putz, vou sair deste trade porque não
+está <00:14:40.259><c>fixe </c><00:14:40.518><c>mais".</c>
+
+00:14:41.790 --> 00:14:41.800 align:start position:0%
+está fixe mais".
+ 
+
+00:14:41.800 --> 00:14:43.710 align:start position:0%
+está fixe mais".
+disse: <00:14:42.086><c>"Não </c><00:14:42.372><c>está </c><00:14:42.658><c>legal </c><00:14:42.944><c>porque </c><00:14:43.230><c>você </c><00:14:43.516><c>eh</c>
+
+00:14:43.710 --> 00:14:43.720 align:start position:0%
+disse: "Não está legal porque você eh
+ 
+
+00:14:43.720 --> 00:14:46.949 align:start position:0%
+disse: "Não está legal porque você eh
+entrou <00:14:44.220><c>numa </c><00:14:44.720><c>região </c><00:14:45.220><c>má, </c><00:14:45.720><c>ok?" </c><00:14:46.220><c>Então, </c><00:14:46.720><c>no</c>
+
+00:14:46.949 --> 00:14:46.959 align:start position:0%
+entrou numa região má, ok?" Então, no
+ 
+
+00:14:46.959 --> 00:14:49.629 align:start position:0%
+entrou numa região má, ok?" Então, no
+gráfico <00:14:47.365><c>de </c><00:14:47.771><c>Renko, </c><00:14:48.177><c>as </c><00:14:48.583><c>regiões </c><00:14:48.989><c>que </c><00:14:49.395><c>lhe</c>
+
+00:14:49.629 --> 00:14:49.639 align:start position:0%
+gráfico de Renko, as regiões que lhe
+ 
+
+00:14:49.639 --> 00:14:52.949 align:start position:0%
+gráfico de Renko, as regiões que lhe
+deve <00:14:50.092><c>ter </c><00:14:50.545><c>em </c><00:14:50.998><c>atenção </c><00:14:51.451><c>são </c><00:14:51.904><c>estas </c><00:14:52.357><c>regiões</c>
+
+00:14:52.949 --> 00:14:52.959 align:start position:0%
+deve ter em atenção são estas regiões
+ 
+
+00:14:52.959 --> 00:14:55.829 align:start position:0%
+deve ter em atenção são estas regiões
+que <00:14:53.347><c>eu </c><00:14:53.735><c>vos </c><00:14:54.123><c>disse </c><00:14:54.511><c>aqui, </c><00:14:54.899><c>ok? </c><00:14:55.287><c>Eh, </c><00:14:55.675><c>a</c>
+
+00:14:55.829 --> 00:14:55.839 align:start position:0%
+que eu vos disse aqui, ok? Eh, a
+ 
+
+00:14:55.839 --> 00:14:58.550 align:start position:0%
+que eu vos disse aqui, ok? Eh, a
+gente <00:14:56.153><c>vai </c><00:14:56.467><c>falar </c><00:14:56.781><c>agora </c><00:14:57.095><c>sobre </c><00:14:57.409><c>o </c><00:14:57.723><c>a </c><00:14:58.037><c>região</c>
+
+00:14:58.550 --> 00:14:58.560 align:start position:0%
+gente vai falar agora sobre o a região
+ 
+
+00:14:58.560 --> 00:15:00.790 align:start position:0%
+gente vai falar agora sobre o a região
+do <00:14:58.944><c>gráfico </c><00:14:59.328><c>temporal. </c><00:14:59.712><c>Assim, </c><00:15:00.096><c>no </c><00:15:00.480><c>gráfico</c>
+
+00:15:00.790 --> 00:15:00.800 align:start position:0%
+do gráfico temporal. Assim, no gráfico
+ 
+
+00:15:00.800 --> 00:15:03.189 align:start position:0%
+do gráfico temporal. Assim, no gráfico
+de <00:15:01.102><c>Renco </c><00:15:01.404><c>já </c><00:15:01.706><c>sabe </c><00:15:02.008><c>o </c><00:15:02.310><c>que </c><00:15:02.612><c>tem </c><00:15:02.914><c>pela</c>
+
+00:15:03.189 --> 00:15:03.199 align:start position:0%
+de Renco já sabe o que tem pela
+ 
+
+00:15:03.199 --> 00:15:06.110 align:start position:0%
+de Renco já sabe o que tem pela
+frente <00:15:03.743><c>e </c><00:15:04.287><c>agora </c><00:15:04.831><c>vou </c><00:15:05.375><c>dizer-vos </c><00:15:05.919><c>a</c>
+
+00:15:06.110 --> 00:15:06.120 align:start position:0%
+frente e agora vou dizer-vos a
+ 
+
+00:15:06.120 --> 00:15:08.430 align:start position:0%
+frente e agora vou dizer-vos a
+respeito <00:15:06.551><c>do </c><00:15:06.982><c>gráfico </c><00:15:07.413><c>temporal. </c><00:15:07.844><c>Eu </c><00:15:08.275><c>já</c>
+
+00:15:08.430 --> 00:15:08.440 align:start position:0%
+respeito do gráfico temporal. Eu já
+ 
+
+00:15:08.440 --> 00:15:10.910 align:start position:0%
+respeito do gráfico temporal. Eu já
+expliquei-vos <00:15:09.000><c>sobre </c><00:15:09.560><c>a </c><00:15:10.120><c>questão </c><00:15:10.680><c>da</c>
+
+00:15:10.910 --> 00:15:10.920 align:start position:0%
+expliquei-vos sobre a questão da
+ 
+
+00:15:10.920 --> 00:15:13.310 align:start position:0%
+expliquei-vos sobre a questão da
+linha <00:15:11.320><c>azul. </c><00:15:11.720><c>Porquê </c><00:15:12.120><c>linha </c><00:15:12.520><c>azul? </c><00:15:12.920><c>Porque</c>
+
+00:15:13.310 --> 00:15:13.320 align:start position:0%
+linha azul. Porquê linha azul? Porque
+ 
+
+00:15:13.320 --> 00:15:17.430 align:start position:0%
+linha azul. Porquê linha azul? Porque
+baseia-se <00:15:14.280><c>na </c><00:15:15.240><c>amplitude </c><00:15:16.200><c>média </c><00:15:17.160><c>da</c>
+
+00:15:17.430 --> 00:15:17.440 align:start position:0%
+baseia-se na amplitude média da
+ 
+
+00:15:17.440 --> 00:15:20.150 align:start position:0%
+baseia-se na amplitude média da
+frequência <00:15:17.731><c>do </c><00:15:18.022><c>dia, </c><00:15:18.313><c>ok? </c><00:15:18.604><c>Não </c><00:15:18.895><c>é </c><00:15:19.186><c>um </c><00:15:19.477><c>assunto</c>
+
+00:15:20.150 --> 00:15:20.160 align:start position:0%
+frequência do dia, ok? Não é um assunto
+ 
+
+00:15:20.160 --> 00:15:22.150 align:start position:0%
+frequência do dia, ok? Não é um assunto
+mais <00:15:20.512><c>teórico, </c><00:15:20.864><c>então </c><00:15:21.216><c>tanto </c><00:15:21.568><c>lhe </c><00:15:21.920><c>faz</c>
+
+00:15:22.150 --> 00:15:22.160 align:start position:0%
+mais teórico, então tanto lhe faz
+ 
+
+00:15:22.160 --> 00:15:23.310 align:start position:0%
+mais teórico, então tanto lhe faz
+entender <00:15:22.389><c>isso. </c><00:15:22.618><c>O </c><00:15:22.847><c>que </c><00:15:23.076><c>precisa</c>
+
+00:15:23.310 --> 00:15:23.320 align:start position:0%
+entender isso. O que precisa
+ 
+
+00:15:23.320 --> 00:15:25.389 align:start position:0%
+entender isso. O que precisa
+perceber <00:15:23.531><c>é </c><00:15:23.742><c>o </c><00:15:23.953><c>que </c><00:15:24.164><c>tem </c><00:15:24.375><c>que </c><00:15:24.586><c>fazer, </c><00:15:24.797><c>ok?</c>
+
+00:15:25.389 --> 00:15:25.399 align:start position:0%
+perceber é o que tem que fazer, ok?
+ 
+
+00:15:25.399 --> 00:15:27.550 align:start position:0%
+perceber é o que tem que fazer, ok?
+Senão <00:15:25.649><c>passa </c><00:15:25.899><c>a </c><00:15:26.149><c>ser </c><00:15:26.399><c>teoria </c><00:15:26.649><c>musical. </c><00:15:26.899><c>Vou </c><00:15:27.149><c>ter </c><00:15:27.399><c>que</c>
+
+00:15:27.550 --> 00:15:27.560 align:start position:0%
+Senão passa a ser teoria musical. Vou ter que
+ 
+
+00:15:27.560 --> 00:15:29.150 align:start position:0%
+Senão passa a ser teoria musical. Vou ter que
+ensinar <00:15:27.800><c>a </c><00:15:28.040><c>ler </c><00:15:28.280><c>partitura, </c><00:15:28.520><c>sendo </c><00:15:28.760><c>que, </c><00:15:29.000><c>na</c>
+
+00:15:29.150 --> 00:15:29.160 align:start position:0%
+ensinar a ler partitura, sendo que, na
+ 
+
+00:15:29.160 --> 00:15:30.230 align:start position:0%
+ensinar a ler partitura, sendo que, na
+verdade, <00:15:29.389><c>só </c><00:15:29.618><c>quer </c><00:15:29.847><c>tocar </c><00:15:30.076><c>um</c>
+
+00:15:30.230 --> 00:15:30.240 align:start position:0%
+verdade, só quer tocar um
+ 
+
+00:15:30.240 --> 00:15:32.269 align:start position:0%
+verdade, só quer tocar um
+instrumento, <00:15:30.607><c>não </c><00:15:30.974><c>é? </c><00:15:31.341><c>Então, </c><00:15:31.708><c>que </c><00:15:32.075><c>que</c>
+
+00:15:32.269 --> 00:15:32.279 align:start position:0%
+instrumento, não é? Então, que que
+ 
+
+00:15:32.279 --> 00:15:35.069 align:start position:0%
+instrumento, não é? Então, que que
+acontece? <00:15:32.725><c>A </c><00:15:33.171><c>linha </c><00:15:33.617><c>do </c><00:15:34.063><c>gráfico </c><00:15:34.509><c>temporal, </c><00:15:34.955><c>a</c>
+
+00:15:35.069 --> 00:15:35.079 align:start position:0%
+acontece? A linha do gráfico temporal, a
+ 
+
+00:15:35.079 --> 00:15:37.870 align:start position:0%
+acontece? A linha do gráfico temporal, a
+linha <00:15:35.559><c>azul, </c><00:15:36.039><c>traz </c><00:15:36.519><c>uma </c><00:15:36.999><c>espécie </c><00:15:37.479><c>de</c>
+
+00:15:37.870 --> 00:15:37.880 align:start position:0%
+linha azul, traz uma espécie de
+ 
+
+00:15:37.880 --> 00:15:40.629 align:start position:0%
+linha azul, traz uma espécie de
+divisor, <00:15:38.257><c>não </c><00:15:38.634><c>é, </c><00:15:39.011><c>de </c><00:15:39.388><c>região. </c><00:15:39.765><c>Assim, </c><00:15:40.142><c>se </c><00:15:40.519><c>o</c>
+
+00:15:40.629 --> 00:15:40.639 align:start position:0%
+divisor, não é, de região. Assim, se o
+ 
+
+00:15:40.639 --> 00:15:45.990 align:start position:0%
+divisor, não é, de região. Assim, se o
+preço <00:15:41.303><c>é </c><00:15:41.967><c>trabalha </c><00:15:42.631><c>sempre </c><00:15:43.295><c>abaixo </c><00:15:43.959><c>dela,</c>
+
+00:15:45.990 --> 00:15:46.000 align:start position:0%
+preço é trabalha sempre abaixo dela,
+ 
+
+00:15:46.000 --> 00:15:48.150 align:start position:0%
+preço é trabalha sempre abaixo dela,
+usá-la-emos <00:15:46.666><c>sempre </c><00:15:47.332><c>como </c><00:15:47.998><c>uma</c>
+
+00:15:48.150 --> 00:15:48.160 align:start position:0%
+usá-la-emos sempre como uma
+ 
+
+00:15:48.160 --> 00:15:49.870 align:start position:0%
+usá-la-emos sempre como uma
+referência <00:15:48.472><c>paraa </c><00:15:48.784><c>venda, </c><00:15:49.096><c>ok? </c><00:15:49.408><c>Enquanto </c><00:15:49.720><c>não</c>
+
+00:15:49.870 --> 00:15:49.880 align:start position:0%
+referência paraa venda, ok? Enquanto não
+ 
+
+00:15:49.880 --> 00:15:51.350 align:start position:0%
+referência paraa venda, ok? Enquanto não
+cruzar, <00:15:50.136><c>vamos </c><00:15:50.392><c>sempre </c><00:15:50.648><c>pensar </c><00:15:50.904><c>o </c><00:15:51.160><c>quê?</c>
+
+00:15:51.350 --> 00:15:51.360 align:start position:0%
+cruzar, vamos sempre pensar o quê?
+ 
+
+00:15:51.360 --> 00:15:53.680 align:start position:0%
+cruzar, vamos sempre pensar o quê?
+Em <00:15:51.899><c>vender. </c><00:15:52.438><c>Por </c><00:15:52.977><c>quê? </c><00:15:53.516><c>Porque</c>
+
+00:15:53.680 --> 00:15:53.690 align:start position:0%
+Em vender. Por quê? Porque
+ 
+
+00:15:53.690 --> 00:15:54.710 align:start position:0%
+Em vender. Por quê? Porque
+[pigarreia] <00:15:53.899><c>são </c><00:15:54.108><c>nestas </c><00:15:54.317><c>regiões</c>
+
+00:15:54.710 --> 00:15:54.720 align:start position:0%
+[pigarreia] são nestas regiões
+ 
+
+00:15:54.720 --> 00:15:57.829 align:start position:0%
+[pigarreia] são nestas regiões
+em <00:15:55.137><c>que </c><00:15:55.554><c>o </c><00:15:55.971><c>mercado </c><00:15:56.388><c>tende </c><00:15:56.805><c>a </c><00:15:57.222><c>respeitar </c><00:15:57.639><c>os</c>
+
+00:15:57.829 --> 00:15:57.839 align:start position:0%
+em que o mercado tende a respeitar os
+ 
+
+00:15:57.839 --> 00:16:01.710 align:start position:0%
+em que o mercado tende a respeitar os
+pontos. <00:15:58.609><c>E </c><00:15:59.379><c>aqui </c><00:16:00.149><c>dentro </c><00:16:00.919><c>podemos</c>
+
+00:16:01.710 --> 00:16:01.720 align:start position:0%
+pontos. E aqui dentro podemos
+ 
+
+00:16:01.720 --> 00:16:03.550 align:start position:0%
+pontos. E aqui dentro podemos
+considerar <00:16:02.239><c>outras </c><00:16:02.758><c>questões, </c><00:16:03.277><c>porque</c>
+
+00:16:03.550 --> 00:16:03.560 align:start position:0%
+considerar outras questões, porque
+ 
+
+00:16:03.560 --> 00:16:06.509 align:start position:0%
+considerar outras questões, porque
+assim, <00:16:03.937><c>eh, </c><00:16:04.314><c>para </c><00:16:04.691><c>além </c><00:16:05.068><c>da </c><00:16:05.445><c>linha </c><00:16:05.822><c>azul, </c><00:16:06.199><c>tu</c>
+
+00:16:06.509 --> 00:16:06.519 align:start position:0%
+assim, eh, para além da linha azul, tu
+ 
+
+00:16:06.519 --> 00:16:08.629 align:start position:0%
+assim, eh, para além da linha azul, tu
+irá <00:16:06.832><c>reparar </c><00:16:07.145><c>que </c><00:16:07.458><c>existem </c><00:16:07.771><c>outras </c><00:16:08.084><c>linhas </c><00:16:08.397><c>que</c>
+
+00:16:08.629 --> 00:16:08.639 align:start position:0%
+irá reparar que existem outras linhas que
+ 
+
+00:16:08.639 --> 00:16:10.790 align:start position:0%
+irá reparar que existem outras linhas que
+aparecem <00:16:09.039><c>nesse </c><00:16:09.439><c>gráfico. </c><00:16:09.839><c>Assim, </c><00:16:10.239><c>são </c><00:16:10.639><c>as</c>
+
+00:16:10.790 --> 00:16:10.800 align:start position:0%
+aparecem nesse gráfico. Assim, são as
+ 
+
+00:16:10.800 --> 00:16:13.470 align:start position:0%
+aparecem nesse gráfico. Assim, são as
+linhas <00:16:11.124><c>que </c><00:16:11.448><c>eu </c><00:16:11.772><c>explico </c><00:16:12.096><c>lá </c><00:16:12.420><c>na </c><00:16:12.744><c>aula </c><00:16:13.068><c>que </c><00:16:13.392><c>eu</c>
+
+00:16:13.470 --> 00:16:13.480 align:start position:0%
+linhas que eu explico lá na aula que eu
+ 
+
+00:16:13.480 --> 00:16:15.670 align:start position:0%
+linhas que eu explico lá na aula que eu
+Falo <00:16:13.819><c>dos </c><00:16:14.158><c>melhores </c><00:16:14.497><c>preços </c><00:16:14.836><c>para </c><00:16:15.175><c>atuar, </c><00:16:15.514><c>que</c>
+
+00:16:15.670 --> 00:16:15.680 align:start position:0%
+Falo dos melhores preços para atuar, que
+ 
+
+00:16:15.680 --> 00:16:18.749 align:start position:0%
+Falo dos melhores preços para atuar, que
+são <00:16:15.990><c>aqueles </c><00:16:16.300><c>preços </c><00:16:16.610><c>que </c><00:16:16.920><c>aparecem</c>
+
+00:16:18.749 --> 00:16:18.759 align:start position:0%
+são aqueles preços que aparecem
+ 
+
+00:16:18.759 --> 00:16:21.350 align:start position:0%
+são aqueles preços que aparecem
+aqui <00:16:19.145><c>na </c><00:16:19.531><c>parte </c><00:16:19.917><c>inferior </c><00:16:20.303><c>da </c><00:16:20.689><c>ASG </c><00:16:21.075><c>também,</c>
+
+00:16:21.350 --> 00:16:21.360 align:start position:0%
+aqui na parte inferior da ASG também,
+ 
+
+00:16:21.360 --> 00:16:23.509 align:start position:0%
+aqui na parte inferior da ASG também,
+que <00:16:21.639><c>tem </c><00:16:21.918><c>o </c><00:16:22.197><c>holograma </c><00:16:22.476><c>lá </c><00:16:22.755><c>do </c><00:16:23.034><c>tourinho </c><00:16:23.313><c>do</c>
+
+00:16:23.509 --> 00:16:23.519 align:start position:0%
+que tem o holograma lá do tourinho do
+ 
+
+00:16:23.519 --> 00:16:26.269 align:start position:0%
+que tem o holograma lá do tourinho do
+urso, <00:16:23.862><c>não </c><00:16:24.205><c>é? </c><00:16:24.548><c>Depois </c><00:16:24.891><c>aparece </c><00:16:25.234><c>lá </c><00:16:25.577><c>aqueles </c><00:16:25.920><c>quatro</c>
+
+00:16:26.269 --> 00:16:26.279 align:start position:0%
+urso, não é? Depois aparece lá aqueles quatro
+ 
+
+00:16:26.279 --> 00:16:31.309 align:start position:0%
+urso, não é? Depois aparece lá aqueles quatro
+níveis <00:16:26.976><c>de </c><00:16:27.673><c>preços </c><00:16:28.370><c>e </c><00:16:29.067><c>estes </c><00:16:29.764><c>preços </c><00:16:30.461><c>aqui, </c><00:16:31.158><c>na</c>
+
+00:16:31.309 --> 00:16:31.319 align:start position:0%
+níveis de preços e estes preços aqui, na
+ 
+
+00:16:31.319 --> 00:16:34.189 align:start position:0%
+níveis de preços e estes preços aqui, na
+verdade <00:16:31.772><c>são </c><00:16:32.225><c>os </c><00:16:32.678><c>melhores </c><00:16:33.131><c>preços </c><00:16:33.584><c>que </c><00:16:34.037><c>o</c>
+
+00:16:34.189 --> 00:16:34.199 align:start position:0%
+verdade são os melhores preços que o
+ 
+
+00:16:34.199 --> 00:16:37.509 align:start position:0%
+verdade são os melhores preços que o
+sistema <00:16:34.692><c>capta </c><00:16:35.185><c>no </c><00:16:35.678><c>dia, </c><00:16:36.171><c>ok? </c><00:16:36.664><c>Então </c><00:16:37.157><c>notem</c>
+
+00:16:37.509 --> 00:16:37.519 align:start position:0%
+sistema capta no dia, ok? Então notem
+ 
+
+00:16:37.519 --> 00:16:39.870 align:start position:0%
+sistema capta no dia, ok? Então notem
+que <00:16:37.959><c>temos </c><00:16:38.399><c>duas </c><00:16:38.839><c>referências. </c><00:16:39.279><c>Temos </c><00:16:39.719><c>o</c>
+
+00:16:39.870 --> 00:16:39.880 align:start position:0%
+que temos duas referências. Temos o
+ 
+
+00:16:39.880 --> 00:16:42.470 align:start position:0%
+que temos duas referências. Temos o
+gráfico <00:16:40.228><c>de </c><00:16:40.576><c>renco. </c><00:16:40.924><c>O </c><00:16:41.272><c>renco </c><00:16:41.620><c>não </c><00:16:41.968><c>tem </c><00:16:42.316><c>em</c>
+
+00:16:42.470 --> 00:16:42.480 align:start position:0%
+gráfico de renco. O renco não tem em
+ 
+
+00:16:42.480 --> 00:16:44.550 align:start position:0%
+gráfico de renco. O renco não tem em
+consideração <00:16:42.939><c>estas </c><00:16:43.398><c>linhas </c><00:16:43.857><c>baseado </c><00:16:44.316><c>em</c>
+
+00:16:44.550 --> 00:16:44.560 align:start position:0%
+consideração estas linhas baseado em
+ 
+
+00:16:44.560 --> 00:16:47.430 align:start position:0%
+consideração estas linhas baseado em
+algo <00:16:44.904><c>do </c><00:16:45.248><c>género </c><00:16:45.592><c>e </c><00:16:45.936><c>como </c><00:16:46.280><c>a </c><00:16:46.624><c>absorção, </c><00:16:46.968><c>exaustão </c><00:16:47.312><c>e</c>
+
+00:16:47.430 --> 00:16:47.440 align:start position:0%
+algo do género e como a absorção, exaustão e
+ 
+
+00:16:47.440 --> 00:16:50.350 align:start position:0%
+algo do género e como a absorção, exaustão e
+tal, <00:16:47.896><c>ok? </c><00:16:48.352><c>Eh, </c><00:16:48.808><c>são </c><00:16:49.264><c>baseadas </c><00:16:49.720><c>noutros</c>
+
+00:16:50.350 --> 00:16:50.360 align:start position:0%
+tal, ok? Eh, são baseadas noutros
+ 
+
+00:16:50.360 --> 00:16:52.030 align:start position:0%
+tal, ok? Eh, são baseadas noutros
+critérios, <00:16:50.679><c>mas </c><00:16:50.998><c>são </c><00:16:51.317><c>critérios</c>
+
+00:16:52.030 --> 00:16:52.040 align:start position:0%
+critérios, mas são critérios
+ 
+
+00:16:52.040 --> 00:16:55.470 align:start position:0%
+critérios, mas são critérios
+importantes. <00:16:52.849><c>Ajudam </c><00:16:53.658><c>a </c><00:16:54.467><c>evitar </c><00:16:55.276><c>de</c>
+
+00:16:55.470 --> 00:16:55.480 align:start position:0%
+importantes. Ajudam a evitar de
+ 
+
+00:16:55.480 --> 00:16:58.269 align:start position:0%
+importantes. Ajudam a evitar de
+entrar <00:16:55.951><c>em </c><00:16:56.422><c>pontos </c><00:16:56.893><c>errados. </c><00:16:57.364><c>E </c><00:16:57.835><c>temos</c>
+
+00:16:58.269 --> 00:16:58.279 align:start position:0%
+entrar em pontos errados. E temos
+ 
+
+00:16:58.279 --> 00:17:01.590 align:start position:0%
+entrar em pontos errados. E temos
+no <00:16:58.739><c>gráfico </c><00:16:59.199><c>temporal,</c>
+
+00:17:01.590 --> 00:17:01.600 align:start position:0%
+no gráfico temporal,
+ 
+
+00:17:01.600 --> 00:17:04.750 align:start position:0%
+no gráfico temporal,
+tá? <00:17:02.005><c>E </c><00:17:02.410><c>depois </c><00:17:02.815><c>temos </c><00:17:03.220><c>no </c><00:17:03.625><c>gráfico </c><00:17:04.030><c>temporal </c><00:17:04.435><c>as</c>
+
+00:17:04.750 --> 00:17:04.760 align:start position:0%
+tá? E depois temos no gráfico temporal as
+ 
+
+00:17:04.760 --> 00:17:08.029 align:start position:0%
+tá? E depois temos no gráfico temporal as
+linhas <00:17:05.273><c>que </c><00:17:05.786><c>lá </c><00:17:06.299><c>aparecem </c><00:17:06.812><c>no </c><00:17:07.325><c>holograma, </c><00:17:07.838><c>que</c>
+
+00:17:08.029 --> 00:17:08.039 align:start position:0%
+linhas que lá aparecem no holograma, que
+ 
+
+00:17:08.039 --> 00:17:11.270 align:start position:0%
+linhas que lá aparecem no holograma, que
+aí <00:17:08.459><c>sim </c><00:17:08.879><c>são </c><00:17:09.299><c>linhas </c><00:17:09.719><c>mais </c><00:17:10.139><c>técnicas, </c><00:17:10.559><c>ok?</c>
+
+00:17:11.270 --> 00:17:11.280 align:start position:0%
+aí sim são linhas mais técnicas, ok?
+ 
+
+00:17:11.280 --> 00:17:13.870 align:start position:0%
+aí sim são linhas mais técnicas, ok?
+Consequentemente <00:17:11.786><c>são </c><00:17:12.292><c>mais </c><00:17:12.798><c>assertivas,</c>
+
+00:17:13.870 --> 00:17:13.880 align:start position:0%
+Consequentemente são mais assertivas,
+ 
+
+00:17:13.880 --> 00:17:17.590 align:start position:0%
+Consequentemente são mais assertivas,
+tá? <00:17:14.426><c>Estas </c><00:17:14.972><c>linhas </c><00:17:15.518><c>que </c><00:17:16.064><c>aparecem, </c><00:17:16.610><c>elas </c><00:17:17.156><c>eh</c>
+
+00:17:17.590 --> 00:17:17.600 align:start position:0%
+tá? Estas linhas que aparecem, elas eh
+ 
+
+00:17:17.600 --> 00:17:21.789 align:start position:0%
+tá? Estas linhas que aparecem, elas eh
+vão <00:17:18.206><c>ser </c><00:17:18.812><c>dinâmicas. </c><00:17:19.418><c>Assim, </c><00:17:20.024><c>não </c><00:17:20.630><c>existe </c><00:17:21.236><c>a</c>
+
+00:17:21.789 --> 00:17:21.799 align:start position:0%
+vão ser dinâmicas. Assim, não existe a
+ 
+
+00:17:21.799 --> 00:17:25.590 align:start position:0%
+vão ser dinâmicas. Assim, não existe a
+ela <00:17:22.259><c>só </c><00:17:22.719><c>vai </c><00:17:23.179><c>aparecer, </c><00:17:23.639><c>sei </c><00:17:24.099><c>lá, </c><00:17:24.559><c>aqui </c><00:17:25.019><c>e </c><00:17:25.479><c>não</c>
+
+00:17:25.590 --> 00:17:25.600 align:start position:0%
+ela só vai aparecer, sei lá, aqui e não
+ 
+
+00:17:25.600 --> 00:17:27.270 align:start position:0%
+ela só vai aparecer, sei lá, aqui e não
+vai <00:17:25.839><c>mudar </c><00:17:26.078><c>mais. </c><00:17:26.317><c>Ela </c><00:17:26.556><c>pode </c><00:17:26.795><c>aparecer </c><00:17:27.034><c>aqui,</c>
+
+00:17:27.270 --> 00:17:27.280 align:start position:0%
+vai mudar mais. Ela pode aparecer aqui,
+ 
+
+00:17:27.280 --> 00:17:29.510 align:start position:0%
+vai mudar mais. Ela pode aparecer aqui,
+pode <00:17:27.760><c>ser </c><00:17:28.240><c>alterada, </c><00:17:28.720><c>pode </c><00:17:29.200><c>ser</c>
+
+00:17:29.510 --> 00:17:29.520 align:start position:0%
+pode ser alterada, pode ser
+ 
+
+00:17:29.520 --> 00:17:32.110 align:start position:0%
+pode ser alterada, pode ser
+movimentada <00:17:29.992><c>para </c><00:17:30.464><c>baixo, </c><00:17:30.936><c>para </c><00:17:31.408><c>cima. </c><00:17:31.880><c>Isso</c>
+
+00:17:32.110 --> 00:17:32.120 align:start position:0%
+movimentada para baixo, para cima. Isso
+ 
+
+00:17:32.120 --> 00:17:35.430 align:start position:0%
+movimentada para baixo, para cima. Isso
+vai <00:17:32.440><c>variar </c><00:17:32.760><c>de </c><00:17:33.080><c>acordo </c><00:17:33.400><c>com </c><00:17:33.720><c>o</c>
+
+00:17:35.430 --> 00:17:35.440 align:start position:0%
+vai variar de acordo com o
+ 
+
+00:17:35.440 --> 00:17:37.310 align:start position:0%
+vai variar de acordo com o
+que <00:17:35.674><c>está </c><00:17:35.908><c>a </c><00:17:36.142><c>acontecer </c><00:17:36.376><c>no </c><00:17:36.610><c>dia, </c><00:17:36.844><c>ok? </c><00:17:37.078><c>Então,</c>
+
+00:17:37.310 --> 00:17:37.320 align:start position:0%
+que está a acontecer no dia, ok? Então,
+ 
+
+00:17:37.320 --> 00:17:39.590 align:start position:0%
+que está a acontecer no dia, ok? Então,
+por <00:17:37.520><c>exemplo, </c><00:17:37.720><c>se </c><00:17:37.920><c>a </c><00:17:38.120><c>linha </c><00:17:38.320><c>azul </c><00:17:38.520><c>estiver </c><00:17:38.720><c>aqui</c>
+
+00:17:39.590 --> 00:17:39.600 align:start position:0%
+por exemplo, se a linha azul estiver aqui
+ 
+
+00:17:39.600 --> 00:17:42.549 align:start position:0%
+por exemplo, se a linha azul estiver aqui
+nesta <00:17:39.994><c>região </c><00:17:40.388><c>do </c><00:17:40.782><c>meio </c><00:17:41.176><c>e </c><00:17:41.570><c>aqui </c><00:17:41.964><c>houve </c><00:17:42.358><c>uma</c>
+
+00:17:42.549 --> 00:17:42.559 align:start position:0%
+nesta região do meio e aqui houve uma
+ 
+
+00:17:42.559 --> 00:17:45.029 align:start position:0%
+nesta região do meio e aqui houve uma
+linha <00:17:42.789><c>vermelha, </c><00:17:43.019><c>o </c><00:17:43.249><c>que </c><00:17:43.479><c>é </c><00:17:43.709><c>que </c><00:17:43.939><c>eu </c><00:17:44.169><c>vou </c><00:17:44.399><c>pensar?</c>
+
+00:17:45.029 --> 00:17:45.039 align:start position:0%
+linha vermelha, o que é que eu vou pensar?
+ 
+
+00:17:45.039 --> 00:17:47.789 align:start position:0%
+linha vermelha, o que é que eu vou pensar?
+Opá, <00:17:45.359><c>esta </c><00:17:45.679><c>é </c><00:17:45.999><c>uma </c><00:17:46.319><c>região </c><00:17:46.639><c>para </c><00:17:46.959><c>eu </c><00:17:47.279><c>pensar </c><00:17:47.599><c>em</c>
+
+00:17:47.789 --> 00:17:47.799 align:start position:0%
+Opá, esta é uma região para eu pensar em
+ 
+
+00:17:47.799 --> 00:17:49.950 align:start position:0%
+Opá, esta é uma região para eu pensar em
+venda, <00:17:48.191><c>ok? </c><00:17:48.583><c>Assim, </c><00:17:48.975><c>normalmente </c><00:17:49.367><c>para </c><00:17:49.759><c>ter</c>
+
+00:17:49.950 --> 00:17:49.960 align:start position:0%
+venda, ok? Assim, normalmente para ter
+ 
+
+00:17:49.960 --> 00:17:52.190 align:start position:0%
+venda, ok? Assim, normalmente para ter
+acontecido <00:17:50.313><c>isto </c><00:17:50.666><c>aqui, </c><00:17:51.019><c>houve </c><00:17:51.372><c>a </c><00:17:51.725><c>abertura, </c><00:17:52.078><c>o</c>
+
+00:17:52.190 --> 00:17:52.200 align:start position:0%
+acontecido isto aqui, houve a abertura, o
+ 
+
+00:17:52.200 --> 00:17:54.750 align:start position:0%
+acontecido isto aqui, houve a abertura, o
+preço <00:17:52.473><c>chegou </c><00:17:52.746><c>aqui, </c><00:17:53.019><c>perdeu </c><00:17:53.292><c>a </c><00:17:53.565><c>linha </c><00:17:53.838><c>azul.</c>
+
+00:17:54.750 --> 00:17:54.760 align:start position:0%
+preço chegou aqui, perdeu a linha azul.
+ 
+
+00:17:54.760 --> 00:17:56.430 align:start position:0%
+preço chegou aqui, perdeu a linha azul.
+Se <00:17:54.965><c>ele </c><00:17:55.170><c>lá </c><00:17:55.375><c>voltar, </c><00:17:55.580><c>vou </c><00:17:55.785><c>pensar </c><00:17:55.990><c>o </c><00:17:56.195><c>quê?</c>
+
+00:17:56.430 --> 00:17:56.440 align:start position:0%
+Se ele lá voltar, vou pensar o quê?
+ 
+
+00:17:56.440 --> 00:17:58.870 align:start position:0%
+Se ele lá voltar, vou pensar o quê?
+Na <00:17:56.748><c>venda </c><00:17:57.056><c>sempre </c><00:17:57.364><c>em </c><00:17:57.672><c>teoria, </c><00:17:57.980><c>a </c><00:17:58.288><c>linha </c><00:17:58.596><c>azul</c>
+
+00:17:58.870 --> 00:17:58.880 align:start position:0%
+Na venda sempre em teoria, a linha azul
+ 
+
+00:17:58.880 --> 00:18:01.190 align:start position:0%
+Na venda sempre em teoria, a linha azul
+para <00:17:59.194><c>baixo, </c><00:17:59.508><c>a </c><00:17:59.822><c>minha </c><00:18:00.136><c>referência </c><00:18:00.450><c>é </c><00:18:00.764><c>que </c><00:18:01.078><c>o</c>
+
+00:18:01.190 --> 00:18:01.200 align:start position:0%
+para baixo, a minha referência é que o
+ 
+
+00:18:01.200 --> 00:18:03.789 align:start position:0%
+para baixo, a minha referência é que o
+mercado <00:18:01.586><c>é </c><00:18:01.972><c>vendedor, </c><00:18:02.358><c>mas </c><00:18:02.744><c>o </c><00:18:03.130><c>meu </c><00:18:03.516><c>ponto</c>
+
+00:18:03.789 --> 00:18:03.799 align:start position:0%
+mercado é vendedor, mas o meu ponto
+ 
+
+00:18:03.799 --> 00:18:06.789 align:start position:0%
+mercado é vendedor, mas o meu ponto
+seguro <00:18:04.079><c>vai </c><00:18:04.359><c>ser </c><00:18:04.639><c>a </c><00:18:04.919><c>linha </c><00:18:05.199><c>vermelha, </c><00:18:05.479><c>ok?</c>
+
+00:18:06.789 --> 00:18:06.799 align:start position:0%
+seguro vai ser a linha vermelha, ok?
+ 
+
+00:18:06.799 --> 00:18:09.390 align:start position:0%
+seguro vai ser a linha vermelha, ok?
+Beleza?
+
+00:18:09.390 --> 00:18:09.400 align:start position:0%
+Beleza?
+ 
+
+00:18:09.400 --> 00:18:13.710 align:start position:0%
+Beleza?
+E <00:18:09.925><c>também </c><00:18:10.450><c>ele </c><00:18:10.975><c>gera </c><00:18:11.500><c>a </c><00:18:12.025><c>linha </c><00:18:12.550><c>verde, </c><00:18:13.075><c>ok? </c><00:18:13.600><c>A</c>
+
+00:18:13.710 --> 00:18:13.720 align:start position:0%
+E também ele gera a linha verde, ok? A
+ 
+
+00:18:13.720 --> 00:18:16.270 align:start position:0%
+E também ele gera a linha verde, ok? A
+linha <00:18:14.176><c>verde </c><00:18:14.632><c>normalmente </c><00:18:15.088><c>ela </c><00:18:15.544><c>vai </c><00:18:16.000><c>ficar</c>
+
+00:18:16.270 --> 00:18:16.280 align:start position:0%
+linha verde normalmente ela vai ficar
+ 
+
+00:18:16.280 --> 00:18:18.590 align:start position:0%
+linha verde normalmente ela vai ficar
+sinalizada <00:18:16.688><c>para </c><00:18:17.096><c>baixo </c><00:18:17.504><c>do </c><00:18:17.912><c>preço. </c><00:18:18.320><c>Aliás,</c>
+
+00:18:18.590 --> 00:18:18.600 align:start position:0%
+sinalizada para baixo do preço. Aliás,
+ 
+
+00:18:18.600 --> 00:18:20.470 align:start position:0%
+sinalizada para baixo do preço. Aliás,
+normalmente <00:18:18.904><c>ela </c><00:18:19.208><c>fica </c><00:18:19.512><c>sempre </c><00:18:19.816><c>para </c><00:18:20.120><c>baixo</c>
+
+00:18:20.470 --> 00:18:20.480 align:start position:0%
+normalmente ela fica sempre para baixo
+ 
+
+00:18:20.480 --> 00:18:24.630 align:start position:0%
+normalmente ela fica sempre para baixo
+do <00:18:20.965><c>preço, </c><00:18:21.450><c>ok? </c><00:18:21.935><c>Ou </c><00:18:22.420><c>seja, </c><00:18:22.905><c>eh, </c><00:18:23.390><c>em </c><00:18:23.875><c>relação </c><00:18:24.360><c>ao</c>
+
+00:18:24.630 --> 00:18:24.640 align:start position:0%
+do preço, ok? Ou seja, eh, em relação ao
+ 
+
+00:18:24.640 --> 00:18:27.950 align:start position:0%
+do preço, ok? Ou seja, eh, em relação ao
+preço, <00:18:25.264><c>verá </c><00:18:25.888><c>sempre </c><00:18:26.512><c>o </c><00:18:27.136><c>preço </c><00:18:27.760><c>para</c>
+
+00:18:27.950 --> 00:18:27.960 align:start position:0%
+preço, verá sempre o preço para
+ 
+
+00:18:27.960 --> 00:18:30.230 align:start position:0%
+preço, verá sempre o preço para
+cima <00:18:28.257><c>dela. </c><00:18:28.554><c>Assim, </c><00:18:28.851><c>se </c><00:18:29.148><c>a </c><00:18:29.445><c>linha </c><00:18:29.742><c>verde, </c><00:18:30.039><c>no</c>
+
+00:18:30.230 --> 00:18:30.240 align:start position:0%
+cima dela. Assim, se a linha verde, no
+ 
+
+00:18:30.240 --> 00:18:34.590 align:start position:0%
+cima dela. Assim, se a linha verde, no
+caso, <00:18:30.666><c>por </c><00:18:31.092><c>exemplo, </c><00:18:31.518><c>ela </c><00:18:31.944><c>está </c><00:18:32.370><c>a </c><00:18:32.796><c>ser</c>
+
+00:18:34.590 --> 00:18:34.600 align:start position:0%
+caso, por exemplo, ela está a ser
+ 
+
+00:18:34.600 --> 00:18:37.110 align:start position:0%
+caso, por exemplo, ela está a ser
+eh <00:18:35.063><c>aqui </c><00:18:35.526><c>sinalizada, </c><00:18:35.989><c>por </c><00:18:36.452><c>exemplo, </c><00:18:36.915><c>é</c>
+
+00:18:37.110 --> 00:18:37.120 align:start position:0%
+eh aqui sinalizada, por exemplo, é
+ 
+
+00:18:37.120 --> 00:18:39.390 align:start position:0%
+eh aqui sinalizada, por exemplo, é
+porque <00:18:37.536><c>o </c><00:18:37.952><c>preço </c><00:18:38.368><c>provavelmente </c><00:18:38.784><c>ele </c><00:18:39.200><c>vai</c>
+
+00:18:39.390 --> 00:18:39.400 align:start position:0%
+porque o preço provavelmente ele vai
+ 
+
+00:18:39.400 --> 00:18:40.990 align:start position:0%
+porque o preço provavelmente ele vai
+estar <00:18:39.613><c>a </c><00:18:39.826><c>trabalhar </c><00:18:40.039><c>aqui </c><00:18:40.252><c>para </c><00:18:40.465><c>cima </c><00:18:40.678><c>dela,</c>
+
+00:18:40.990 --> 00:18:41.000 align:start position:0%
+estar a trabalhar aqui para cima dela,
+ 
+
+00:18:41.000 --> 00:18:42.950 align:start position:0%
+estar a trabalhar aqui para cima dela,
+certo? <00:18:41.335><c>Provavelmente </c><00:18:41.670><c>não, </c><00:18:42.005><c>ele </c><00:18:42.340><c>vai </c><00:18:42.675><c>estar,</c>
+
+00:18:42.950 --> 00:18:42.960 align:start position:0%
+certo? Provavelmente não, ele vai estar,
+ 
+
+00:18:42.960 --> 00:18:45.789 align:start position:0%
+certo? Provavelmente não, ele vai estar,
+certo? <00:18:43.325><c>Ele </c><00:18:43.690><c>ele </c><00:18:44.055><c>vai </c><00:18:44.420><c>sempre </c><00:18:44.785><c>atuar </c><00:18:45.150><c>acima </c><00:18:45.515><c>dela,</c>
+
+00:18:45.789 --> 00:18:45.799 align:start position:0%
+certo? Ele ele vai sempre atuar acima dela,
+ 
+
+00:18:45.799 --> 00:18:48.470 align:start position:0%
+certo? Ele ele vai sempre atuar acima dela,
+tá? <00:18:46.205><c>tá? </c><00:18:46.611><c>Como </c><00:18:47.017><c>se </c><00:18:47.423><c>tivesse </c><00:18:47.829><c>nessa </c><00:18:48.235><c>forma</c>
+
+00:18:48.470 --> 00:18:48.480 align:start position:0%
+tá? tá? Como se tivesse nessa forma
+ 
+
+00:18:48.480 --> 00:18:50.549 align:start position:0%
+tá? tá? Como se tivesse nessa forma
+aqui. <00:18:48.720><c>E </c><00:18:48.960><c>se </c><00:18:49.200><c>eu </c><00:18:49.440><c>tiver </c><00:18:49.680><c>duas </c><00:18:49.920><c>linhas </c><00:18:50.160><c>igual </c><00:18:50.400><c>tá</c>
+
+00:18:50.549 --> 00:18:50.559 align:start position:0%
+aqui. E se eu tiver duas linhas igual tá
+ 
+
+00:18:50.559 --> 00:18:53.950 align:start position:0%
+aqui. E se eu tiver duas linhas igual tá
+aqui, <00:18:51.059><c>depois </c><00:18:51.559><c>tem </c><00:18:52.059><c>dois </c><00:18:52.559><c>preços </c><00:18:53.059><c>que </c><00:18:53.559><c>podem</c>
+
+00:18:53.950 --> 00:18:53.960 align:start position:0%
+aqui, depois tem dois preços que podem
+ 
+
+00:18:53.960 --> 00:18:55.789 align:start position:0%
+aqui, depois tem dois preços que podem
+travar <00:18:54.220><c>o </c><00:18:54.480><c>mercado. </c><00:18:54.740><c>Ele </c><00:18:55.000><c>pode </c><00:18:55.260><c>bater </c><00:18:55.520><c>numa</c>
+
+00:18:55.789 --> 00:18:55.799 align:start position:0%
+travar o mercado. Ele pode bater numa
+ 
+
+00:18:55.799 --> 00:18:57.510 align:start position:0%
+travar o mercado. Ele pode bater numa
+linha <00:18:56.059><c>e </c><00:18:56.319><c>voltar </c><00:18:56.579><c>na </c><00:18:56.839><c>outra. </c><00:18:57.099><c>Bater </c><00:18:57.359><c>numa</c>
+
+00:18:57.510 --> 00:18:57.520 align:start position:0%
+linha e voltar na outra. Bater numa
+ 
+
+00:18:57.520 --> 00:18:58.909 align:start position:0%
+linha e voltar na outra. Bater numa
+linha <00:18:57.670><c>e </c><00:18:57.820><c>voltar </c><00:18:57.970><c>outra. </c><00:18:58.120><c>Ah, </c><00:18:58.270><c>mas </c><00:18:58.420><c>é </c><00:18:58.570><c>a </c><00:18:58.720><c>linha</c>
+
+00:18:58.909 --> 00:18:58.919 align:start position:0%
+linha e voltar outra. Ah, mas é a linha
+ 
+
+00:18:58.919 --> 00:19:01.029 align:start position:0%
+linha e voltar outra. Ah, mas é a linha
+azul. <00:18:59.169><c>A </c><00:18:59.419><c>linha </c><00:18:59.669><c>azul </c><00:18:59.919><c>neste </c><00:19:00.169><c>caso, </c><00:19:00.419><c>ela </c><00:19:00.669><c>está </c><00:19:00.919><c>no</c>
+
+00:19:01.029 --> 00:19:01.039 align:start position:0%
+azul. A linha azul neste caso, ela está no
+ 
+
+00:19:01.039 --> 00:19:02.590 align:start position:0%
+azul. A linha azul neste caso, ela está no
+meio. <00:19:01.219><c>Aqui </c><00:19:01.399><c>é </c><00:19:01.579><c>o </c><00:19:01.759><c>próximo </c><00:19:01.939><c>do </c><00:19:02.119><c>meio. </c><00:19:02.299><c>Ela </c><00:19:02.479><c>não</c>
+
+00:19:02.590 --> 00:19:02.600 align:start position:0%
+meio. Aqui é o próximo do meio. Ela não
+ 
+
+00:19:02.600 --> 00:19:06.149 align:start position:0%
+meio. Aqui é o próximo do meio. Ela não
+vai <00:19:03.020><c>determinar </c><00:19:03.440><c>ainda, </c><00:19:03.860><c>não </c><00:19:04.280><c>é? </c><00:19:04.700><c>A </c><00:19:05.120><c>linha </c><00:19:05.540><c>azul </c><00:19:05.960><c>é</c>
+
+00:19:06.149 --> 00:19:06.159 align:start position:0%
+vai determinar ainda, não é? A linha azul é
+ 
+
+00:19:06.159 --> 00:19:09.710 align:start position:0%
+vai determinar ainda, não é? A linha azul é
+a <00:19:06.625><c>referência </c><00:19:07.091><c>para </c><00:19:07.557><c>quê? </c><00:19:08.023><c>Ah, </c><00:19:08.489><c>este </c><00:19:08.955><c>esta</c>
+
+00:19:09.710 --> 00:19:09.720 align:start position:0%
+a referência para quê? Ah, este esta
+ 
+
+00:19:09.720 --> 00:19:12.630 align:start position:0%
+a referência para quê? Ah, este esta
+esse <00:19:10.140><c>preço </c><00:19:10.560><c>bateu </c><00:19:10.980><c>na </c><00:19:11.400><c>vermelha, </c><00:19:11.820><c>depois </c><00:19:12.240><c>ele</c>
+
+00:19:12.630 --> 00:19:12.640 align:start position:0%
+esse preço bateu na vermelha, depois ele
+ 
+
+00:19:12.640 --> 00:19:14.750 align:start position:0%
+esse preço bateu na vermelha, depois ele
+cai, <00:19:12.914><c>acelera </c><00:19:13.188><c>lá </c><00:19:13.462><c>a </c><00:19:13.736><c>micro, </c><00:19:14.010><c>começa </c><00:19:14.284><c>a </c><00:19:14.558><c>ficar</c>
+
+00:19:14.750 --> 00:19:14.760 align:start position:0%
+cai, acelera lá a micro, começa a ficar
+ 
+
+00:19:14.760 --> 00:19:17.230 align:start position:0%
+cai, acelera lá a micro, começa a ficar
+vendedora. <00:19:15.208><c>A </c><00:19:15.656><c>linha </c><00:19:16.104><c>verde </c><00:19:16.552><c>perde. </c><00:19:17.000><c>Quando</c>
+
+00:19:17.230 --> 00:19:17.240 align:start position:0%
+vendedora. A linha verde perde. Quando
+ 
+
+00:19:17.240 --> 00:19:19.110 align:start position:0%
+vendedora. A linha verde perde. Quando
+perder, <00:19:17.474><c>o </c><00:19:17.708><c>que </c><00:19:17.942><c>é </c><00:19:18.176><c>que </c><00:19:18.410><c>vai </c><00:19:18.644><c>acontecer? </c><00:19:18.878><c>Essa</c>
+
+00:19:19.110 --> 00:19:19.120 align:start position:0%
+perder, o que é que vai acontecer? Essa
+ 
+
+00:19:19.120 --> 00:19:20.990 align:start position:0%
+perder, o que é que vai acontecer? Essa
+linha <00:19:19.413><c>verde </c><00:19:19.706><c>deixa </c><00:19:19.999><c>de </c><00:19:20.292><c>ficar </c><00:19:20.585><c>verde. </c><00:19:20.878><c>Ela</c>
+
+00:19:20.990 --> 00:19:21.000 align:start position:0%
+linha verde deixa de ficar verde. Ela
+ 
+
+00:19:21.000 --> 00:19:23.710 align:start position:0%
+linha verde deixa de ficar verde. Ela
+vai <00:19:21.426><c>ficar </c><00:19:21.852><c>vermelha </c><00:19:22.278><c>também, </c><00:19:22.704><c>ok? </c><00:19:23.130><c>Isso </c><00:19:23.556><c>é</c>
+
+00:19:23.710 --> 00:19:23.720 align:start position:0%
+vai ficar vermelha também, ok? Isso é
+ 
+
+00:19:23.720 --> 00:19:26.310 align:start position:0%
+vai ficar vermelha também, ok? Isso é
+importante <00:19:24.152><c>que </c><00:19:24.584><c>saiba. </c><00:19:25.016><c>O </c><00:19:25.448><c>a </c><00:19:25.880><c>regra</c>
+
+00:19:26.310 --> 00:19:26.320 align:start position:0%
+importante que saiba. O a regra
+ 
+
+00:19:26.320 --> 00:19:28.070 align:start position:0%
+importante que saiba. O a regra
+funciona <00:19:26.580><c>assim: </c><00:19:26.840><c>se </c><00:19:27.100><c>o </c><00:19:27.360><c>preço </c><00:19:27.620><c>vem </c><00:19:27.880><c>para</c>
+
+00:19:28.070 --> 00:19:28.080 align:start position:0%
+funciona assim: se o preço vem para
+ 
+
+00:19:28.080 --> 00:19:31.149 align:start position:0%
+funciona assim: se o preço vem para
+baixo <00:19:28.440><c>da </c><00:19:28.800><c>linha, </c><00:19:29.160><c>em </c><00:19:29.520><c>vez </c><00:19:29.880><c>de </c><00:19:30.240><c>ela </c><00:19:30.600><c>continuar</c>
+
+00:19:31.149 --> 00:19:31.159 align:start position:0%
+baixo da linha, em vez de ela continuar
+ 
+
+00:19:31.159 --> 00:19:34.510 align:start position:0%
+baixo da linha, em vez de ela continuar
+verde, <00:19:31.685><c>ela </c><00:19:32.211><c>vai </c><00:19:32.737><c>mudar </c><00:19:33.263><c>para </c><00:19:33.789><c>vermelho, </c><00:19:34.315><c>está</c>
+
+00:19:34.510 --> 00:19:34.520 align:start position:0%
+verde, ela vai mudar para vermelho, está
+ 
+
+00:19:34.520 --> 00:19:38.710 align:start position:0%
+verde, ela vai mudar para vermelho, está
+bom? <00:19:35.056><c>Aí </c><00:19:35.592><c>ela </c><00:19:36.128><c>torna-se </c><00:19:36.664><c>uma </c><00:19:37.200><c>resistência,</c>
+
+00:19:38.710 --> 00:19:38.720 align:start position:0%
+bom? Aí ela torna-se uma resistência,
+ 
+
+00:19:38.720 --> 00:19:40.630 align:start position:0%
+bom? Aí ela torna-se uma resistência,
+beleza?
+
+00:19:40.630 --> 00:19:40.640 align:start position:0%
+beleza?
+ 
+
+00:19:40.640 --> 00:19:43.070 align:start position:0%
+beleza?
+Então <00:19:40.993><c>tá. </c><00:19:41.346><c>Então, </c><00:19:41.699><c>se </c><00:19:42.052><c>já </c><00:19:42.405><c>sabe </c><00:19:42.758><c>que</c>
+
+00:19:43.070 --> 00:19:43.080 align:start position:0%
+Então tá. Então, se já sabe que
+ 
+
+00:19:43.080 --> 00:19:44.750 align:start position:0%
+Então tá. Então, se já sabe que
+depois, <00:19:43.333><c>a </c><00:19:43.586><c>partir </c><00:19:43.839><c>disso, </c><00:19:44.092><c>sabe </c><00:19:44.345><c>que </c><00:19:44.598><c>o</c>
+
+00:19:44.750 --> 00:19:44.760 align:start position:0%
+depois, a partir disso, sabe que o
+ 
+
+00:19:44.760 --> 00:19:46.950 align:start position:0%
+depois, a partir disso, sabe que o
+preço <00:19:44.953><c>está </c><00:19:45.146><c>para </c><00:19:45.339><c>baixo </c><00:19:45.532><c>da </c><00:19:45.725><c>linha </c><00:19:45.918><c>azul,</c>
+
+00:19:46.950 --> 00:19:46.960 align:start position:0%
+preço está para baixo da linha azul,
+ 
+
+00:19:46.960 --> 00:19:49.830 align:start position:0%
+preço está para baixo da linha azul,
+automaticamente <00:19:47.540><c>estas </c><00:19:48.120><c>são </c><00:19:48.700><c>as </c><00:19:49.280><c>referências</c>
+
+00:19:49.830 --> 00:19:49.840 align:start position:0%
+automaticamente estas são as referências
+ 
+
+00:19:49.840 --> 00:19:52.390 align:start position:0%
+automaticamente estas são as referências
+para <00:19:50.240><c>tu </c><00:19:50.640><c>venderes, </c><00:19:51.040><c>tá </c><00:19:51.440><c>bom? </c><00:19:51.840><c>Assim, </c><00:19:52.240><c>é</c>
+
+00:19:52.390 --> 00:19:52.400 align:start position:0%
+para tu venderes, tá bom? Assim, é
+ 
+
+00:19:52.400 --> 00:19:55.750 align:start position:0%
+para tu venderes, tá bom? Assim, é
+importante <00:19:52.992><c>que </c><00:19:53.584><c>compreenda </c><00:19:54.176><c>que </c><00:19:54.768><c>as </c><00:19:55.360><c>linhas</c>
+
+00:19:55.750 --> 00:19:55.760 align:start position:0%
+importante que compreenda que as linhas
+ 
+
+00:19:55.760 --> 00:19:59.750 align:start position:0%
+importante que compreenda que as linhas
+do <00:19:56.650><c>gráfico </c><00:19:57.540><c>temporal </c><00:19:58.430><c>são </c><00:19:59.320><c>mais</c>
+
+00:19:59.750 --> 00:19:59.760 align:start position:0%
+do gráfico temporal são mais
+ 
+
+00:19:59.760 --> 00:20:03.110 align:start position:0%
+do gráfico temporal são mais
+importantes <00:20:00.319><c>do </c><00:20:00.878><c>que </c><00:20:01.437><c>as </c><00:20:01.996><c>regiões </c><00:20:02.555><c>alvo</c>
+
+00:20:03.110 --> 00:20:03.120 align:start position:0%
+importantes do que as regiões alvo
+ 
+
+00:20:03.120 --> 00:20:05.470 align:start position:0%
+importantes do que as regiões alvo
+do <00:20:03.439><c>comprador </c><00:20:03.758><c>e </c><00:20:04.077><c>vendedor </c><00:20:04.396><c>do </c><00:20:04.715><c>Renco </c><00:20:05.034><c>paraa</c>
+
+00:20:05.470 --> 00:20:05.480 align:start position:0%
+do comprador e vendedor do Renco paraa
+ 
+
+00:20:05.480 --> 00:20:07.789 align:start position:0%
+do comprador e vendedor do Renco paraa
+tomada <00:20:05.800><c>de </c><00:20:06.120><c>decisão </c><00:20:06.440><c>no </c><00:20:06.760><c>sentido </c><00:20:07.080><c>de </c><00:20:07.400><c>quando</c>
+
+00:20:07.789 --> 00:20:07.799 align:start position:0%
+tomada de decisão no sentido de quando
+ 
+
+00:20:07.799 --> 00:20:12.230 align:start position:0%
+tomada de decisão no sentido de quando
+entrar. <00:20:08.370><c>Mas </c><00:20:08.941><c>o </c><00:20:09.512><c>renco </c><00:20:10.083><c>ele </c><00:20:10.654><c>dá-te </c><00:20:11.225><c>uma </c><00:20:11.796><c>sacada</c>
+
+00:20:12.230 --> 00:20:12.240 align:start position:0%
+entrar. Mas o renco ele dá-te uma sacada
+ 
+
+00:20:12.240 --> 00:20:13.510 align:start position:0%
+entrar. Mas o renco ele dá-te uma sacada
+boa <00:20:12.472><c>sobre </c><00:20:12.704><c>o </c><00:20:12.936><c>seguinte. </c><00:20:13.168><c>Assim, </c><00:20:13.400><c>por</c>
+
+00:20:13.510 --> 00:20:13.520 align:start position:0%
+boa sobre o seguinte. Assim, por
+ 
+
+00:20:13.520 --> 00:20:15.470 align:start position:0%
+boa sobre o seguinte. Assim, por
+exemplo, <00:20:13.750><c>tal </c><00:20:13.980><c>como </c><00:20:14.210><c>aqui </c><00:20:14.440><c>eu </c><00:20:14.670><c>disse, </c><00:20:14.900><c>ó, </c><00:20:15.130><c>é </c><00:20:15.360><c>o</c>
+
+00:20:15.470 --> 00:20:15.480 align:start position:0%
+exemplo, tal como aqui eu disse, ó, é o
+ 
+
+00:20:15.480 --> 00:20:17.549 align:start position:0%
+exemplo, tal como aqui eu disse, ó, é o
+preço <00:20:15.800><c>chega </c><00:20:16.120><c>aqui, </c><00:20:16.440><c>bateu </c><00:20:16.760><c>ali, </c><00:20:17.080><c>vamos </c><00:20:17.400><c>falar</c>
+
+00:20:17.549 --> 00:20:17.559 align:start position:0%
+preço chega aqui, bateu ali, vamos falar
+ 
+
+00:20:17.559 --> 00:20:18.990 align:start position:0%
+preço chega aqui, bateu ali, vamos falar
+que <00:20:17.765><c>ele </c><00:20:17.971><c>rompe </c><00:20:18.177><c>um </c><00:20:18.383><c>bocadinho. </c><00:20:18.589><c>Esta </c><00:20:18.795><c>daqui,</c>
+
+00:20:18.990 --> 00:20:19.000 align:start position:0%
+que ele rompe um bocadinho. Esta daqui,
+ 
+
+00:20:19.000 --> 00:20:21.070 align:start position:0%
+que ele rompe um bocadinho. Esta daqui,
+ela <00:20:19.299><c>começa </c><00:20:19.598><c>a </c><00:20:19.897><c>ficar </c><00:20:20.196><c>vermelha, </c><00:20:20.495><c>não </c><00:20:20.794><c>é?</c>
+
+00:20:21.070 --> 00:20:21.080 align:start position:0%
+ela começa a ficar vermelha, não é?
+ 
+
+00:20:21.080 --> 00:20:22.789 align:start position:0%
+ela começa a ficar vermelha, não é?
+Chegou, <00:20:21.346><c>atravessou, </c><00:20:21.612><c>vou </c><00:20:21.878><c>sair </c><00:20:22.144><c>a </c><00:20:22.410><c>vender </c><00:20:22.676><c>e</c>
+
+00:20:22.789 --> 00:20:22.799 align:start position:0%
+Chegou, atravessou, vou sair a vender e
+ 
+
+00:20:22.799 --> 00:20:24.750 align:start position:0%
+Chegou, atravessou, vou sair a vender e
+pôr <00:20:23.062><c>stop </c><00:20:23.325><c>para </c><00:20:23.588><c>baixo </c><00:20:23.851><c>aqui, </c><00:20:24.114><c>ok? </c><00:20:24.377><c>Você </c><00:20:24.640><c>vai</c>
+
+00:20:24.750 --> 00:20:24.760 align:start position:0%
+pôr stop para baixo aqui, ok? Você vai
+ 
+
+00:20:24.760 --> 00:20:26.830 align:start position:0%
+pôr stop para baixo aqui, ok? Você vai
+pensar <00:20:24.965><c>o </c><00:20:25.170><c>quê, </c><00:20:25.375><c>pá? </c><00:20:25.580><c>Ele </c><00:20:25.785><c>perdeu </c><00:20:25.990><c>a </c><00:20:26.195><c>linha,</c>
+
+00:20:26.830 --> 00:20:26.840 align:start position:0%
+pensar o quê, pá? Ele perdeu a linha,
+ 
+
+00:20:26.840 --> 00:20:29.669 align:start position:0%
+pensar o quê, pá? Ele perdeu a linha,
+esta <00:20:27.133><c>linha </c><00:20:27.426><c>estava </c><00:20:27.719><c>verde </c><00:20:28.012><c>e </c><00:20:28.305><c>ficou </c><00:20:28.598><c>vermelha.</c>
+
+00:20:29.669 --> 00:20:29.679 align:start position:0%
+esta linha estava verde e ficou vermelha.
+ 
+
+00:20:29.679 --> 00:20:31.430 align:start position:0%
+esta linha estava verde e ficou vermelha.
+Mas <00:20:29.913><c>onde </c><00:20:30.147><c>está </c><00:20:30.381><c>o </c><00:20:30.615><c>preço </c><00:20:30.849><c>agora? </c><00:20:31.083><c>Aí </c><00:20:31.317><c>vai</c>
+
+00:20:31.430 --> 00:20:31.440 align:start position:0%
+Mas onde está o preço agora? Aí vai
+ 
+
+00:20:31.440 --> 00:20:32.710 align:start position:0%
+Mas onde está o preço agora? Aí vai
+olhar <00:20:31.613><c>aqui. </c><00:20:31.786><c>Aí </c><00:20:31.959><c>vamos </c><00:20:32.132><c>falar </c><00:20:32.305><c>que </c><00:20:32.478><c>esta</c>
+
+00:20:32.710 --> 00:20:32.720 align:start position:0%
+olhar aqui. Aí vamos falar que esta
+ 
+
+00:20:32.720 --> 00:20:35.390 align:start position:0%
+olhar aqui. Aí vamos falar que esta
+movimentação <00:20:33.133><c>era </c><00:20:33.546><c>assim, </c><00:20:33.959><c>ó.</c>
+
+00:20:35.390 --> 00:20:35.400 align:start position:0%
+movimentação era assim, ó.
+ 
+
+00:20:35.400 --> 00:20:40.830 align:start position:0%
+movimentação era assim, ó.
+Se <00:20:36.055><c>agora </c><00:20:36.710><c>o </c><00:20:37.365><c>preço </c><00:20:38.020><c>do </c><00:20:38.675><c>Renco </c><00:20:39.330><c>está </c><00:20:39.985><c>cá </c><00:20:40.640><c>e</c>
+
+00:20:40.830 --> 00:20:40.840 align:start position:0%
+Se agora o preço do Renco está cá e
+ 
+
+00:20:40.840 --> 00:20:42.909 align:start position:0%
+Se agora o preço do Renco está cá e
+neste <00:20:41.114><c>está </c><00:20:41.388><c>aqui, </c><00:20:41.662><c>é </c><00:20:41.936><c>uma </c><00:20:42.210><c>coisa, </c><00:20:42.484><c>beleza? </c><00:20:42.758><c>Aí</c>
+
+00:20:42.909 --> 00:20:42.919 align:start position:0%
+neste está aqui, é uma coisa, beleza? Aí
+ 
+
+00:20:42.919 --> 00:20:44.510 align:start position:0%
+neste está aqui, é uma coisa, beleza? Aí
+tem <00:20:43.191><c>um </c><00:20:43.463><c>ponto </c><00:20:43.735><c>de </c><00:20:44.007><c>venda, </c><00:20:44.279><c>pode</c>
+
+00:20:44.510 --> 00:20:44.520 align:start position:0%
+tem um ponto de venda, pode
+ 
+
+00:20:44.520 --> 00:20:47.549 align:start position:0%
+tem um ponto de venda, pode
+vender <00:20:44.984><c>porque </c><00:20:45.448><c>estás </c><00:20:45.912><c>perto </c><00:20:46.376><c>dos </c><00:20:46.840><c>alvos,</c>
+
+00:20:47.549 --> 00:20:47.559 align:start position:0%
+vender porque estás perto dos alvos,
+ 
+
+00:20:47.559 --> 00:20:49.710 align:start position:0%
+vender porque estás perto dos alvos,
+tá? <00:20:47.839><c>Ou </c><00:20:48.119><c>seja, </c><00:20:48.399><c>tem </c><00:20:48.679><c>lá </c><00:20:48.959><c>o </c><00:20:49.239><c>alvo </c><00:20:49.519><c>para</c>
+
+00:20:49.710 --> 00:20:49.720 align:start position:0%
+tá? Ou seja, tem lá o alvo para
+ 
+
+00:20:49.720 --> 00:20:51.390 align:start position:0%
+tá? Ou seja, tem lá o alvo para
+baixo.
+
+00:20:51.390 --> 00:20:51.400 align:start position:0%
+baixo.
+ 
+
+00:20:51.400 --> 00:20:54.909 align:start position:0%
+baixo.
+Agora, <00:20:51.953><c>se </c><00:20:52.506><c>fizer </c><00:20:53.059><c>essa </c><00:20:53.612><c>mesma </c><00:20:54.165><c>entrada </c><00:20:54.718><c>e</c>
+
+00:20:54.909 --> 00:20:54.919 align:start position:0%
+Agora, se fizer essa mesma entrada e
+ 
+
+00:20:54.919 --> 00:20:57.549 align:start position:0%
+Agora, se fizer essa mesma entrada e
+a <00:20:55.319><c>frequência </c><00:20:55.719><c>do </c><00:20:56.119><c>Renco </c><00:20:56.519><c>é </c><00:20:56.919><c>diferente, </c><00:20:57.319><c>ele</c>
+
+00:20:57.549 --> 00:20:57.559 align:start position:0%
+a frequência do Renco é diferente, ele
+ 
+
+00:20:57.559 --> 00:20:59.870 align:start position:0%
+a frequência do Renco é diferente, ele
+está <00:20:57.879><c>assim, </c><00:20:58.199><c>ó.</c>
+
+00:20:59.870 --> 00:20:59.880 align:start position:0%
+está assim, ó.
+ 
+
+00:20:59.880 --> 00:21:03.630 align:start position:0%
+está assim, ó.
+Opá, <00:21:00.325><c>eu </c><00:21:00.770><c>ia </c><00:21:01.215><c>fazer </c><00:21:01.660><c>a </c><00:21:02.105><c>venda </c><00:21:02.550><c>porque </c><00:21:02.995><c>perdeu </c><00:21:03.440><c>a</c>
+
+00:21:03.630 --> 00:21:03.640 align:start position:0%
+Opá, eu ia fazer a venda porque perdeu a
+ 
+
+00:21:03.640 --> 00:21:05.190 align:start position:0%
+Opá, eu ia fazer a venda porque perdeu a
+região,
+
+00:21:05.190 --> 00:21:05.200 align:start position:0%
+região,
+ 
+
+00:21:05.200 --> 00:21:07.430 align:start position:0%
+região,
+mas <00:21:05.474><c>pá, </c><00:21:05.748><c>eu </c><00:21:06.022><c>vou </c><00:21:06.296><c>vender </c><00:21:06.570><c>em </c><00:21:06.844><c>cima </c><00:21:07.118><c>da</c>
+
+00:21:07.430 --> 00:21:07.440 align:start position:0%
+mas pá, eu vou vender em cima da
+ 
+
+00:21:07.440 --> 00:21:10.710 align:start position:0%
+mas pá, eu vou vender em cima da
+região <00:21:07.805><c>do </c><00:21:08.170><c>alvo. </c><00:21:08.535><c>Aí </c><00:21:08.900><c>é </c><00:21:09.265><c>perigoso. </c><00:21:09.630><c>Por </c><00:21:09.995><c>quê?</c>
+
+00:21:10.710 --> 00:21:10.720 align:start position:0%
+região do alvo. Aí é perigoso. Por quê?
+ 
+
+00:21:10.720 --> 00:21:12.350 align:start position:0%
+região do alvo. Aí é perigoso. Por quê?
+Porque <00:21:10.959><c>se </c><00:21:11.198><c>ele </c><00:21:11.437><c>não </c><00:21:11.676><c>romper </c><00:21:11.915><c>e </c><00:21:12.154><c>for</c>
+
+00:21:12.350 --> 00:21:12.360 align:start position:0%
+Porque se ele não romper e for
+ 
+
+00:21:12.360 --> 00:21:16.230 align:start position:0%
+Porque se ele não romper e for
+direcional, <00:21:12.993><c>ele </c><00:21:13.626><c>pode </c><00:21:14.259><c>voltar </c><00:21:14.892><c>tudo, </c><00:21:15.525><c>ok? </c><00:21:16.158><c>E</c>
+
+00:21:16.230 --> 00:21:16.240 align:start position:0%
+direcional, ele pode voltar tudo, ok? E
+ 
+
+00:21:16.240 --> 00:21:18.669 align:start position:0%
+direcional, ele pode voltar tudo, ok? E
+depois <00:21:16.548><c>é </c><00:21:16.856><c>onde </c><00:21:17.164><c>a </c><00:21:17.472><c>pessoa </c><00:21:17.780><c>faz, </c><00:21:18.088><c>passa </c><00:21:18.396><c>aquele</c>
+
+00:21:18.669 --> 00:21:18.679 align:start position:0%
+depois é onde a pessoa faz, passa aquele
+ 
+
+00:21:18.679 --> 00:21:20.789 align:start position:0%
+depois é onde a pessoa faz, passa aquele
+calor <00:21:18.953><c>porque </c><00:21:19.227><c>parece </c><00:21:19.501><c>que </c><00:21:19.775><c>vai </c><00:21:20.049><c>fritar </c><00:21:20.323><c>e </c><00:21:20.597><c>não</c>
+
+00:21:20.789 --> 00:21:20.799 align:start position:0%
+calor porque parece que vai fritar e não
+ 
+
+00:21:20.799 --> 00:21:22.669 align:start position:0%
+calor porque parece que vai fritar e não
+frita. <00:21:21.079><c>E </c><00:21:21.359><c>depois, </c><00:21:21.639><c>na </c><00:21:21.919><c>verdade, </c><00:21:22.199><c>ele </c><00:21:22.479><c>está</c>
+
+00:21:22.669 --> 00:21:22.679 align:start position:0%
+frita. E depois, na verdade, ele está
+ 
+
+00:21:22.679 --> 00:21:23.990 align:start position:0%
+frita. E depois, na verdade, ele está
+transitando <00:21:22.879><c>aqui, </c><00:21:23.079><c>só </c><00:21:23.279><c>que </c><00:21:23.479><c>às </c><00:21:23.679><c>vezes </c><00:21:23.879><c>ele</c>
+
+00:21:23.990 --> 00:21:24.000 align:start position:0%
+transitando aqui, só que às vezes ele
+ 
+
+00:21:24.000 --> 00:21:25.470 align:start position:0%
+transitando aqui, só que às vezes ele
+vai <00:21:24.206><c>dar </c><00:21:24.412><c>uma </c><00:21:24.618><c>violinadinha, </c><00:21:24.824><c>ele </c><00:21:25.030><c>vai </c><00:21:25.236><c>passar</c>
+
+00:21:25.470 --> 00:21:25.480 align:start position:0%
+vai dar uma violinadinha, ele vai passar
+ 
+
+00:21:25.480 --> 00:21:28.350 align:start position:0%
+vai dar uma violinadinha, ele vai passar
+um <00:21:25.900><c>pouco. </c><00:21:26.320><c>Portanto, </c><00:21:26.740><c>é </c><00:21:27.160><c>muito </c><00:21:27.580><c>importante </c><00:21:28.000><c>você</c>
+
+00:21:28.350 --> 00:21:28.360 align:start position:0%
+um pouco. Portanto, é muito importante você
+ 
+
+00:21:28.360 --> 00:21:31.710 align:start position:0%
+um pouco. Portanto, é muito importante você
+perceber <00:21:28.880><c>esta </c><00:21:29.400><c>sacada </c><00:21:29.920><c>do </c><00:21:30.440><c>Renko, </c><00:21:30.960><c>ok? </c><00:21:31.480><c>E</c>
+
+00:21:31.710 --> 00:21:31.720 align:start position:0%
+perceber esta sacada do Renko, ok? E
+ 
+
+00:21:31.720 --> 00:21:34.110 align:start position:0%
+perceber esta sacada do Renko, ok? E
+como <00:21:32.600><c>possuem</c>
+
+00:21:34.110 --> 00:21:34.120 align:start position:0%
+como possuem
+ 
+
+00:21:34.120 --> 00:21:37.909 align:start position:0%
+como possuem
+critérios <00:21:34.673><c>de </c><00:21:35.226><c>de </c><00:21:35.779><c>tempo </c><00:21:36.332><c>e </c><00:21:36.885><c>e </c><00:21:37.438><c>momentos</c>
+
+00:21:37.909 --> 00:21:37.919 align:start position:0%
+critérios de de tempo e e momentos
+ 
+
+00:21:37.919 --> 00:21:41.710 align:start position:0%
+critérios de de tempo e e momentos
+específicos, <00:21:38.639><c>muitas </c><00:21:39.359><c>vezes </c><00:21:40.079><c>no </c><00:21:40.799><c>temporal </c><00:21:41.519><c>o</c>
+
+00:21:41.710 --> 00:21:41.720 align:start position:0%
+específicos, muitas vezes no temporal o
+ 
+
+00:21:41.720 --> 00:21:43.630 align:start position:0%
+específicos, muitas vezes no temporal o
+preço <00:21:41.965><c>vai </c><00:21:42.210><c>parecer </c><00:21:42.455><c>que </c><00:21:42.700><c>está </c><00:21:42.945><c>numa </c><00:21:43.190><c>boa </c><00:21:43.435><c>região</c>
+
+00:21:43.630 --> 00:21:43.640 align:start position:0%
+preço vai parecer que está numa boa região
+ 
+
+00:21:43.640 --> 00:21:45.710 align:start position:0%
+preço vai parecer que está numa boa região
+e <00:21:43.885><c>no </c><00:21:44.130><c>renco </c><00:21:44.375><c>não. </c><00:21:44.620><c>E </c><00:21:44.865><c>aqui </c><00:21:45.110><c>que </c><00:21:45.355><c>tem </c><00:21:45.600><c>que</c>
+
+00:21:45.710 --> 00:21:45.720 align:start position:0%
+e no renco não. E aqui que tem que
+ 
+
+00:21:45.720 --> 00:21:48.110 align:start position:0%
+e no renco não. E aqui que tem que
+est <00:21:46.073><c>ligado, </c><00:21:46.426><c>porque </c><00:21:46.779><c>uma </c><00:21:47.132><c>coisa </c><00:21:47.485><c>é </c><00:21:47.838><c>você</c>
+
+00:21:48.110 --> 00:21:48.120 align:start position:0%
+est ligado, porque uma coisa é você
+ 
+
+00:21:48.120 --> 00:21:50.549 align:start position:0%
+est ligado, porque uma coisa é você
+fazer, <00:21:48.428><c>por </c><00:21:48.736><c>exemplo, </c><00:21:49.044><c>ah, </c><00:21:49.352><c>e </c><00:21:49.660><c>aqui </c><00:21:49.968><c>eu </c><00:21:50.276><c>dava</c>
+
+00:21:50.549 --> 00:21:50.559 align:start position:0%
+fazer, por exemplo, ah, e aqui eu dava
+ 
+
+00:21:50.559 --> 00:21:53.630 align:start position:0%
+fazer, por exemplo, ah, e aqui eu dava
+para <00:21:50.959><c>vender </c><00:21:51.359><c>nesta </c><00:21:51.759><c>região? </c><00:21:52.159><c>dá </c><00:21:52.559><c>desde </c><00:21:52.959><c>que</c>
+
+00:21:53.630 --> 00:21:53.640 align:start position:0%
+para vender nesta região? dá desde que
+ 
+
+00:21:53.640 --> 00:21:55.710 align:start position:0%
+para vender nesta região? dá desde que
+tens <00:21:53.953><c>as </c><00:21:54.266><c>confluências, </c><00:21:54.579><c>não </c><00:21:54.892><c>é, </c><00:21:55.205><c>que </c><00:21:55.518><c>já</c>
+
+00:21:55.710 --> 00:21:55.720 align:start position:0%
+tens as confluências, não é, que já
+ 
+
+00:21:55.720 --> 00:21:59.510 align:start position:0%
+tens as confluências, não é, que já
+ministradas <00:21:56.293><c>na </c><00:21:56.866><c>nas </c><00:21:57.439><c>aulas </c><00:21:58.012><c>da </c><00:21:58.585><c>micro, </c><00:21:59.158><c>a</c>
+
+00:21:59.510 --> 00:21:59.520 align:start position:0%
+ministradas na nas aulas da micro, a
+ 
+
+00:21:59.520 --> 00:22:02.110 align:start position:0%
+ministradas na nas aulas da micro, a
+coloração <00:21:59.968><c>interna, </c><00:22:00.416><c>mas </c><00:22:00.864><c>cuidado </c><00:22:01.312><c>para </c><00:22:01.760><c>si</c>
+
+00:22:02.110 --> 00:22:02.120 align:start position:0%
+coloração interna, mas cuidado para si
+ 
+
+00:22:02.120 --> 00:22:03.789 align:start position:0%
+coloração interna, mas cuidado para si
+ter <00:22:02.359><c>atenção </c><00:22:02.598><c>aonde </c><00:22:02.837><c>que </c><00:22:03.076><c>o </c><00:22:03.315><c>preço </c><00:22:03.554><c>está</c>
+
+00:22:03.789 --> 00:22:03.799 align:start position:0%
+ter atenção aonde que o preço está
+ 
+
+00:22:03.799 --> 00:22:06.310 align:start position:0%
+ter atenção aonde que o preço está
+neste <00:22:04.113><c>momento, </c><00:22:04.427><c>se </c><00:22:04.741><c>ele </c><00:22:05.055><c>está </c><00:22:05.369><c>dentro </c><00:22:05.683><c>da </c><00:22:05.997><c>região</c>
+
+00:22:06.310 --> 00:22:06.320 align:start position:0%
+neste momento, se ele está dentro da região
+ 
+
+00:22:06.320 --> 00:22:09.230 align:start position:0%
+neste momento, se ele está dentro da região
+de <00:22:06.622><c>alvo </c><00:22:06.924><c>ou </c><00:22:07.226><c>se </c><00:22:07.528><c>ele </c><00:22:07.830><c>é </c><00:22:08.132><c>de </c><00:22:08.434><c>alvo, </c><00:22:08.736><c>no </c><00:22:09.038><c>caso</c>
+
+00:22:09.230 --> 00:22:09.240 align:start position:0%
+de alvo ou se ele é de alvo, no caso
+ 
+
+00:22:09.240 --> 00:22:11.310 align:start position:0%
+de alvo ou se ele é de alvo, no caso
+assim <00:22:09.485><c>para </c><00:22:09.730><c>quem </c><00:22:09.975><c>já </c><00:22:10.220><c>está </c><00:22:10.465><c>vendido, </c><00:22:10.710><c>ou </c><00:22:10.955><c>se </c><00:22:11.200><c>ele</c>
+
+00:22:11.310 --> 00:22:11.320 align:start position:0%
+assim para quem já está vendido, ou se ele
+ 
+
+00:22:11.320 --> 00:22:14.950 align:start position:0%
+assim para quem já está vendido, ou se ele
+está <00:22:11.788><c>a </c><00:22:12.256><c>transitar </c><00:22:12.724><c>com </c><00:22:13.192><c>um </c><00:22:13.660><c>espaço </c><00:22:14.128><c>para </c><00:22:14.596><c>você</c>
+
+00:22:14.950 --> 00:22:14.960 align:start position:0%
+está a transitar com um espaço para você
+ 
+
+00:22:14.960 --> 00:22:17.149 align:start position:0%
+está a transitar com um espaço para você
+carregar <00:22:15.313><c>até </c><00:22:15.666><c>ao </c><00:22:16.019><c>próximo </c><00:22:16.372><c>alvo. </c><00:22:16.725><c>Porque </c><00:22:17.078><c>que</c>
+
+00:22:17.149 --> 00:22:17.159 align:start position:0%
+carregar até ao próximo alvo. Porque que
+ 
+
+00:22:17.159 --> 00:22:18.990 align:start position:0%
+carregar até ao próximo alvo. Porque que
+que <00:22:17.369><c>vai </c><00:22:17.579><c>ter </c><00:22:17.789><c>de </c><00:22:17.999><c>pensar? </c><00:22:18.209><c>Se </c><00:22:18.419><c>eu </c><00:22:18.629><c>se </c><00:22:18.839><c>eu</c>
+
+00:22:18.990 --> 00:22:19.000 align:start position:0%
+que vai ter de pensar? Se eu se eu
+ 
+
+00:22:19.000 --> 00:22:20.390 align:start position:0%
+que vai ter de pensar? Se eu se eu
+faço <00:22:19.213><c>uma </c><00:22:19.426><c>entrada, </c><00:22:19.639><c>tenho </c><00:22:19.852><c>que </c><00:22:20.065><c>ter </c><00:22:20.278><c>um</c>
+
+00:22:20.390 --> 00:22:20.400 align:start position:0%
+faço uma entrada, tenho que ter um
+ 
+
+00:22:20.400 --> 00:22:23.070 align:start position:0%
+faço uma entrada, tenho que ter um
+alvo. <00:22:20.688><c>Onde </c><00:22:20.976><c>é </c><00:22:21.264><c>o </c><00:22:21.552><c>alvo? </c><00:22:21.840><c>O </c><00:22:22.128><c>alvo </c><00:22:22.416><c>está </c><00:22:22.704><c>aqui. </c><00:22:22.992><c>Se</c>
+
+00:22:23.070 --> 00:22:23.080 align:start position:0%
+alvo. Onde é o alvo? O alvo está aqui. Se
+ 
+
+00:22:23.080 --> 00:22:25.149 align:start position:0%
+alvo. Onde é o alvo? O alvo está aqui. Se
+eu <00:22:23.268><c>for </c><00:22:23.456><c>vender, </c><00:22:23.644><c>não </c><00:22:23.832><c>é? </c><00:22:24.020><c>E </c><00:22:24.208><c>o </c><00:22:24.396><c>alvo </c><00:22:24.584><c>da </c><00:22:24.772><c>compra </c><00:22:24.960><c>é</c>
+
+00:22:25.149 --> 00:22:25.159 align:start position:0%
+eu for vender, não é? E o alvo da compra é
+ 
+
+00:22:25.159 --> 00:22:27.789 align:start position:0%
+eu for vender, não é? E o alvo da compra é
+para <00:22:25.479><c>cima. </c><00:22:25.799><c>Se </c><00:22:26.119><c>vou </c><00:22:26.439><c>fazer </c><00:22:26.759><c>uma </c><00:22:27.079><c>compra, </c><00:22:27.399><c>se </c><00:22:27.719><c>o</c>
+
+00:22:27.789 --> 00:22:27.799 align:start position:0%
+para cima. Se vou fazer uma compra, se o
+ 
+
+00:22:27.799 --> 00:22:30.870 align:start position:0%
+para cima. Se vou fazer uma compra, se o
+o <00:22:28.210><c>meu </c><00:22:28.621><c>preço </c><00:22:29.032><c>de </c><00:22:29.443><c>entrada </c><00:22:29.854><c>está </c><00:22:30.265><c>aqui, </c><00:22:30.676><c>tenho</c>
+
+00:22:30.870 --> 00:22:30.880 align:start position:0%
+o meu preço de entrada está aqui, tenho
+ 
+
+00:22:30.880 --> 00:22:33.149 align:start position:0%
+o meu preço de entrada está aqui, tenho
+que <00:22:31.239><c>ter </c><00:22:31.598><c>espaço </c><00:22:31.957><c>pro </c><00:22:32.316><c>pro </c><00:22:32.675><c>mercado</c>
+
+00:22:33.149 --> 00:22:33.159 align:start position:0%
+que ter espaço pro pro mercado
+ 
+
+00:22:33.159 --> 00:22:36.230 align:start position:0%
+que ter espaço pro pro mercado
+movimentar <00:22:33.645><c>para </c><00:22:34.131><c>eu </c><00:22:34.617><c>pagar. </c><00:22:35.103><c>Então </c><00:22:35.589><c>ele </c><00:22:36.075><c>vai</c>
+
+00:22:36.230 --> 00:22:36.240 align:start position:0%
+movimentar para eu pagar. Então ele vai
+ 
+
+00:22:36.240 --> 00:22:39.029 align:start position:0%
+movimentar para eu pagar. Então ele vai
+pagar <00:22:36.666><c>lá </c><00:22:37.092><c>em </c><00:22:37.518><c>cima. </c><00:22:37.944><c>Beleza? </c><00:22:38.370><c>Então </c><00:22:38.796><c>aqui</c>
+
+00:22:39.029 --> 00:22:39.039 align:start position:0%
+pagar lá em cima. Beleza? Então aqui
+ 
+
+00:22:39.039 --> 00:22:42.029 align:start position:0%
+pagar lá em cima. Beleza? Então aqui
+nesse <00:22:39.407><c>caso </c><00:22:39.775><c>tenho </c><00:22:40.143><c>espaço </c><00:22:40.511><c>para </c><00:22:40.879><c>isso.</c>
+
+00:22:42.029 --> 00:22:42.039 align:start position:0%
+nesse caso tenho espaço para isso.
+ 
+
+00:22:42.039 --> 00:22:46.350 align:start position:0%
+nesse caso tenho espaço para isso.
+Agora <00:22:42.627><c>se </c><00:22:43.215><c>eu </c><00:22:43.803><c>vou </c><00:22:44.391><c>fazer </c><00:22:44.979><c>uma </c><00:22:45.567><c>entrada, </c><00:22:46.155><c>ah,</c>
+
+00:22:46.350 --> 00:22:46.360 align:start position:0%
+Agora se eu vou fazer uma entrada, ah,
+ 
+
+00:22:46.360 --> 00:22:48.149 align:start position:0%
+Agora se eu vou fazer uma entrada, ah,
+estou <00:22:46.571><c>a </c><00:22:46.782><c>pensar </c><00:22:46.993><c>em </c><00:22:47.204><c>fazer </c><00:22:47.415><c>compra </c><00:22:47.626><c>porque </c><00:22:47.837><c>tá</c>
+
+00:22:48.149 --> 00:22:48.159 align:start position:0%
+estou a pensar em fazer compra porque tá
+ 
+
+00:22:48.159 --> 00:22:50.990 align:start position:0%
+estou a pensar em fazer compra porque tá
+respeitando <00:22:48.599><c>aqui </c><00:22:49.039><c>a </c><00:22:49.479><c>região. </c><00:22:49.919><c>Aí </c><00:22:50.359><c>nesse </c><00:22:50.799><c>caso</c>
+
+00:22:50.990 --> 00:22:51.000 align:start position:0%
+respeitando aqui a região. Aí nesse caso
+ 
+
+00:22:51.000 --> 00:22:53.830 align:start position:0%
+respeitando aqui a região. Aí nesse caso
+aqui <00:22:51.310><c>a </c><00:22:51.620><c>linha </c><00:22:51.930><c>é </c><00:22:52.240><c>teria </c><00:22:52.550><c>de </c><00:22:52.860><c>estar </c><00:22:53.170><c>e </c><00:22:53.480><c>verde,</c>
+
+00:22:53.830 --> 00:22:53.840 align:start position:0%
+aqui a linha é teria de estar e verde,
+ 
+
+00:22:53.840 --> 00:22:56.390 align:start position:0%
+aqui a linha é teria de estar e verde,
+certo? <00:22:54.233><c>Vou </c><00:22:54.626><c>mudá-la </c><00:22:55.019><c>aqui </c><00:22:55.412><c>de </c><00:22:55.805><c>volta. </c><00:22:56.198><c>Então</c>
+
+00:22:56.390 --> 00:22:56.400 align:start position:0%
+certo? Vou mudá-la aqui de volta. Então
+ 
+
+00:22:56.400 --> 00:22:59.149 align:start position:0%
+certo? Vou mudá-la aqui de volta. Então
+aqui <00:22:56.737><c>está </c><00:22:57.074><c>verde. </c><00:22:57.411><c>Dá </c><00:22:57.748><c>para </c><00:22:58.085><c>fazer </c><00:22:58.422><c>a </c><00:22:58.759><c>compra?</c>
+
+00:22:59.149 --> 00:22:59.159 align:start position:0%
+aqui está verde. Dá para fazer a compra?
+ 
+
+00:22:59.159 --> 00:23:02.230 align:start position:0%
+aqui está verde. Dá para fazer a compra?
+Dá <00:22:59.461><c>por </c><00:22:59.763><c>causa </c><00:23:00.065><c>da </c><00:23:00.367><c>região </c><00:23:00.669><c>do </c><00:23:00.971><c>preço. </c><00:23:01.273><c>Mas</c>
+
+00:23:02.230 --> 00:23:02.240 align:start position:0%
+Dá por causa da região do preço. Mas
+ 
+
+00:23:02.240 --> 00:23:04.789 align:start position:0%
+Dá por causa da região do preço. Mas
+opa, <00:23:02.439><c>e </c><00:23:02.638><c>agora? </c><00:23:02.837><c>Onde </c><00:23:03.036><c>é </c><00:23:03.235><c>que </c><00:23:03.434><c>está </c><00:23:03.633><c>o </c><00:23:03.832><c>preço </c><00:23:04.031><c>aqui?</c>
+
+00:23:04.789 --> 00:23:04.799 align:start position:0%
+opa, e agora? Onde é que está o preço aqui?
+ 
+
+00:23:04.799 --> 00:23:06.990 align:start position:0%
+opa, e agora? Onde é que está o preço aqui?
+Depois, <00:23:05.049><c>se </c><00:23:05.299><c>o </c><00:23:05.549><c>preço </c><00:23:05.799><c>tiver </c><00:23:06.049><c>em </c><00:23:06.299><c>cima </c><00:23:06.549><c>já </c><00:23:06.799><c>dá</c>
+
+00:23:06.990 --> 00:23:07.000 align:start position:0%
+Depois, se o preço tiver em cima já dá
+ 
+
+00:23:07.000 --> 00:23:10.070 align:start position:0%
+Depois, se o preço tiver em cima já dá
+região <00:23:07.355><c>do </c><00:23:07.710><c>alvo, </c><00:23:08.065><c>opa, </c><00:23:08.420><c>aqui </c><00:23:08.775><c>já </c><00:23:09.130><c>não </c><00:23:09.485><c>é </c><00:23:09.840><c>muito</c>
+
+00:23:10.070 --> 00:23:10.080 align:start position:0%
+região do alvo, opa, aqui já não é muito
+ 
+
+00:23:10.080 --> 00:23:12.870 align:start position:0%
+região do alvo, opa, aqui já não é muito
+simpático <00:23:10.460><c>eu </c><00:23:10.840><c>fazer </c><00:23:11.220><c>a </c><00:23:11.600><c>compra, </c><00:23:11.980><c>porque </c><00:23:12.360><c>embora</c>
+
+00:23:12.870 --> 00:23:12.880 align:start position:0%
+simpático eu fazer a compra, porque embora
+ 
+
+00:23:12.880 --> 00:23:15.990 align:start position:0%
+simpático eu fazer a compra, porque embora
+aqui <00:23:13.400><c>tenho </c><00:23:13.920><c>a </c><00:23:14.440><c>referência,</c>
+
+00:23:15.990 --> 00:23:16.000 align:start position:0%
+aqui tenho a referência,
+ 
+
+00:23:16.000 --> 00:23:18.669 align:start position:0%
+aqui tenho a referência,
+mas <00:23:16.280><c>se </c><00:23:16.560><c>ele </c><00:23:16.840><c>já </c><00:23:17.120><c>no </c><00:23:17.400><c>renco </c><00:23:17.680><c>está </c><00:23:17.960><c>a </c><00:23:18.240><c>trabalhar</c>
+
+00:23:18.669 --> 00:23:18.679 align:start position:0%
+mas se ele já no renco está a trabalhar
+ 
+
+00:23:18.679 --> 00:23:20.510 align:start position:0%
+mas se ele já no renco está a trabalhar
+uma <00:23:18.840><c>frequência</c>
+
+00:23:20.510 --> 00:23:20.520 align:start position:0%
+uma frequência
+ 
+
+00:23:20.520 --> 00:23:22.909 align:start position:0%
+uma frequência
+muito <00:23:20.951><c>próxima </c><00:23:21.382><c>do </c><00:23:21.813><c>alvo, </c><00:23:22.244><c>tem </c><00:23:22.675><c>de</c>
+
+00:23:22.909 --> 00:23:22.919 align:start position:0%
+muito próxima do alvo, tem de
+ 
+
+00:23:22.919 --> 00:23:24.750 align:start position:0%
+muito próxima do alvo, tem de
+considerar <00:23:23.192><c>que </c><00:23:23.465><c>se </c><00:23:23.738><c>ele </c><00:23:24.011><c>não </c><00:23:24.284><c>romper </c><00:23:24.557><c>essa</c>
+
+00:23:24.750 --> 00:23:24.760 align:start position:0%
+considerar que se ele não romper essa
+ 
+
+00:23:24.760 --> 00:23:28.590 align:start position:0%
+considerar que se ele não romper essa
+região <00:23:25.285><c>fácil, </c><00:23:25.810><c>ele </c><00:23:26.335><c>pode </c><00:23:26.860><c>lá </c><00:23:27.385><c>voltar. </c><00:23:27.910><c>E </c><00:23:28.435><c>aí,</c>
+
+00:23:28.590 --> 00:23:28.600 align:start position:0%
+região fácil, ele pode lá voltar. E aí,
+ 
+
+00:23:28.600 --> 00:23:30.310 align:start position:0%
+região fácil, ele pode lá voltar. E aí,
+às <00:23:28.773><c>vezes, </c><00:23:28.946><c>em </c><00:23:29.119><c>vez </c><00:23:29.292><c>de </c><00:23:29.465><c>ele </c><00:23:29.638><c>fazer </c><00:23:29.811><c>o </c><00:23:29.984><c>que </c><00:23:30.157><c>você</c>
+
+00:23:30.310 --> 00:23:30.320 align:start position:0%
+às vezes, em vez de ele fazer o que você
+ 
+
+00:23:30.320 --> 00:23:33.110 align:start position:0%
+às vezes, em vez de ele fazer o que você
+gostaria, <00:23:30.720><c>que </c><00:23:31.120><c>é </c><00:23:31.520><c>subir, </c><00:23:31.920><c>ele </c><00:23:32.320><c>pode </c><00:23:32.720><c>perder</c>
+
+00:23:33.110 --> 00:23:33.120 align:start position:0%
+gostaria, que é subir, ele pode perder
+ 
+
+00:23:33.120 --> 00:23:36.269 align:start position:0%
+gostaria, que é subir, ele pode perder
+força <00:23:33.537><c>e </c><00:23:33.954><c>inverter </c><00:23:34.371><c>isso. </c><00:23:34.788><c>E </c><00:23:35.205><c>depois, </c><00:23:35.622><c>se </c><00:23:36.039><c>ele</c>
+
+00:23:36.269 --> 00:23:36.279 align:start position:0%
+força e inverter isso. E depois, se ele
+ 
+
+00:23:36.279 --> 00:23:38.110 align:start position:0%
+força e inverter isso. E depois, se ele
+inverte, <00:23:36.505><c>o </c><00:23:36.731><c>que </c><00:23:36.957><c>é </c><00:23:37.183><c>que </c><00:23:37.409><c>vai </c><00:23:37.635><c>acontecer?</c>
+
+00:23:38.110 --> 00:23:38.120 align:start position:0%
+inverte, o que é que vai acontecer?
+ 
+
+00:23:38.120 --> 00:23:41.909 align:start position:0%
+inverte, o que é que vai acontecer?
+Naturalmente, <00:23:38.840><c>ele </c><00:23:39.560><c>vai </c><00:23:40.280><c>também </c><00:23:41.000><c>inverter </c><00:23:41.720><c>a</c>
+
+00:23:41.909 --> 00:23:41.919 align:start position:0%
+Naturalmente, ele vai também inverter a
+ 
+
+00:23:41.919 --> 00:23:44.070 align:start position:0%
+Naturalmente, ele vai também inverter a
+cor <00:23:42.174><c>da </c><00:23:42.429><c>linha. </c><00:23:42.684><c>No </c><00:23:42.939><c>que </c><00:23:43.194><c>ele </c><00:23:43.449><c>inverte </c><00:23:43.704><c>a </c><00:23:43.959><c>cor</c>
+
+00:23:44.070 --> 00:23:44.080 align:start position:0%
+cor da linha. No que ele inverte a cor
+ 
+
+00:23:44.080 --> 00:23:47.190 align:start position:0%
+cor da linha. No que ele inverte a cor
+da <00:23:44.647><c>linha, </c><00:23:45.214><c>obviamente, </c><00:23:45.781><c>para </c><00:23:46.348><c>quem </c><00:23:46.915><c>está</c>
+
+00:23:47.190 --> 00:23:47.200 align:start position:0%
+da linha, obviamente, para quem está
+ 
+
+00:23:47.200 --> 00:23:50.830 align:start position:0%
+da linha, obviamente, para quem está
+atento <00:23:47.568><c>a </c><00:23:47.936><c>isto, </c><00:23:48.304><c>o </c><00:23:48.672><c>gajo </c><00:23:49.040><c>faz </c><00:23:49.408><c>a </c><00:23:49.776><c>venda </c><00:23:50.144><c>aqui </c><00:23:50.512><c>e</c>
+
+00:23:50.830 --> 00:23:50.840 align:start position:0%
+atento a isto, o gajo faz a venda aqui e
+ 
+
+00:23:50.840 --> 00:23:53.789 align:start position:0%
+atento a isto, o gajo faz a venda aqui e
+vai <00:23:51.280><c>descer </c><00:23:51.720><c>vendido </c><00:23:52.160><c>até </c><00:23:52.600><c>ao </c><00:23:53.040><c>alvo </c><00:23:53.480><c>lá</c>
+
+00:23:53.789 --> 00:23:53.799 align:start position:0%
+vai descer vendido até ao alvo lá
+ 
+
+00:23:53.799 --> 00:23:55.549 align:start position:0%
+vai descer vendido até ao alvo lá
+embaixo. <00:23:54.065><c>E </c><00:23:54.331><c>aqui </c><00:23:54.597><c>o </c><00:23:54.863><c>preço </c><00:23:55.129><c>vai </c><00:23:55.395><c>estar</c>
+
+00:23:55.549 --> 00:23:55.559 align:start position:0%
+embaixo. E aqui o preço vai estar
+ 
+
+00:23:55.559 --> 00:23:58.470 align:start position:0%
+embaixo. E aqui o preço vai estar
+a <00:23:55.902><c>fazer </c><00:23:56.245><c>isso </c><00:23:56.588><c>aqui </c><00:23:56.931><c>já, </c><00:23:57.274><c>ok? </c><00:23:57.617><c>Então, </c><00:23:57.960><c>prestem</c>
+
+00:23:58.470 --> 00:23:58.480 align:start position:0%
+a fazer isso aqui já, ok? Então, prestem
+ 
+
+00:23:58.480 --> 00:24:01.350 align:start position:0%
+a fazer isso aqui já, ok? Então, prestem
+atenção <00:23:59.015><c>bastante </c><00:23:59.550><c>neste </c><00:24:00.085><c>pormenor </c><00:24:00.620><c>para </c><00:24:01.155><c>que</c>
+
+00:24:01.350 --> 00:24:01.360 align:start position:0%
+atenção bastante neste pormenor para que
+ 
+
+00:24:01.360 --> 00:24:03.510 align:start position:0%
+atenção bastante neste pormenor para que
+vocês <00:24:01.799><c>entendam</c>
+
+00:24:03.510 --> 00:24:03.520 align:start position:0%
+vocês entendam
+ 
+
+00:24:03.520 --> 00:24:05.230 align:start position:0%
+vocês entendam
+essa <00:24:03.748><c>lógica. </c><00:24:03.976><c>Portanto, </c><00:24:04.204><c>esta </c><00:24:04.432><c>é </c><00:24:04.660><c>uma </c><00:24:04.888><c>aula </c><00:24:05.116><c>que</c>
+
+00:24:05.230 --> 00:24:05.240 align:start position:0%
+essa lógica. Portanto, esta é uma aula que
+ 
+
+00:24:05.240 --> 00:24:06.510 align:start position:0%
+essa lógica. Portanto, esta é uma aula que
+vai <00:24:05.394><c>ter </c><00:24:05.548><c>de </c><00:24:05.702><c>assistir </c><00:24:05.856><c>a </c><00:24:06.010><c>mais </c><00:24:06.164><c>de </c><00:24:06.318><c>uma</c>
+
+00:24:06.510 --> 00:24:06.520 align:start position:0%
+vai ter de assistir a mais de uma
+ 
+
+00:24:06.520 --> 00:24:10.110 align:start position:0%
+vai ter de assistir a mais de uma
+vez, <00:24:07.064><c>ok? </c><00:24:07.608><c>Para </c><00:24:08.152><c>você </c><00:24:08.696><c>tomar </c><00:24:09.240><c>atenção.</c>
+
+00:24:10.110 --> 00:24:10.120 align:start position:0%
+vez, ok? Para você tomar atenção.
+ 
+
+00:24:10.120 --> 00:24:12.230 align:start position:0%
+vez, ok? Para você tomar atenção.
+Escreve <00:24:10.366><c>numa </c><00:24:10.612><c>folha </c><00:24:10.858><c>de </c><00:24:11.104><c>papel </c><00:24:11.350><c>aí, </c><00:24:11.596><c>evitar</c>
+
+00:24:12.230 --> 00:24:12.240 align:start position:0%
+Escreve numa folha de papel aí, evitar
+ 
+
+00:24:12.240 --> 00:24:15.950 align:start position:0%
+Escreve numa folha de papel aí, evitar
+fazer <00:24:12.622><c>venda </c><00:24:13.004><c>no </c><00:24:13.386><c>A1, </c><00:24:13.768><c>A2 </c><00:24:14.150><c>e </c><00:24:14.532><c>A3 </c><00:24:14.914><c>negativo.</c>
+
+00:24:15.950 --> 00:24:15.960 align:start position:0%
+fazer venda no A1, A2 e A3 negativo.
+ 
+
+00:24:15.960 --> 00:24:19.110 align:start position:0%
+fazer venda no A1, A2 e A3 negativo.
+Evitar <00:24:16.440><c>comprar </c><00:24:16.920><c>A1, </c><00:24:17.400><c>A2, </c><00:24:17.880><c>A3 </c><00:24:18.360><c>positivo. </c><00:24:18.840><c>Põe</c>
+
+00:24:19.110 --> 00:24:19.120 align:start position:0%
+Evitar comprar A1, A2, A3 positivo. Põe
+ 
+
+00:24:19.120 --> 00:24:22.990 align:start position:0%
+Evitar comprar A1, A2, A3 positivo. Põe
+essa <00:24:19.570><c>regra, </c><00:24:20.020><c>ok? </c><00:24:20.470><c>Isso </c><00:24:20.920><c>já </c><00:24:21.370><c>vai </c><00:24:21.820><c>ajustar </c><00:24:22.270><c>aí </c><00:24:22.720><c>a</c>
+
+00:24:22.990 --> 00:24:23.000 align:start position:0%
+essa regra, ok? Isso já vai ajustar aí a
+ 
+
+00:24:23.000 --> 00:24:27.350 align:start position:0%
+essa regra, ok? Isso já vai ajustar aí a
+sua <00:24:23.594><c>a </c><00:24:24.188><c>sua </c><00:24:24.782><c>assertividade, </c><00:24:25.376><c>está </c><00:24:25.970><c>bem? </c><00:24:26.564><c>Só </c><00:24:27.158><c>de</c>
+
+00:24:27.350 --> 00:24:27.360 align:start position:0%
+sua a sua assertividade, está bem? Só de
+ 
+
+00:24:27.360 --> 00:24:30.830 align:start position:0%
+sua a sua assertividade, está bem? Só de
+você <00:24:27.992><c>respeitar </c><00:24:28.624><c>isso, </c><00:24:29.256><c>porque </c><00:24:29.888><c>assim </c><00:24:30.520><c>você</c>
+
+00:24:30.830 --> 00:24:30.840 align:start position:0%
+você respeitar isso, porque assim você
+ 
+
+00:24:30.840 --> 00:24:33.389 align:start position:0%
+você respeitar isso, porque assim você
+já <00:24:31.165><c>tem </c><00:24:31.490><c>uma </c><00:24:31.815><c>organização </c><00:24:32.140><c>de </c><00:24:32.465><c>onde </c><00:24:32.790><c>não </c><00:24:33.115><c>fazer</c>
+
+00:24:33.389 --> 00:24:33.399 align:start position:0%
+já tem uma organização de onde não fazer
+ 
+
+00:24:33.399 --> 00:24:35.950 align:start position:0%
+já tem uma organização de onde não fazer
+o <00:24:33.699><c>trade, </c><00:24:33.999><c>ok? </c><00:24:34.299><c>Muito </c><00:24:34.599><c>mais </c><00:24:34.899><c>do </c><00:24:35.199><c>que </c><00:24:35.499><c>fazer </c><00:24:35.799><c>o</c>
+
+00:24:35.950 --> 00:24:35.960 align:start position:0%
+o trade, ok? Muito mais do que fazer o
+ 
+
+00:24:35.960 --> 00:24:39.350 align:start position:0%
+o trade, ok? Muito mais do que fazer o
+trade, <00:24:36.460><c>é </c><00:24:36.960><c>também </c><00:24:37.460><c>saber </c><00:24:37.960><c>quando </c><00:24:38.460><c>não </c><00:24:38.960><c>fazer</c>
+
+00:24:39.350 --> 00:24:39.360 align:start position:0%
+trade, é também saber quando não fazer
+ 
+
+00:24:39.360 --> 00:24:43.110 align:start position:0%
+trade, é também saber quando não fazer
+ele, <00:24:39.851><c>está </c><00:24:40.342><c>bom? </c><00:24:40.833><c>Mas </c><00:24:41.324><c>repito, </c><00:24:41.815><c>ok? </c><00:24:42.306><c>Você </c><00:24:42.797><c>deve</c>
+
+00:24:43.110 --> 00:24:43.120 align:start position:0%
+ele, está bom? Mas repito, ok? Você deve
+ 
+
+00:24:43.120 --> 00:24:46.110 align:start position:0%
+ele, está bom? Mas repito, ok? Você deve
+utilizar <00:24:43.679><c>estas </c><00:24:44.238><c>duas </c><00:24:44.797><c>informações, </c><00:24:45.356><c>tanto </c><00:24:45.915><c>do</c>
+
+00:24:46.110 --> 00:24:46.120 align:start position:0%
+utilizar estas duas informações, tanto do
+ 
+
+00:24:46.120 --> 00:24:49.029 align:start position:0%
+utilizar estas duas informações, tanto do
+gráfico <00:24:46.493><c>temporal </c><00:24:46.866><c>como </c><00:24:47.239><c>o </c><00:24:47.612><c>gráfico </c><00:24:47.985><c>de </c><00:24:48.358><c>ren,</c>
+
+00:24:49.029 --> 00:24:49.039 align:start position:0%
+gráfico temporal como o gráfico de ren,
+ 
+
+00:24:49.039 --> 00:24:50.710 align:start position:0%
+gráfico temporal como o gráfico de ren,
+tá? <00:24:49.311><c>para </c><00:24:49.583><c>que </c><00:24:49.855><c>tenha </c><00:24:50.127><c>uma </c><00:24:50.399><c>melhor</c>
+
+00:24:50.710 --> 00:24:50.720 align:start position:0%
+tá? para que tenha uma melhor
+ 
+
+00:24:50.720 --> 00:24:53.269 align:start position:0%
+tá? para que tenha uma melhor
+assertividade
+
+00:24:53.269 --> 00:24:53.279 align:start position:0%
+assertividade
+ 
+
+00:24:53.279 --> 00:24:56.190 align:start position:0%
+assertividade
+e <00:24:53.612><c>para </c><00:24:53.945><c>que </c><00:24:54.278><c>possa</c>
+
+00:24:56.190 --> 00:24:56.200 align:start position:0%
+e para que possa
+ 
+
+00:24:56.200 --> 00:25:01.029 align:start position:0%
+e para que possa
+ter <00:24:56.704><c>aí </c><00:24:57.208><c>uma </c><00:24:57.712><c>base </c><00:24:58.216><c>eh </c><00:24:58.720><c>de</c>
+
+00:25:01.029 --> 00:25:01.039 align:start position:0%
+ter aí uma base eh de
+ 
+
+00:25:01.039 --> 00:25:03.909 align:start position:0%
+ter aí uma base eh de
+organização <00:25:02.159><c>operacional, </c><00:25:03.279><c>ok?</c>
+
+00:25:03.909 --> 00:25:03.919 align:start position:0%
+organização operacional, ok?
+ 
+
+00:25:03.919 --> 00:25:07.230 align:start position:0%
+organização operacional, ok?
+Relembrando, <00:25:04.412><c>eh, </c><00:25:04.905><c>não </c><00:25:05.398><c>anulem </c><00:25:05.891><c>a </c><00:25:06.384><c>micro, </c><00:25:06.877><c>ok?</c>
+
+00:25:07.230 --> 00:25:07.240 align:start position:0%
+Relembrando, eh, não anulem a micro, ok?
+ 
+
+00:25:07.240 --> 00:25:09.310 align:start position:0%
+Relembrando, eh, não anulem a micro, ok?
+Precisam <00:25:07.493><c>de </c><00:25:07.746><c>analisar </c><00:25:07.999><c>o </c><00:25:08.252><c>movimento </c><00:25:08.505><c>da </c><00:25:08.758><c>micro.</c>
+
+00:25:09.310 --> 00:25:09.320 align:start position:0%
+Precisam de analisar o movimento da micro.
+ 
+
+00:25:09.320 --> 00:25:13.070 align:start position:0%
+Precisam de analisar o movimento da micro.
+É <00:25:09.724><c>a </c><00:25:10.128><c>micro </c><00:25:10.532><c>que </c><00:25:10.936><c>dita, </c><00:25:11.340><c>ok? </c><00:25:11.744><c>para </c><00:25:12.148><c>onde </c><00:25:12.552><c>vai </c><00:25:12.956><c>o</c>
+
+00:25:13.070 --> 00:25:13.080 align:start position:0%
+É a micro que dita, ok? para onde vai o
+ 
+
+00:25:13.080 --> 00:25:15.990 align:start position:0%
+É a micro que dita, ok? para onde vai o
+preço <00:25:13.495><c>aí? </c><00:25:13.910><c>Porque </c><00:25:14.325><c>ela </c><00:25:14.740><c>pode </c><00:25:15.155><c>potenciar</c>
+
+00:25:15.990 --> 00:25:16.000 align:start position:0%
+preço aí? Porque ela pode potenciar
+ 
+
+00:25:16.000 --> 00:25:20.630 align:start position:0%
+preço aí? Porque ela pode potenciar
+tanto <00:25:16.502><c>para </c><00:25:17.004><c>cima </c><00:25:17.506><c>ou </c><00:25:18.008><c>como </c><00:25:18.510><c>para </c><00:25:19.012><c>baixo, </c><00:25:19.514><c>ok?</c>
+
+00:25:20.630 --> 00:25:20.640 align:start position:0%
+tanto para cima ou como para baixo, ok?
+ 
+
+00:25:20.640 --> 00:25:24.510 align:start position:0%
+tanto para cima ou como para baixo, ok?
+E <00:25:21.080><c>óbvio, </c><00:25:21.520><c>depois </c><00:25:21.960><c>vais </c><00:25:22.400><c>juntar </c><00:25:22.840><c>a </c><00:25:23.280><c>micro </c><00:25:23.720><c>com</c>
+
+00:25:24.510 --> 00:25:24.520 align:start position:0%
+E óbvio, depois vais juntar a micro com
+ 
+
+00:25:24.520 --> 00:25:31.110 align:start position:0%
+E óbvio, depois vais juntar a micro com
+as <00:25:25.228><c>regiões, </c><00:25:25.936><c>ok? </c><00:25:26.644><c>Sejam </c><00:25:27.352><c>ela </c><00:25:28.060><c>pelo </c><00:25:28.768><c>renco </c><00:25:29.476><c>e</c>
+
+00:25:31.110 --> 00:25:31.120 align:start position:0%
+as regiões, ok? Sejam ela pelo renco e
+ 
+
+00:25:31.120 --> 00:25:35.909 align:start position:0%
+as regiões, ok? Sejam ela pelo renco e
+pelas <00:25:31.768><c>formações </c><00:25:32.416><c>das </c><00:25:33.064><c>linhas </c><00:25:33.712><c>que </c><00:25:34.360><c>aparecem</c>
+
+00:25:35.909 --> 00:25:35.919 align:start position:0%
+pelas formações das linhas que aparecem
+ 
+
+00:25:35.919 --> 00:25:39.549 align:start position:0%
+pelas formações das linhas que aparecem
+no <00:25:36.339><c>gráfico </c><00:25:36.759><c>temporal. </c><00:25:37.179><c>A </c><00:25:37.599><c>linha </c><00:25:38.019><c>azul </c><00:25:38.439><c>é </c><00:25:38.859><c>apenas </c><00:25:39.279><c>a</c>
+
+00:25:39.549 --> 00:25:39.559 align:start position:0%
+no gráfico temporal. A linha azul é apenas a
+ 
+
+00:25:39.559 --> 00:25:43.430 align:start position:0%
+no gráfico temporal. A linha azul é apenas a
+divisão, <00:25:40.207><c>a </c><00:25:40.855><c>resposta </c><00:25:41.503><c>da </c><00:25:42.151><c>amplitude, </c><00:25:42.799><c>ok?</c>
+
+00:25:43.430 --> 00:25:43.440 align:start position:0%
+divisão, a resposta da amplitude, ok?
+ 
+
+00:25:43.440 --> 00:25:46.269 align:start position:0%
+divisão, a resposta da amplitude, ok?
+Tendo <00:25:43.737><c>em </c><00:25:44.034><c>conta </c><00:25:44.331><c>que </c><00:25:44.628><c>as </c><00:25:44.925><c>aulas </c><00:25:45.222><c>da </c><00:25:45.519><c>linha </c><00:25:45.816><c>azul, </c><00:25:46.113><c>as</c>
+
+00:25:46.269 --> 00:25:46.279 align:start position:0%
+Tendo em conta que as aulas da linha azul, as
+ 
+
+00:25:46.279 --> 00:25:49.630 align:start position:0%
+Tendo em conta que as aulas da linha azul, as
+aulas <00:25:46.871><c>sobre </c><00:25:47.463><c>estes </c><00:25:48.055><c>preços </c><00:25:48.647><c>já </c><00:25:49.239><c>foram</c>
+
+00:25:49.630 --> 00:25:49.640 align:start position:0%
+aulas sobre estes preços já foram
+ 
+
+00:25:49.640 --> 00:25:52.510 align:start position:0%
+aulas sobre estes preços já foram
+explicadas <00:25:50.176><c>nas </c><00:25:50.712><c>aulas </c><00:25:51.248><c>anteriores </c><00:25:51.784><c>e </c><00:25:52.320><c>eu</c>
+
+00:25:52.510 --> 00:25:52.520 align:start position:0%
+explicadas nas aulas anteriores e eu
+ 
+
+00:25:52.520 --> 00:25:55.909 align:start position:0%
+explicadas nas aulas anteriores e eu
+também <00:25:53.040><c>já </c><00:25:53.560><c>falei </c><00:25:54.080><c>sobre </c><00:25:54.600><c>as </c><00:25:55.120><c>regiões </c><00:25:55.640><c>do</c>
+
+00:25:55.909 --> 00:25:55.919 align:start position:0%
+também já falei sobre as regiões do
+ 
+
+00:25:55.919 --> 00:25:58.510 align:start position:0%
+também já falei sobre as regiões do
+renco <00:25:56.267><c>baseado </c><00:25:56.615><c>na </c><00:25:56.963><c>cor </c><00:25:57.311><c>interna </c><00:25:57.659><c>do </c><00:25:58.007><c>mesmo, </c><00:25:58.355><c>que</c>
+
+00:25:58.510 --> 00:25:58.520 align:start position:0%
+renco baseado na cor interna do mesmo, que
+ 
+
+00:25:58.520 --> 00:26:01.269 align:start position:0%
+renco baseado na cor interna do mesmo, que
+dá <00:25:58.920><c>aquela </c><00:25:59.320><c>sinalizaçãozinha </c><00:25:59.720><c>verde, </c><00:26:00.120><c>não </c><00:26:00.520><c>é,</c>
+
+00:26:01.269 --> 00:26:01.279 align:start position:0%
+dá aquela sinalizaçãozinha verde, não é,
+ 
+
+00:26:01.279 --> 00:26:04.149 align:start position:0%
+dá aquela sinalizaçãozinha verde, não é,
+que <00:26:01.705><c>pinta </c><00:26:02.131><c>aqui, </c><00:26:02.557><c>ou </c><00:26:02.983><c>quando </c><00:26:03.409><c>ela </c><00:26:03.835><c>fica</c>
+
+00:26:04.149 --> 00:26:04.159 align:start position:0%
+que pinta aqui, ou quando ela fica
+ 
+
+00:26:04.159 --> 00:26:05.750 align:start position:0%
+que pinta aqui, ou quando ela fica
+vermelha,
+
+00:26:05.750 --> 00:26:05.760 align:start position:0%
+vermelha,
+ 
+
+00:26:05.760 --> 00:26:08.789 align:start position:0%
+vermelha,
+precisamente <00:26:06.093><c>para </c><00:26:06.426><c>você </c><00:26:06.759><c>ter </c><00:26:07.092><c>aí </c><00:26:07.425><c>uma </c><00:26:07.758><c>leitura</c>
+
+00:26:08.789 --> 00:26:08.799 align:start position:0%
+precisamente para você ter aí uma leitura
+ 
+
+00:26:08.799 --> 00:26:12.190 align:start position:0%
+precisamente para você ter aí uma leitura
+melhor <00:26:09.164><c>e </c><00:26:09.529><c>os </c><00:26:09.894><c>triggers </c><00:26:10.259><c>de </c><00:26:10.624><c>entrada, </c><00:26:10.989><c>está </c><00:26:11.354><c>bem?</c>
+
+00:26:12.190 --> 00:26:12.200 align:start position:0%
+melhor e os triggers de entrada, está bem?
+ 
+
+00:26:12.200 --> 00:26:16.630 align:start position:0%
+melhor e os triggers de entrada, está bem?
+Enfim, <00:26:12.833><c>é </c><00:26:13.466><c>isto. </c><00:26:14.099><c>Boas </c><00:26:14.732><c>aulas, </c><00:26:15.365><c>bons </c><00:26:15.998><c>estudos,</c>
+
+00:26:16.630 --> 00:26:16.640 align:start position:0%
+Enfim, é isto. Boas aulas, bons estudos,
+ 
+
+00:26:16.640 --> 00:26:21.360 align:start position:0%
+Enfim, é isto. Boas aulas, bons estudos,
+boas <00:26:17.000><c>operações </c><00:26:17.360><c>para </c><00:26:17.720><c>vocês. </c><00:26:18.080><c>Até </c><00:26:18.440><c>logo.</c>
+

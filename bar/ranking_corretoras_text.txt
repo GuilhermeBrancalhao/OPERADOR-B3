@@ -1,0 +1,120 @@
+Ranking de Corretoras – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Ferramentas e Funcionalidades
+Artigos nessa seção
+Agendamento de Ordens
+Agrupamento de Gráficos
+Ajuste de Preço Médio
+Ajustes em séries históricas
+Alinhamento de ordens
+Análise PTAX
+Áreas de Valor
+Arrumar Janelas Contidas: organize automaticamente suas janelas no Profit Pro
+Atalhos
+Aviso de Proteção de Flood
+Exibir mais
+Artigos relacionados
+Times & Trades
+Documentação NTSL: Compilado de funções e instruções de usabilidade
+Posição
+Análise PTAX
+Como entrar em outra licença
+Ranking de Corretoras
+O Ranking de Corretoras ilustra um compilado de informações sobre a
+performance das corretoras
+durante o
+dia atual
+, facilitando a interpretação da liquidez do mercado.
+Para abrir o
+Ranking de corretoras
+, acesse o menu
+Ferramentas
+:
+Selecione as abas superiores, para visualizar informações sobre o
+Volume Total
+negociado, o número de
+Negócios
+, o
+Volume de Compra e Venda
+, e também os
+Saldos Positivo e Negativo
+das corretoras:
+Na parte superior do
+exemplo acima
+, o
+Volume Total
+das 10 corretoras com maior volume é exibido de forma gráfica, com
+cores correspondentes às corretoras listadas na parte inferior da ferramenta
+. Sendo o banco
+Bradesco
+representado em
+verde escuro
+, na décima posição.
+Verifique o volume de negociação das
+Bolsas BMF ou Bovespa
+, no dia atual, e a participação de cada instituição nesse volume.
+Para selecionar a Bolsa e o número de corretoras exibidas
+nas duas porções da ferramenta, clique sobre ela com o botão direito do mouse, e abra as
+Propriedades do Ranking
+:
+As demais corretoras e instituições financeiras estarão listadas abaixo das selecionadas, sem a coloração ou correspondência no gráfico da parte superior.
+Identifique dias com
+maior liquidez
+no mercado, considerando que esse indicativo não está diretamente relacionado à volatilidade, mas sim à
+quantidade de ofertas diárias no mercado
+, pois o mercado pode estar condensado em uma limitada faixa de preço.
+Combine as informações do
+Ranking de Corretoras
+a outras funcionalidades, como o
+Volume At Price
+e o
+Volume At Market
+, para tomar decisões mais assertivas, considerando a liquidez do mercado junto às faixas de preço com maiores volumes de negociação.
+Achou útil este conteúdo?
+Não esqueça de nos avaliar abaixo
+.
+Desejamos bons trades!
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 1 de 2
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar

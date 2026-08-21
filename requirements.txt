@@ -1,0 +1,4 @@
+# CSV puro no lugar de Parquet: o nucleo deterministico so precisa de
+# leitura sequencial de linhas, entao pandas/pyarrow ficam de fora (ver
+# justificativa em fluxopro/dados/replay.py).
+pytest>=8.0

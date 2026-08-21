@@ -1,0 +1,355 @@
+Times & Trades – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Ferramentas e Funcionalidades
+Ferramentas de Fluxo
+Artigos nessa seção
+PriceTrader
+Times & Trades
+Volume At Market
+Mapa de Fluxo
+Identificando os grande Players
+Medidores de Pressão
+Livro de ofertas
+SuperDOM
+Volume At Price
+Artigos relacionados
+Plugin Tape Reading
+Documentação NTSL: Compilado de funções e instruções de usabilidade
+Como entrar em outra licença
+Mapa de Fluxo
+Editor de Estratégias: Crie estratégias próprias através do Profit
+Times & Trades
+O
+Times & Trades
+é uma ferramenta completa que traz muitas variáveis
+importantes no momento de analisar o
+Fluxo de Agressão
+, além de permitir identificar
+a ação dos
+grandes
+players
+do mercado
+.
+Ele exibe o
+histórico de negócios
+realizados em um determinado ativo para uma análise detalhada.
+Neste artigo, apresentaremos as principais informações sobre a ferramenta e suas abas.
+Aba Negócios
+Aba Ordem Original
+Aba Compradores
+Aba Vendedores
+Aba Saldo
+Aba Evolução no Tempo
+Aba Evolução do Player
+Aba Análise do Player
+Configurando o Times & Trades
+Colunas Tape Reading
+Coloração por Ranking Tape Reading
+Para abrir o
+Times & Trades
+, acesse o menu
+Ferramentas
+:
+Com Times & Trades aberto, habilite as abas, clicando com o botão direito do mouse sobre a ferramenta:
+As abas
+Negócios
+,
+Ordem Original
+,
+Compradores
+,
+Vendedores
+,
+Saldo
+e
+Evolução no Tempo
+estão disponíveis de forma nativa na
+versão Profit Pro e Profit Ultra
+. Já as abas
+Evolução do Player
+e
+Análise do Player
+estão disponíveis para contratação através do
+Plugin Tape Reading.
+Na versão mobile, o acesso é limitado às abas Negócios, Ordem Original e Evolução no Tempo para o Profit Pro e Profit Ultra.
+Negócios
+Na aba
+Negócios
+são exibidos todos os negócios que passaram pelo
+Livro de Ofertas
+e foram efetivamente realizados, discriminados pela Data, Valor e Quantidade, além do tipo de agressão.
+O
+Agressor
+é aquele que tomou a iniciativa no trade. Para que uma ordem seja executada, é preciso que o Comprador e o Vendedor tenham a intenção de compra/venda de um ativo ajustada ao mesmo nível de preço. Se este interesse não está alinhado, não há negócio. Desta forma, para que haja negócio, é preciso que uma das partes tome a iniciativa de fechar a transação, comprando ou vendendo no mesmo nível de preço.
+O preço apenas se movimenta quando há consumo de liquidez, ou seja, quando ocorre uma grande negociação, com volume significativo e consistente.
+Recebemos os dados sobre a agressão em uma operação diretamente da B3, visto que esse é um parâmetro que a bolsa leva em consideração ao enviar dados de trades.
+RLP
+(Retail Liquidity Provider) são os trades diretos que ocorrem dentro das corretoras. É uma modalidade de oferta disponibilizada pelos intermediadores de mercado (corretoras e bancos).
+Esse modelo permite que o intermediador seja contraparte das ordens de seus clientes.
+O RLP permite que um
+intermediador possa prover liquidez
+para ordens de compra e venda de seus clientes. Na prática, agora o intermediador pode ser a contraparte do trade, participando ativamente da negociação. As negociações seguem normalmente por meio da B3, pois estão ligadas ao sistema de negociação da Bolsa (PUMA Trading System).
+Com o RLP ativado, ao realizar uma agressão no mercado (zerar uma posição ou comprar/vender a mercado, por exemplo) a
+corretora
+será a contraparte do trade. Desta forma, ela irá
+prover liquidez
+fazendo com que o trader saia ou abra uma nova posição com maior agilidade.
+Para ativar o RLP, é necessário contatar a sua
+corretora
+, pois ela é a responsável por realizar tal procedimento.
+Ordem Original
+Já a
+aba
+Ordem Original
+irá otimizar a leitura do mercado, pois enquanto a aba
+Negócios
+mostra negócios individualmente, esta mostra as ordens originalmente encaminhadas por determinado player que agrediu as ofertas do Livro.:
+O
+sinal de asterisco (*) na coluna Valor
+indica que a agressão ocorreu em mais de um nível de preço. Quando o volume do player é muito grande, consumindo o preço superior na Compra ou inferior na Venda, ele acaba por participar em mais de uma oferta.
+Na imagem anterior, você pode identificar, por exemplo que, 20 contratos de WINV22 foram negociados a 109.875
+*.
+Logo, de acordo com a lógica apresentada acima, nem todos os contratos foram negociados no respectivo preço. Justamente por conta da falta de ofertas para toda a quantidade de ativos no preço estipulado.
+Compradores
+A aba
+Compradores
+mostra a
+representatividade
+dos
+players
+que
+mais realizaram negócios
+na
+ponta
+compradora.
+Vendedores
+A aba
+Vendedores
+, mostra a
+representatividade
+dos
+players
+que
+mais realizaram negócios
+na ponta
+vendedora.
+Em alguns casos
+específicos
+, como o ativo CCMFUT - série histórica do milho, os agentes compradores e vendedores irão aparecer em
+formato numeral
+.
+Isto ocorre pois, por característica da própria
+commodity
+, as informações dos players não são informadas para a B3 e com isto não são repassadas ao Profit.
+Este comportamento pode impactar em outras janelas, aparecendo informações de
+forma zerada.
+Saldo
+A aba
+Saldo
+é um excelente complemento ao Times & Trades, pois possibilita uma visão mais aprofundada do impacto de cada instituição em um determinado ativo.
+Apresenta o
+resultado
+entre o que foi comprado
+subtraído
+do que foi vendido pelo
+player
+.
+O preço médio exibido pode ter o seu cálculo definido conforme as seguintes opções:
+Padrão:
+Será exibido o preço médio da aba compradores se o saldo de posição da corretora for comprado ou irá exibir o preço médio da aba vendedores se o saldo de posição da corretora for vendido.
+Direto Vol./Quantidade:
+Faz a divisão do volume financeiro pelo volume de quantidade e o resultado é dividido pelo fator multiplicador do ativo.
+VWAP:
+Uma média ponderada pelo preço e volume de quantidade.
+Volume Financeiro:
+O calculo utilizado para sabermos o Volume Financeiro da aba saldo do Times & Trades é composto pelo total do Volume Financeiro de Compra menos o Volume Financeiro de Venda.
+Para saber o Volume Financeiro por cada Player, é necessário pegar o valor de execução do trade multiplicado pelo Fator multiplicador do ativo e multiplicar pela quantidade do trade, após ter o Volume Financeiro de cada trade calculado é necessário somar todas as quantidades para obter o Volume Financeiro total de Compra ou de Venda.
+Para conferir o Fator Multiplicador de cada ativo basta ir ao menu
+Exibir > Informações do Ativo:
+E na janela de Informações do Ativo verificar a informação "
+Multi Qtd
+":
+Preço de Execução X Multi Qtd X Quantidade = Volume Financeiro do Trade
+Volume Financeiro total de Compra ou Venda = Soma de todos os Volumes Financeiros de Trades do Respectivo lado.
+Exemplo Bovespa
+: BBAS3
+Preço de Execução X Multi Qtd X Quantidade = Volume Financeiro do Trade
+26,40 X 1 X 100 = 264
+Exemplo BMF
+: WDON24
+Preço de Execução X Multi Qtd X Quantidade = Volume Financeiro do Trade
+5.450 x 10 x 5 = 272.500
+Evolução no Tempo
+A aba
+Evolução no tempo
+representa o saldo do
+player
+em uma escala de tempo.
+Evolução do Player
+A aba
+Evolução do player
+representa o saldo do
+player
+em uma escala
+de tempo,
+considerando o preço de compra/venda.
+Análise do Player
+A aba
+Análise do player
+traz informações de saldo e agressores com
+base na quantidade.
+Obs:
+As abas
+Análise do Player
+e
+Evolução do Player
+são exibidas somente quando você possuí assinatura do Módulo Opcional de Tape-Reading.
+Configurando o Times & Trades
+Há três opções para visualizar as abas Compradores, Vendedores, Saldo, Evolução no Tempo, Evolução do Player e Análise do Player:
+Tabela, Gráfico ou Gráfico e Tabela
+.
+Para acessar estas configurações, é preciso acionar o botão direito do mouse acima do Times & Trades, ou botão central, caso o
+One Click Trading
+esteja ativo e clicar em
+Gráfico
+para abrir as opções:
+Tanto no gráfico como na tabela, conseguimos identificar quais instituições estão mais ativas e com o maior volume financeiro.
+A visualização em tabela divide-se entre as colunas:
+Corretora
+que exibe o nome da instituição;
+Porcentagem (%)
+que indica a ''fatia'' de participação de cada instituição no mercado, verificando a posição atual com base nas negociações realizadas durante o dia analisado;
+Vol. Fin.
+que mostra a quantidade em Reais de cada instituição;
+Vol. Qtd.
+que mostra o número de lotes em que cada instituição está posicionada. Caso o valor seja positivo, significa que o saldo está comprado e se estiver negativo, o saldo está vendido; e
+Média
+que exibe o preço médio com base na posição atual dos players.
+A coloração
+Verde
+e
+Vermelha
+da coluna
+Média
+indicará se o player está comprado ou vendido respectivamente naquele preço. Como as colorações da coluna
+Média
+são informações já consolidadas, a tendência de um determinado ativo pode indicar baixa
+mesmo que o preço médio esteja positivo
+e vice-versa.
+É possível definir o período da visualização dos trades, aplicar uma coloração ou um filtro em determinada quantidade, dentre outras configurações, clicando com o botão direito do mouse sobre a ferramenta, para acessar suas
+Propriedades
+:
+É importante ressaltar que ao utilizar o filtro de cores, é necessário verificar o
+lote mínimo
+do ativo, uma vez que o valor configurado no campo "Lote" é o que será utilizado para definir as quantidades que serão destacadas.
+Por exemplo:
+Dólar:
+5 lotes de WDO = quantidade 5
+5 lotes de DOL = quantidade 25
+Índice:
+10 lotes de WIN = quantidade 10
+10 lotes de IND = quantidade 50
+Ações:
+5 lotes de VALE3 = quantidade 500
+Você também pode encontrar mais informações sobre os lotes mínimos de cada ativo ao clicar
+aqui
+Nas aba Saldo, Evolução no tempo, Evolução do Player e Análise do Player, é possível exibir as flechas de alta e baixa na coluna
+Vol. Fin.
+, que indicarão a tendência de volume.
+Para isso em
+Visibilidade
+, selecione a opção
+Mostrar direção do saldo
+e clique em
+Aplicar a Todos
+:
+A posição do player é contabilizada somente dentro do período selecionado no Times & Trades. O período padrão é referente ao pregão atual, mas pode ser ampliado configurando um
+período personalizado
+em
+Configurações
+:
+Importante:
+Ao configurar o 'Período Personalizado' do Times and Trades, cada tipo de ativo possui uma quantidade máxima de dias retroativos que podemos requisitar.
+-Mini Índice: 8 dias
+-Mini Dólar: 30 dias
+-Dólar e Índice cheio: 180 dias
+-Outros: 1 ano
+Em plataformas como o Profit One e os White Labels, a visualização é limitada ao dia atual.
+Observação: O número máximo de dias disponíveis está diretamente atrelado ao volume negociado do ativo. Os valores apresentados neste artigo estão sujeitos a variações em função da quantidade de negociações realizadas. De modo geral, ativos com elevado volume podem apresentar menor disponibilidade de dias.
+Colunas Tape Reading
+O opcional de plugin Tape Reading trás também colunas adicionais nas abas Saldo, Evolução no Tempo, Evolução do Player e Análise de Player. Para adicionar as colunas em seu Times & Trades basta acessar as propriedades e selecionar a aba "Visibilidade":
+Agressão Compra
+- Número de agressões no lado de compra
+Agressão Venda
+- Número de agressões no lado de venda
+Agressão Líquida
+- Quantidade resultante ao subtrair o número de agressões de compra pelo número de agressões de venda
+Passivo Líquido
+- Número de agressões passivas (Sem consumo das ofertas do Livro)
+L/P Bruto
+- É o Lucro (ou Prejuízo) do total negociado. Conforme filtro de data utilizado, corretora e ativo selecionado no Times & Trades. Independente se as operações foram executadas  ou não por algoritmos
+Leilão
+- Número de agressões no Leilão
+Coloração por Ranking Tape Reading
+É possível utilizar uma configuração para
+destacar os players mais ativos
+com base no
+volume de ordens executadas
+,
+agressões
+(compra ou venda), ou
+quantidade de negócios
+. Isso é feito por meio da
+atribuição de cores diferentes aos players
+, ordenados por participação no ranking de volume.
+Deste modo é possível configurar a cor para destacar Compra e Venda, bem como volumes ignorados:
+Essa coloração será aplicada as abas Negócios e Ordem Original do Times & Trades.
+Saiba mais sobre a ferramenta, acessando o vídeo abaixo:
+Achou útil este conteúdo?
+Não esqueça de nos avaliar abaixo
+.
+Desejamos bons trades!
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 9 de 12
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar

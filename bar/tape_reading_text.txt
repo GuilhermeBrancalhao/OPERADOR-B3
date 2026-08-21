@@ -1,0 +1,371 @@
+Plugin Tape Reading – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Módulos Opcionais
+Estratégias Avançadas
+Plugin Tape Reading
+Artigos nessa seção
+O  que é Tape Reading?
+Plugin Tape Reading
+Plugin Tape Reading - Alarmes de Tape Reading: Como configurar e utilizar
+Plugin Tape Reading - Entendendo conceitos importantes de Tape Reading
+Plugin Tape Reading - Gráfico Tape Reading (Footprint)
+Plugin Tape Reading - Histograma e Saldo de Agressão
+Plugin Tape Reading - Rastreamento de Algoritmos
+Plugin Tape Reading - TR - Tempo de Candle
+Plugin Tape Reading - Visualizando o divisor Bid-Ask no gráfico de Tape Reading
+Artigos relacionados
+Plugin Tape Reading - Gráfico Tape Reading (Footprint)
+Plugin Tape Reading - Alarmes de Tape Reading: Como configurar e utilizar
+Editor de Estratégias: Crie estratégias próprias através do Profit
+Como funciona o Plugin Long & Short?
+Como utilizar a Automação de Estratégias
+Plugin Tape Reading
+Os
+Módulos Opcionais
+são ferramentas que permitem que você turbine a sua plataforma e eleve o desempenho do seu operacional.
+Desta forma, o Profit conta com diversos recursos extras que podem te ajudar a obter melhores resultados em suas operações, e uma dessas ferramentas é o
+Plugin Tape Reading
+.
+Clique aqui
+para acessar a nossa loja e contratar seu opcional.
+O
+Plugin Tape Reading
+é uma ferramenta completa para Análise de Fluxo e conta com seguintes itens:
+1. Gráfico
+Tape Reading
+(
+Footprint
+)
+2. Análise de Ativos
+3. Análise de
+Players
+4.
+Ranking
+de Ativos
+5. Indicadores de Agressão
+6. Alarmes de Agressão
+7. Periodicidade Volume (QTD)
+8. Periodicidade Agressão (AGR)
+Gráfico
+Tape Reading
+(
+Footprint
+)
+O Plugin Tape Reading , esta presente no produto
+Profit Ultra
+de forma nativa.
+Caso tenha interesse, o plugin também pode ser contratado para as versões (Profit One, Plus, Pro e White Label).
+O mesmo
+é
+caracterizado por apresentar um gráfico diferenciado, denominado Gráfico
+"
+Tape Reading
+" ou "Gráfico de
+Footprint"
+.
+Sua característica principal é a exibição de barras de volume
+de agressão por nível de preço,
+dentro de cada
+candles
+tick
+, conforme figura abaixo.
+O histograma da esquerda representa as agressões na
+Venda
+, enquanto o histograma da direita representa as agressões na
+Compra
+. Sua leitura é feita na diagonal, onde se compara o número de contratos agredidos na Compra e na Venda. O lado de maior peso, tende a dar o direcional do preço.
+Mais abaixo na figura, temos dois retângulos que representam, de cima para baixo e respectivamente, o volume de
+Compra
+subtraído do volume de
+Venda
+.
+Logo, quando este primeiro retângulo apresenta sinal negativo, significa que houve maior
+pressão vendedora
+e quando o sinal é positivo, a
+pressão compradora
+foi maior.
+Já o segundo retângulo representa os Volumes somados na
+Compra
+e
+Venda.
+Esse gráfico
+inova, pois,
+permite a união entre a Análise de fluxo à Análise gráfica.
+Para uma melhor
+experiência com a ferramenta
+é interessante
+c
+ompreender alguns “
+Parâmetros
+” do gráfico
+.
+Para isso, clique
+aqui
+, neste link abordamos
+os
+fatores
+Imbalance
+, Sequencial, Exaustão, etc.
+de forma aprofundada.
+Análise de Ativo
+Esta ferramenta permite
+analisar a
+Persistência
+e
+R
+elevância
+das ordens dos
+players
+dentro de cada corretora, conforme figura abaixo.
+Nos quadrantes superiores, temos os
+players
+com maior volume
+, seja de
+Compra
+ou
+Venda
+.
+Nos quadrantes inferiores ocorre o oposto, ou seja, estão posicionados os
+players
+com menor volume.
+Quanto
+mais
+à
+esquerda, maior a
+persistência
+de compra
+/
+venda. Ou seja, o
+p
+layer
+manteve uma certa frequência de compra/venda no período.
+E quanto mais a direita, mais errático é esse movimento, ou seja, o
+player
+não assumiu uma posição persistente de compra/venda.
+É importante entender que
+o
+s
+players
+que estão acima e à esquerda são aqueles que mais
+impactam
+no preço.
+A visualização da Análise de Ativo pode ser
+diária
+ou
+15 minutos
+, com atualização automática.
+Análise de
+Players
+Essa ferramenta f
+unciona como uma lupa sobre
+as movimentações dos
+players
+dentro de
+uma corretora específica.
+Nela estão dispostos graficamente
+algumas variáveis como:
+Quantidade negociada:
+volume de lotes negociados.
+Taxa de participação
+: o quanto a compra/venda do
+player
+representou no volume total no dia.
+ADV:
+o quanto a compra/venda do
+player
+representou sobre volume médio de vários dias.
+Ficou interessado no
+Plugin Tape Reading
+? Clique
+aqui
+para acessar o nosso site e adquirir essa ferramenta fantástica!
+Ranking
+de Ativos
+No
+Ranking
+de Ativos é possível identificar
+se
+/
+e qual
+Algoritmo
+os
+playe
+rs,
+dentro das respectivas corretoras,
+est
+ão
+utilizando, além de
+outras informações que complementam a análise do
+Ranking
+de Ativos
+, conforme pode ser observado na figura abaixo.
+Nesta ferramenta estão consolidadas as seguintes abas:
+Saldo participação
+:
+saldo de participação por corretora.
+Saldo
+agressão
+:
+saldo de agressão por corretora.
+Posição saldo agressão
+:
+as estrelas denotam a força
+d
+o saldo de agressão
+do
+player
+com relação ao
+histórico
+de saldo do próprio
+player
+.
+Taxa de participação
+: o quanto a compra/venda do
+player
+representou no volume total
+no dia
+.
+Posição taxa de participação
+:
+as estrelas denotam a força da taxa de participação do
+player
+com relação ao histórico do dele mesmo
+.
+Lote piorado
+:
+o quanto o
+player
+está impactando seu preço na compra
+/venda
+de lotes
+.
+Posição lote piorado
+: o
+quanto o
+player
+está impactando seu preço na compra
+/venda
+de lotes
+.
+Volume quantidade
+:
+volume
+de lotes
+negociado pelo
+player
+.
+ADV
+:
+o quanto a compra/venda do
+player
+representou sobre volume médio de vários dias.
+Algoritmo
+:
+mostrará o algoritmo identificado
+.
+Status
+:
+mostrará o
+status
+do algoritmo, se estável, aumenta
+n
+do, decrementa
+n
+do,
+des
+ativado
+ou reativado.
+Início
+:
+o horário em que o algoritmo foi ligado.
+Fim
+:
+o horário em que o algoritmo foi desligado.
+Observação:
+Em algumas colunas há valores entre parênteses, eles se referem aos resultados dos últimos 15 minutos.
+Para entender mais sobre os
+Algoritmos
+, clique
+aqui
+.
+Indicadores de Agressão
+Os
+Indicadores de Agressão
+possibilitam tornar a Análise de fluxo mais assertiva, uma vez que "indicam" uma possível tendência nos preços.
+Para conhecer os indicadores de forma mais abrangente e como utilizá-los, clique
+aqui
+.
+Alarmes de Agressão
+A ferramenta
+Alarmes de Agressão
+possibilita configurar alarmes para aviso quando acionados diversos gatilhos, como Compra/Venda de uma ativo, Inversão, Presença de player, Algoritmo etc.
+Para saber como configurar e entender mais sobre essa funcionalidade, clique
+aqui
+.
+O
+Plugin Tape Reading
+é um Módulo Opcional indicado para quem deseja operar como os grandes
+players
+institucionais. Clique
+aqui
+para acessar o nosso site e adquirir essa ferramenta incrível!
+Periodicidade Volume (QTD)
+Com a periodicidade QTD é possível verificar o volume do ativo. A configuração está disponível em períodos ou clicando na tecla espaço, adicionando o quantidade desejada seguida de "qtd":
+Periodicidade Agressão (AGR)
+Com a periodicidade AGR é possível verificar os candles por quantidade de agressões.
+Quer saber mais sobre o Plugin Tape Reading?
+Clique aqui
+!
+Clique aqui
+para acessar a nossa loja e contratar seu opcional.
+Achou útil este conteúdo?
+Não esqueça de nos avaliar abaixo
+.
+Desejamos bons trades!
+Ebook_TapeReading.pdf
+4 MB
+Baixar
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 6 de 6
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar

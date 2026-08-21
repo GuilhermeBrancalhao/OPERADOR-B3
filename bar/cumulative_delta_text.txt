@@ -1,0 +1,112 @@
+Cumulative Delta – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Ferramentas e Funcionalidades
+Ferramentas Gráficas
+Indicadores
+Artigos nessa seção
+Acumulação/Distribuição
+Acumulação/Distribuição Williams
+Aroon
+Balança de Poder
+Bandas de Bollinger
+Bollinger Band Width
+Canal de Donchian
+Canal Regressão Linear
+Candle Code
+CCI
+Exibir mais
+Artigos relacionados
+Plugin Tape Reading - Histograma e Saldo de Agressão
+Weis Wave
+Times & Trades
+Como entrar em outra licença
+DT Oscillator
+Cumulative Delta
+O Indicador
+Cumulative Delta
+é um indicador que vai montar um gráfico a partir da agressão liquida, separada por período.
+A agressão líquida se refere ao saldo dos participantes do mercado, por exemplo, se os participantes do mercado comprarem 5 mil contratos de dólar e venderam 3 mil o saldo é 2 mil contratos. Então é possível analisar a
+variação
+do saldo, e ter o indicativo da
+força do mercado
+.
+Para inseri-lo, acesso o
+Menu Exibir, Indicador
+e selecionar o indicador
+Cumulative Delta
+:
+Inserindo este indicador será apresentado um novo gráfico de candles abaixo do seu gráfico, conforme exposto acima.
+O
+Cumulative Delta
+se baseia apenas na quantidade líquida de agressão, ou seja, quando nota-se uma quantidade de alta (barra verde), significa que houve dentro daquele período um maior acumulo de agressão na compra. Da mesma forma, quando formar uma barra vermelha de baixa, significa que houve maior quantidade de agressões na venda.
+As barras do indicador sempre se referem ao mesmo tempo gráfico no período.
+Através deste indicador podemos notar o histórico e a evolução das agressões por período.
+Além disso, é possível acessar as
+propriedades
+clicando com o botão direito sobre o indicador:
+Na
+Aba
+Parâmetros
+: é possível ajustar o tipo de volume, por padrão o volume é
+quantidade
+, contabilizando a quantidade total de contratos no período.
+Financeiro
+: irá apresentar o valor em reais em cada barra de agressão.
+Negócios
+: Irá apresentar a quantidade de negócios por barra de agressão.
+Na
+Aba Aparência
+: é possível configurar a aparência do indicador tais como cores e estilo da linha.
+Atualmente o indicador está disponível para a versão Windows da plataforma.
+Quer saber mais sobre o
+Cumulative Delta
+? Acesse o vídeo
+aqui
+.
+Achou útil este conteúdo?
+Não esqueça de nos avaliar abaixo.
+Desejamos bons trades!
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 1 de 1
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar

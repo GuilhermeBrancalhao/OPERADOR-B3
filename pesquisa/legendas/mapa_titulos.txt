@@ -1,0 +1,18 @@
+6UPPrXrYeOY = ASG | Aula Avançada 3: Trade de Reversão com Leitura Institucional
+ri9myKnGm9k = ASG | Aula Avançada 2: Operando Reversões de Mercado
+cyJVLkoZIvk = ASG | Aula Avançada 1: Pré-Sinais e Gatilhos de Confirmação
+j7bsbasGieQ = ASG | Gatilho Principal: Como Executar e Gerenciar o Stop!
+pOuDMM07vG8 = ASG | Ondas Visuais: Regiões de Microfrequência e Reação do Preço
+50QhcqGQ9jQ = ASG | Gatilho de Entrada: A Confirmação do Trade na Tela
+zenDbXgFEEw = ASG | Leitura Direcional: Opere a Favor da Estatística e Aumente sua Assertividade
+TPk39osWiKY = ASG | Sinal Ultra: O Nível Máximo de Suporte vs Resistência
+W7lNHhliZXU = ASG | Suporte vs Resistência: Quando Funciona e Quando Engana
+EPqye9iLNig = ASG | Macro vs Micro: O Fluxo que Move o Mercado
+7P4_13Fkmuk = ASG | Maker: Aprenda a rastrear os HFTS e os robôs da Bolsa (Parte 2)
+BbnGYiwygFQ = ASG | Maker: Aprenda a rastrear os HFTS e os robôs da Bolsa (Parte 1)
+SHjx2aHkmVA = ASG | Linha Azul: Abaixo vende, Acima compra (entenda o algoritmo) no Day Trade
+Rwm3uzxZhhc = ASG | Placar Estatístico: Leitura Simples e Direta da Ferramenta
+NEzTbYouGUs = AULA 1 - SNIPER ASG
+
+Todos os IDs acima têm URL: https://www.youtube.com/watch?v=<ID>
+Canal completo listado em: lista_videos_raw.txt (54 vídeos)

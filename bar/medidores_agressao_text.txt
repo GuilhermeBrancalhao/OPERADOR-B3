@@ -1,0 +1,172 @@
+Medidores de Agressão – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Ferramentas e Funcionalidades
+Artigos nessa seção
+Agendamento de Ordens
+Agrupamento de Gráficos
+Ajuste de Preço Médio
+Ajustes em séries históricas
+Alinhamento de ordens
+Análise PTAX
+Áreas de Valor
+Arrumar Janelas Contidas: organize automaticamente suas janelas no Profit Pro
+Atalhos
+Aviso de Proteção de Flood
+Exibir mais
+Artigos relacionados
+Plugin Tape Reading - Histograma e Saldo de Agressão
+Times & Trades
+Como entrar em outra licença
+Estratégia de Coloração
+Significados e sintaxe do RTD
+Medidores de Agressão
+Verifique rapidamente o
+Saldo
+de volume de agressão por período
+e o saldo do
+Acumulado de Agressão
+diário
+de um ativo com a ferramenta Medidores de Agressão.
+Acesse o menu
+Ferramentas
+, para adicionar ao seu desktop:
+A janela trará o ativo que estiver selecionado no gráfico.
+Para trocar
+, selecione o gráfico do ativo desejado e abra uma nova janela correspondente.
+No exemplo abaixo
+, estamos utilizando duas janelas
+Medidores de Agressão
+, para os ativos
+WDO
+e
+BBDC4
+, selecionados no gráfico:
+A janela superior contém a
+configuração padrão
+. Na linha de cima mostra o saldo do ativo BBDC4 a partir do início do pregão de hoje, e na linha de baixo, o acumulado de agressão diário. A cor
+vermelha
+indica que predomina o lado
+vendedor
+.
+Abaixo, a segunda janela do ativo WDO foi configurada para exibir o saldo das últimas
+15 horas,
+junto ao acumulado do dia atual. A cor
+verde
+indica a predominância do lado
+comprador
+.
+Configurações
+Para selecionar rapidamente o
+período
+exibido e habilitar a visualização da
+aba de informações
+do ativo, clique na seta ao lado do ícone da ferramenta:
+Ou, clique na ferramenta com o botão direito do mouse, para abrir as
+Propriedades.
+Para visualizar a aba superior com mais informações para o ativo e a legenda dos saldos exibidos, selecione as opções
+Descrição
+e
+Mostrar Legendas
+.
+Selecione
+Horizontal
+ou
+Vertical
+para o formato da janela. O
+Ajuste Automático
+retorna a janela ao seu tamanho e posição iniciais:
+Clique em
+Propriedades
+, para configurar períodos, cores, fonte e os preços considerados.
+No exemplo abaixo, selecionamos a opção
+Janela de Tempo
+, para filtrar as últimas
+15 horas de volume de agressão
+no ativo WDO:
+Em
+Períodos Adicionais (Média)
+, adicione as médias de outros períodos ao resultado da agressão, como por exemplo, 15 e 30 minutos.
+Visualize tempos mais longos, configurando um
+Período Personalizado
+.
+Adicione a
+Variação de Preço
+ao cálculo.
+Na aba
+Avançado
+, a opção
+Preços Considerados
+traz a configuração padrão
+Todos
+. Para limitar a visualização aos preços mais próximos do spread (diferença entre os preços de compra e venda), selecione a opção e defina a quantidade de
+Ticks
+:
+Para criar alarmes
+, clique novamente com o botão direito do mouse sobre a ferramenta, e selecione
+Novo Alarme de Agressão
+:
+Neste exemplo, configuramos um
+alarme de agressão vendedora
+, para as próximas
+8 horas
+, com limite de
+49%
+sobre o saldo atual. Selecionamos a cor
+azul claro
+, e o som
+CallingSound
+:
+Esta ferramenta está disponível apenas na versão
+Profit Pro
+.
+Não há limite de abertura de janelas gráficas ou ferramentas para as versões
+Profit Pro e Plus
+.
+Achou útil este conteúdo?
+Não esqueça de nos avaliar abaixo
+.
+Desejamos bons trades!
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 0 de 0
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar

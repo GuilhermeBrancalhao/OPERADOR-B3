@@ -1,0 +1,338 @@
+Livro de ofertas – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Ferramentas e Funcionalidades
+Ferramentas de Fluxo
+Artigos nessa seção
+PriceTrader
+Times & Trades
+Volume At Market
+Mapa de Fluxo
+Identificando os grande Players
+Medidores de Pressão
+Livro de ofertas
+SuperDOM
+Volume At Price
+Artigos relacionados
+Times & Trades
+Volume At Price
+Gráfico: Pontos, Inversão e Figura
+Como redefinir as senhas do Profit
+Editor de Estratégias: Crie estratégias próprias através do Profit
+Livro de ofertas
+O Livro de Ofertas concentra informações de todas as ordens de compra e de venda de um ativo financeiro, organizadas por nível de preço. Seu conteúdo é listado eletronicamente pelas Bolsas de Valores, para oferecer aos participantes do mercado uma visão de
+profundidade
+, ou até que preço existem ofertas e em que quantidade.
+Filtre as ofertas relevantes por
+quantidade
+,
+período
+e
+agentes
+específicos, e acompanhe a disponibilidade de ativos em variados formatos, oferecidos nas abas inferiores do Livro de Ofertas nas plataformas Profit.
+Para adicionar
+o Livro de Ofertas ao seu desktop, acesse o menu
+Ferramentas
+ou clique no
+ícone do Livro de Ofertas
+na
+Barra de Ferramentas:
+Aba Superior
+Nesta aba, temos as informações do ativo em questão, como último preço negociado, a variação, a hora da última negociação, volume, negócios, valor de abertura, fechamento, entre outras informações. Atualmente esta aba não permite alterações, ou seja, não é configurável.
+Para ocultá-la, selecione a opção
+Descrição:
+Importante ressaltar que a informação da
+hora
+, somente
+irá atualizar quando ocorrer alguma negociação
+e, por isto, pode gerar a sensação de estar travada em ativos de menor liquidez.
+Abas Inferiores
+Preços
+Mostra o
+total de ofertas
+do ativo por faixa de preço.
+Do lado esquerdo em
+azul
+, as ofertas de
+compra
+para o ativo selecionado, e no lado direito da ferramenta, as ofertas de
+venda
+representadas na cor
+vermelha
+.
+Para
+trocar o ativo
+, clique na aba superior, sobre o ticker (PETR4), com o botão direito do mouse, e selecione uma das opções:
+Profundidade
+Mostra a quantidade de
+ofertas acumuladas
+por nível de preço.
+Por exemplo
+, a quantidade acumulada de ofertas de compra dos
+níveis 1 a 5
+é
+718
+, e na venda,
+290
+contratos
+:
+Na aba profundidade ocorre a soma da quantidade de contratos, e também é calculada a média do preço da quantidade de contratos.
+Gráfico
+Acompanhe a quantidade de ofertas, também por nível de preço, de forma prática e abrangente. A aba
+Gráfico
+oferece a visão instantânea do acumulado de ordens e da distância entre a
+oferta
+(linha de venda em rosa claro) e a
+demanda
+(linha de compra em lilás).
+Na horizontal, está representada a
+quantidade
+, e na vertical, os
+preços
+:
+Ofertas
+Uma da mais utilizadas, a aba
+Ofertas
+mostra ordens e agentes, de acordo com os filtros aplicados.
+Destaque ofertas relevantes e agentes específicos, e selecione o tamanho dos lotes exibidos.
+Para configurar
+, clique na ferramenta com o botão direito do mouse, e acesse as
+Propriedades do Livro:
+Na aba
+Agentes Monitorados
+, selecione os agentes na lista do lado esquerdo.
+Selecione a opção
+Monitorar Agente
+, e defina a
+cor
+.
+Atribua
+Regras
+para o tamanho dos lotes, aplicando
+cores
+e
+valores
+.
+Preencha com cores somente o agente ou a linha inteira:
+Na aba
+Ofertas
+, com as configurações aplicadas
+acima
+, o agente
+BTG
+aparece em azul claro, e lotes iguais ou maiores a
+10
+, em rosa. Somente a coluna
+Agente
+recebeu a coloração:
+Nas
+Propriedades
+do Livro
+, acesse a aba
+Quantidade
+para aplicar cores à coluna
+Qtde
+:
+A cor verde limão, aplicada aos lotes maiores ou iguais a
+5
+, na opção
+Preços
+, será exibida nas abas
+Netrix, SuperDom
+e
+Price Trader.
+Selecione a
+Regra
+, a
+cor
+e o
+tamanho
+do lote
+, e clique em
+Adicionar
+:
+Adicionalmente, é possível selecionar a funcionalidade
+Escora Institucional
+, determinando o tamanho do lote, para acompanhar grandes ofertas de maior permanência no Livro.
+Essa ferramenta permite visualizar no Livro de Ofertas as ordens grandes (com quantidades maiores) que estão presentes no book a mais tempo, assim se torna possível monitorar por tamanho de lote e tempo, a fim de evitar e/ou filtrar lotes que possivelmente são blefes do mercado.
+Após definir as configurações desejadas ela é aplicada somente ao livro, não modificando a visualização do SuperDOM.
+Netrix
+O Netrix é visualmente semelhante ao
+SuperDom,
+para habilitar o painel de negociação como no no SuperDom, basta clicar com o botão direito, selecione a opção
+Visibilidade
+e por fim
+Ferramentas
+de
+Negociação:
+Visualize os
+níveis de preços
+e as intenções de compra e venda
+acumuladas
+.
+Ao lado das colunas
+Qtd. Compra
+e
+Venda
+, as barras verdes horizontais demonstram acúmulos de ofertas de forma visual:
+Modifique as cores das barras e das ofertas de compra e venda do Netrix, na aba
+Cores
+das
+Propriedades do Livro.
+Nesta aba, selecione também as cores e outros elementos visuais da ferramenta:
+A
+coloração
+dos níveis de preço pode auxiliar muito na identificação de oportunidades durante suas operações. Basta selecionar
+Colorir preços com ordens
+, conforme imagem acima para colorir os níveis de preço no
+Livro de Ofertas
+em que você possui ordens enviadas.
+As
+cores da agressão
+em
+Tipos de Trade
+, estão disponíveis para configuração nas versões Profit Pro, Plus e Training.
+Na aba
+Visibilidade
+, selecione ou retire as colunas que deseja visualizar nas abas
+Preços
+,
+Netrix
+e
+Ofertas
+.
+Selecione também entre as configurações
+Padrão
+e
+Scalper
+para o
+SuperDom
+:
+Ainda na aba
+Visibilidade
+, a opção
+Ajuste automático do tamanho das colunas
+faz com que a largura das colunas seja dimensionada automaticamente conforme o conteúdo exibido.
+Essa configuração pode ser utilizada quando as colunas do Livro de Ofertas estiverem com a largura comprimida, restaurando uma visualização adequada.
+Na aba
+Avançado
+, é possível habilitar a opção
+Desenhar Linhas de Canal:
+O canal filtra um intervalo de preço definido por você dentro das propriedades e compara se o preço atual está dentro do canal (dada a quantidade de pontos configurada) em relação aos 3 preços anteriores.
+No
+Livro de Ofertas,
+o canal será visualizado como na imagem abaixo:
+Já no Gráfico, o canal é plotado quando ocorre a sequência de 3 candles ou boxes com mesmo tamanho sem considerar a sombra/pavil.
+Na opção
+Outros
+, habilite a visualização de elementos adicionais como a
+Descrição
+para as informações do ativo no dia atual, as
+abas
+inferiores e superiores, o
+Medidor de Pressão
+, a
+conta
+que está sendo utilizada, e o
+Painel de Negociação
+.
+Estas opções também estão disponíveis na aba
+Visibilidade
+do menu auxiliar, aberto ao clicar na ferramenta com o botão direito do mouse:
+Além destas funcionalidades, é possível ativar nas propriedades a ferramenta
+Medidor de Leilão
+:
+Enquanto a funcionalidade está selecionada e o ativo estiver em
+leilão
+, as ofertas que compõem o
+preço teórico
+serão destacadas.
+As ofertas de
+lado compra
+são destacadas enquanto os preços
+estiverem acima ou iguais ao preço teórico
+de leilão.
+As ofertas de
+lado venda
+são destacadas enquanto os preços
+estiverem abaixo ou iguais ao preço teórico
+de leilão.
+Em casos que as ofertam não compõem o preço teórico, são destacados os preços mais próximos para baixo se for venda ou o preço mais próximo acima em caso de compra.
+Para saber mais sobre o Leilão de mercado, acesse
+este link.
+SuperDom
+Envie e cancele ordens no SuperDom com atalhos de teclado, utilizando somente o mouse, ou habilitando as
+Ferramentas de Negociação
+:
+Adicione filtros, destaques e estratégias personalizadas.
+Para mais informações sobre configurações e uso do SuperDom,
+clique aqui
+.
+Price Trader
+Também visualmente semelhante ao SuperDom, o Price Trader exibe as ofertas do
+topo do Livro
+.
+Essa aba contém botões adicionais de
+Agressão
+de Compra
+em amarelo, e
+Venda
+em verde, na parte central superior.
+Estas ordens são enviadas a mercado
+:
+No topo do Livro
+são encontrados o lance mais alto e os preços de venda mais baixos.
+Eles apontam o lado predominante e o preço necessário para que uma ordem seja executada.
+O Livro de Ofertas é comumente acompanhado por um gráfico, que fornece informações úteis sobre o estado atual e passado do mercado, e também por outras ferramentas, como o
+Times & Trades
+e o
+Volume at Price
+, complementando a leitura do fluxo.
+Saiba mais sobre a ferramenta, acessando o vídeo abaixo:
+Achou útil este conteúdo?
+Não esqueça de nos avaliar abaixo
+.
+Desejamos bons trades!
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 10 de 10
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar

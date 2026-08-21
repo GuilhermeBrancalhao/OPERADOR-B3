@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>bench canvas footprint</title>
+<style>
+ body{background:#0d1117;color:#e6edf3;font:13px Consolas,monospace;margin:12px}
+ #out{white-space:pre;font-size:14px;line-height:1.7}
+ canvas{border:1px solid #30363d;display:block;margin-top:10px}
+</style>
+<div id="out">rodando…</div>
+<canvas id="cv" width="1840" height="780"></canvas>
+<script>
+// MESMA carga dos benchmarks Python: 60 niveis x 40 barras = 2400 celulas,
+// cada uma com 1 retangulo preenchido + 2 numeros. 4800 fillText por quadro.
+const ROWS=60, COLS=40, CW=46, CH=13, QUADROS=300;
+const cv=document.getElementById('cv'), ctx=cv.getContext('2d',{alpha:false});
+const out=document.getElementById('out');
+
+const bid=[],ask=[],idx=[];
+let seed=7; function rnd(){seed=(seed*1103515245+12345)&0x7fffffff;return seed/0x7fffffff;}
+for(let r=0;r<ROWS;r++){bid.push([]);ask.push([]);idx.push([]);
+  for(let c=0;c<COLS;c++){bid[r].push(Math.floor(rnd()*999));ask[r].push(Math.floor(rnd()*999));idx[r].push(Math.floor(rnd()*32));}}
+const pal=[];for(let k=0;k<32;k++){const t=k/31;pal.push(`rgb(${20+200*t|0},${40+60*Math.abs(0.5-t)|0},${220-190*t|0})`);}
+const sb=bid.map(r=>r.map(String)), sa=ask.map(r=>r.map(String));
+
+function quadroCheio(off){
+  ctx.font='11px Consolas,monospace'; ctx.textBaseline='bottom';
+  for(let c=0;c<COLS;c++){const x=c*CW, cc=(c+off)%COLS;
+    for(let r=0;r<ROWS;r++){const y=r*CH;
+      ctx.fillStyle=pal[idx[r][cc]]; ctx.fillRect(x,y,CW-1,CH-1);
+      ctx.fillStyle='#e6edf3'; ctx.fillText(sb[r][cc],x+2,y+CH-2); ctx.fillText(sa[r][cc],x+24,y+CH-2);}}
+}
+// caminho incremental: rola o canvas e pinta so a coluna nova (60 celulas)
+function quadroIncremental(off){
+  ctx.drawImage(cv,-CW,0);
+  const x=cv.width-CW, cc=off%COLS;
+  ctx.font='11px Consolas,monospace'; ctx.textBaseline='bottom';
+  for(let r=0;r<ROWS;r++){const y=r*CH;
+    ctx.fillStyle=pal[idx[r][cc]]; ctx.fillRect(x,y,CW-1,CH-1);
+    ctx.fillStyle='#e6edf3'; ctx.fillText(sb[r][cc],x+2,y+CH-2); ctx.fillText(sa[r][cc],x+24,y+CH-2);}
+}
+function pct(a,p){const b=[...a].sort((x,y)=>x-y);return b[Math.min(b.length-1,Math.floor(b.length*p))];}
+function medir(fn,n){const ts=[];for(let i=0;i<20;i++)fn(i);
+  for(let i=0;i<n;i++){const t0=performance.now();fn(i);ctx.getImageData(0,0,1,1);ts.push(performance.now()-t0);}
+  return ts;}
+function fmt(nome,ts){return `${nome.padEnd(34)} n=${String(ts.length).padStart(5)}  p50=${pct(ts,.5).toFixed(3).padStart(7)}ms  p95=${pct(ts,.95).toFixed(3).padStart(7)}ms  p99=${pct(ts,.99).toFixed(3).padStart(7)}ms  fps(p50)=${(1000/pct(ts,.5)).toFixed(1).padStart(7)}  fps(p95)=${(1000/pct(ts,.95)).toFixed(1).padStart(6)}`;}
+
+setTimeout(()=>{
+  const linhas=[`# canvas2d ${navigator.userAgent.match(/Chrome\/[\d.]+/)?.[0]||''} / quadro ${ROWS}x${COLS} = ${ROWS*COLS} celulas`];
+  linhas.push(fmt('CANVAS quadro cheio (2400 cel)',medir(quadroCheio,QUADROS)));
+  linhas.push(fmt('CANVAS incremental (60 cel)',medir(quadroIncremental,QUADROS)));
+  // rAF real: quantos quadros cheios o navegador entrega de verdade em 3s
+  let n=0; const t0=performance.now();
+  (function loop(){quadroCheio(n++); if(performance.now()-t0<3000) requestAnimationFrame(loop);
+    else {linhas.push(`CANVAS rAF entregue (quadro cheio)   ${(n/((performance.now()-t0)/1000)).toFixed(1)} fps reais em 3s`);
+          out.textContent=linhas.join('\n'); document.title='PRONTO';}})();
+},50);
+</script>

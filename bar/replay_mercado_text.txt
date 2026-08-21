@@ -1,0 +1,146 @@
+Replay de Mercado – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Ferramentas e Funcionalidades
+Replay de Mercado
+Artigos nessa seção
+Replay de Mercado
+Cross Order no Replay
+Avançar Trade a Trade- Acompanhamento preciso de fluxo
+Testando estratégias no Replay de Mercado
+Artigos relacionados
+Replay de Múltiplos Ativos
+Como entrar em outra licença
+Como utilizar a Automação de Estratégias
+Gráfico: Pontos, Inversão e Figura
+Estratégia de Coloração
+Replay de Mercado
+O Replay de Mercado é um recurso que permite selecionar um dia anterior específico de negociação para a realização de estudos.
+Utiliza como base o preço negociado no momento da ordem, sem considerar as condições de fila e liquidez presentes nas condições em tempo real.
+O Replay é uma
+carga
+dos dados de
+todos os negócios e trades
+realizados no dia requisitado. Com o aumento dos volumes de negociação e das cargas de dados, é importante ressaltar que em alguma data específica pode ocorrer alguma instabilidade, visto que são dados que exigem muito dos servidores e internet do usuário. Principalmente nos ativos WIN e WDO que possuem mais negociações no dia.
+Para operar de forma simulada na funcionalidade
+Replay
+, é necessário que você tenha disponível o
+Módulo de Simulação
+. Caso a sua versão tenha o Replay nativo, mas não possua o módulo de simulação, é possível adquiri-lo clicando e obter mais informações nesse
+link
+. No entanto,
+não
+é possível realizar a
+contratação avulsa
+, caso a sua licença não contemple a ferramenta.
+Para acessar o
+Replay
+, acesse o menu
+Ferramentas
+:
+Por padrão, o Replay é aberto de modo centralizado na tela, permitindo que o usuário mova-o livremente pela plataforma. Em
+Modos de Exibição
+, escolha também o modo
+Compacto
+ou o modo
+Barra Inferior
+.
+Clique sobre o ticker do ativo para buscar por um ativo único, podendo ser das bolsas BM&F e Bovespa, e sobre o ícone de calendário para selecionar a data anterior desejada:
+Para visualização dos negócios de um
+contrato já vencido
+, utilize as
+Séries Históricas
+. Essas são compostas pela união dos contratos de um ativo, seguindo a ordem cronológica dos mesmos:
+Mini Índice: WINFUT;
+Índice: INDFUT;
+Mini Dólar: WDOFUT;
+Dólar: DOLFUT.
+Após, clique para
+Requisitar
+.
+Utilize o botão
+para iniciar, ou mesmo retomar o Replay.
+Quando requisitado, o Replay abre uma
+nova aba
+na barra de ativos, além de exibir uma tarja
+amarela
+na parte superior da janela:
+Ao encerrar o replay, todas as informações relacionadas a esse ativo são removidas. Dessa forma, os dados do ativo de replay ficam disponíveis apenas enquanto a reprodução estiver em execução.
+Quanto à reprodução, em plataformas White Label (XP Trader, Rico Trader, Clear Trader, etc.) a
+velocidade mínima
+é de
+0,1x
+e a
+velocidade máxima
+é de
+5x
+. Por outro lado, as plataformas Profit Training, Profit One, Profit Plus, Profit Pro, Profit Ultra e Scalper Pro possuem a velocidade máxima de
+10x
+.
+Utilize o botão
+para pausar e
+para avançar o Replay trade a trade.
+Clique na opção
+para avançar o Replay para um horário específico
+futuro
+.
+Para usuários do Profit Ultra, é possível
+voltar atrás no Replay
+simplesmente arrastando a barra do tempo. Reveja o movimento quantas vezes precisar, ajuste o ponto exato que quer analisar e estude o comportamento do mercado sem precisar reiniciar a sessão.
+Com o Cross Order ativo
+não é possível avançar a rolagem das negociações, somente acelerar:
+Atenção: Para ativos de série histórica vencidos há mais de 100 dias, o Replay estará disponível, mas o histórico só poderá ser consultado com requisição nos ativos
+FUT
+.
+Saiba mais sobre a funcionalidade, acessando o vídeo abaixo:
+Veja, também, os artigos sobre
+Cross Order no Replay
+e
+Replay de Múltiplos Ativos
+.
+Achou útil este conteúdo?
+Não esqueça de nos avaliar abaixo.
+Desejamos bons trades!
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 22 de 25
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar

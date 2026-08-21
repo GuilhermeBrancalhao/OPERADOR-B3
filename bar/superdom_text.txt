@@ -1,0 +1,251 @@
+SuperDOM – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Ferramentas e Funcionalidades
+Ferramentas de Fluxo
+Artigos nessa seção
+PriceTrader
+Times & Trades
+Volume At Market
+Mapa de Fluxo
+Identificando os grande Players
+Medidores de Pressão
+Livro de ofertas
+SuperDOM
+Volume At Price
+Artigos relacionados
+Indicadores no SuperDOM
+Como entrar em outra licença
+Profit para MacOS
+O que você precisa saber sobre Custódia e BackOffice
+Plugin Tape Reading - Gráfico Tape Reading (Footprint)
+SuperDOM
+O SuperDOM é uma ferramenta de negociação, presente no
+Livro de Ofertas
+, onde é possível encaminhar ordens padronizadas de forma automática, através da tecnologia
+AutoOp
+.
+Acesse o
+SuperDom
+, clicando no menu
+Ferramentas:
+Para habilitar o
+Painel de Negociação
+do SuperDom, clique com o botão direito do mouse sobre a ferramenta. Em
+Visibilidade
+,
+selecione as opções desejadas:
+Em
+Propriedades do Livro
+,
+na aba
+Execução
+,
+selecione o
+Modo de funcionamento
+,
+para determinar como as ordens serão enviadas, através dos comandos
+Padrão
+ou
+One Click Trading:
+Padrão
+: Utiliza-se o teclado na execução de operações.
+Para
+encaminhar ordens
+, basta dar um duplo clique com o mouse sobre qualquer célula da colunas de ordens e digitar a quantidade desejada. Se a célula selecionada estiver na coluna
+Qtd. compra
+, será lançada uma ordem de compra. Se estiver na coluna
+Qtd. venda
+, será lançada uma ordem de venda.
+Para alterar o preço
+da ordem, basta arrastá-la para o preço desejado.
+Para aumentar
+o tamanho da ordem, segure a tecla
+Ctrl
+e clique com o botão
+esquerdo
+do mouse sobre ela.
+Para reduzir
+o tamanho da ordem, segure a tecla
+Shift
+e clique com o botão
+esquerdo
+do mouse sobre ela.
+Abra o menu de
+Configurações
+com o botão
+direito
+do mouse.
+One Click Trading
+: É selecionado para operar utilizando apenas o mouse.
+Para encaminhar ordens
+, clique com o botão
+esquerdo
+do mouse sobre o preço.
+Reduza
+o lote com o botão
+direito
+.
+Abra o menu de
+Configurações
+com o botão central (scroll) do mouse.
+Ainda na Aba de
+Execução
+, é possível ajustar o
+Stop Automático
+.
+Se apregoamos uma
+Ordem Limite
+ou
+Stop
+no superdom, para que a mesma seja executada em determinado nível de preço e não imediatamente executada à mercado, é necessário configurar o
+Stop Automático
+.
+Caso esta esta opção esteja desmarcada, as ordens serão enviadas a mercado caso estejam acima do melhor preço no caso das compras, ou abaixo no caso das vendas.
+Já na aba
+Visibilidade
+, escolha manter a
+configuração padrão
+ou
+scalper
+, alterando a disposição da coluna de níveis de preço:
+Configuração Padrão:
+Configuração Scalper:
+Volume At Price no SuperDom
+Adicione o Volume At Price, para visualizar o volume de negócios sobre os preços diretamente no SuperDom. Acesse o menu inicial de
+Configurações
+, e na opção
+Volume At Price
+, selecione as opções de
+Colunas
+,
+Tipo de Volume
+e
+Período.
+Em
+Colunas
+,
+a opção
+Volume At Price
+exibirá barras verdes no lado esquerdo do SuperDom. As
+Colunas de Agressões
+exibirão barras azuis para compra, e vermelhas para venda.
+Em
+Tipo de Volume
+selecione entre Volume Financeiro, Volume Quantidade ou Número de Negócios.
+Em
+Período
+, define-se a periodicidade dos dados exibidos para o ativo no Volume At Price.
+Observação:
+O Volume at Price no SuperDom é uma configuração exclusiva no Profit Pro e Profit Ultra.
+Envio de Ordens Limitadas
+Para enviar uma
+ordem limitada
+, ou pendurar uma ordem no Livro de Ofertas, encaminhe ordens de
+compra abaixo do preço atual,
+e
+ordens de venda, acima
+do preço sendo negociado:
+Envio de Ordens a Mercado
+A ordem a mercado, ou ordem de
+agressão,
+é realizada no último ou no melhor preço com ofertas disponíveis. Utilize as teclas, o mouse ou os botões
+C Mercado
+e
+V Mercado
+, para enviar.
+Envio de Ordens Stop
+A
+ordem stop
+pode ser encaminhada como
+ordem de entrada
+ou
+como ordem de perda
+. Permanece armazenada na plataforma, para ser enviada apenas se o mercado atingir aquele preço. São posicionadas
+acima do preço atual para a compra, e abaixo, para a venda
+.
+Centralização de Preços
+Centralize instantaneamente os preços exibidos no SuperDom com a função
+Centralizar Agora
+, pressionando a tecla
+Insert
+do teclado.
+Ou, selecione a opção desejada em
+Auto Centralizar
+:
+Se o ativo estiver em
+leilão
+, o preço exibido será o fechamento anterior.
+Ordens OCO (AutoOp)
+Automatize a saída de suas operações no Profit, encaminhando ordens com
+Estratégia OCO
+.
+Selecione a estratégia previamente configurada no
+Editor de Estratégias de Negociação
+, antes de enviar uma ordem:
+Barras indicativas de pontos de interesse do mercado
+As barras coloridas ao lado de alguns níveis de preço, indicam pontos de interesse do mercado.
+Esses pontos são o
+Ajuste
+,
+o
+Preço de Abertura
+e o indicador
+VWAP
+.
+A visualização destes pontos, diretamente no SuperDom, facilita a decisão de entrada ou saída de uma operação. Esta configuração é padrão e não pode ser desabilitada:
+Você também encontra essas e outras opções de configuração na
+aba SuperDom
+da janela
+Propriedades do Livro
+:
+Configure apenas o SuperDom selecionado, ou aplique as seleções a todos os demais, antes de clicar
+OK
+para salvar.
+Achou útil este conteúdo?
+Não esqueça de nos avaliar abaixo
+.
+Desejamos bons trades!
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 10 de 12
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar

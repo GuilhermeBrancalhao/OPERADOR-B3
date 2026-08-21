@@ -1,0 +1,204 @@
+Gráfico: Funcionalidades e Ferramentas – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Ferramentas e Funcionalidades
+Ferramentas Gráficas
+Artigos nessa seção
+Abas Inferiores: Layouts
+Barra de Títulos
+Como inserir ou excluir um indicador do gráfico
+Configuração de estudos atrás dos indicadores
+Configuração de zoom no Profit
+Cores dos Candles
+Escalas de Preço Aritmética e Logarítmica
+Estudos e indicadores no Scalper Pro
+Exibir Trades - Ilustre no gráfico os trades realizados
+Ferramentas: Relógio do Candle
+Exibir mais
+Artigos relacionados
+Marca d'água: Destaque o ativo selecionado no gráfico
+Configuração de zoom no Profit
+Limite dos tempos gráficos
+Barra de Títulos
+Como usar indicadores distintos em cada gráfico
+Gráfico: Funcionalidades e Ferramentas
+Gráficos e indicadores são as principais ferramentas utilizadas na análise técnica, que busca antecipar a direção futura do mercado, através da observação de padrões repetitivos no movimento dos preços.
+Os gráficos disponíveis no Profit oferecem funcionalidades intuitivas e customizáveis, e ferramentas avançadas, para uma análise ágil e precisa.
+Para adicionar um
+novo gráfico
+ao seu desktop, acesse o menu
+Ferramentas
+:
+Os planos
+Profit Ultra, Profit Pro, Profit Plus e Profit Training
+permitem a abertura ilimitada de gráficos. No
+Profit One
+e em licenças
+Whitelabel
+somente é permitida a abertura de,
+no máximo, quatro
+janelas gráficas.
+Como configurar
+Abra novas abas na janela gráfica, clicando no
+sinal de mais (+)
+ou, diretamente na aba do ativo com o botão direito do mouse, para
+trocar
+,
+adicionar
+ou
+remover o ativo
+:
+Em todos os planos é possível inserir
+múltiplos
+ativos na aba de ativos.
+Personalize a aparência e os parâmetros de componentes gráficos, adicione regras de coloração, estratégias de execução e indicadores exclusivos, utilizando os menus superiores da janela gráfica, e clicando sobre objetos com os botões do mouse.
+Para exibir ou ocultar as
+ferramentas de acesso rápido
+, clique sobre o ícone de
+relógio
+, na aba superior esquerda da janela:
+Por meio das ferramentas de acesso rápido, é possível: Abrir a barra de estudos à esquerda da janela, alterar a periodicidade e o tipo gráfico, inserir indicadores,
+configurar o zoom
+, exibir ou ocultar ordens e posições, acessar as propriedades e abrir ou fechar o
+Chart Trading
+:
+No menu de
+Periodicidades
+, selecione o tempo gráfico desejado na lista, ou clique em
+Mais Períodos...
+para abrir o menu adicional:
+Confira o limite de tempos gráficos, clicando
+neste artigo
+.
+Acesse, também, o vídeo abaixo:
+Troque, remova ou adicione
+períodos, ativos e indicadores
+, clicando na
+aba superior
+do gráfico, sobre o ticker, ou digitando para buscar:
+Os indicadores estão divididos em
+categorias
+na janela de inserção:
+Oscilação, Tape Reading, Volume, Tendência, Volatilidade
+e
+Extras
+.
+Busque ou selecione na lista, para
+plotar sobre o Gráfico
+, ou abrir uma
+Nova janela:
+Alguns indicadores não possuem a função de plotagem gráfica, e são abertos exclusivamente em janelas individuais.
+Ainda é possível adicionar
+indicadores
+,
+regras de coloração
+e
+estratégias de execução
+, diretamente no gráfico.
+Para isso, clique no fundo gráfico, com o botão direito do mouse, para abrir a janela auxiliar de opções:
+O tipo gráfico
+Automático
+, que acompanha as configurações iniciais da plataforma, é o padrão
+Candlestick
+.
+No menu de
+Tipos Gráficos
+, selecione entre
+Candlestick
+,
+Cluster
+,
+Barra
+,
+Montanha
+,
+Linha
+,
+Elliot
+e
+Heikin
+Ashi
+:
+Ainda na parte superior da janela, você encontra o PlayNow, que contém vídeos informativos sobre as ferramentas, e os botões de
+compartilhamento
+, configuração da janela,
+agrupamento por tempo e ativo
+, minimizar, maximizar e fechar.
+Logo abaixo, há a
+barra de títulos
+:
+À direita do gráfico, você conta com a
+Escala de Preço
+, onde é realizado o acompanhamento da movimentação de preço do mercado.
+Já a escala horizontal, na parte inferior do gráfico, se refere a
+Escala de Tempo
+:
+Na periodicidade diária, por exemplo, a escala exibe os meses do ano e as datas.
+À direita da escala de tempo, acompanhe o
+Relógio do Candle
+, que informará ao trader quanto tempo resta para o fechamento do candle atual e abertura de um novo, de acordo com a periodicidade selecionada:
+E, por fim, ainda na parte superior da plataforma, você encontra os
+Layouts
+:
+Saiba como alterar o tema e as cores do Profit, clicando
+aqui
+.
+Aparência do Gráfico
+Ao acessar o menu
+Ferramentas, Configurações, Aparência, Gráfico
+, é possível aplicar alguns ajustes visuais:
+Ao clicar com o direito do mouse ao fundo de um gráfico especifico, também é possível aplicar algumas configurações, como a cor de fundo, por exemplo:
+Observação:
+Caso uma janela gráfica possua uma configuração especifica ao realizar uma configuração geral e selecionar o "Aplicar a todos", não será aplicada a esta que possui a configuração especifica, para aplicar, a configuração individual deve ser ajustada para a opção "Automático".
+Acesse, também, as seções abaixo:
+Ferramentas Gráficas
+Padrões Gráficos
+Indicadores
+Estudos
+Achou útil este conteúdo?
+Não esqueça de nos avaliar abaixo
+.
+Desejamos bons trades!
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 4 de 5
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar

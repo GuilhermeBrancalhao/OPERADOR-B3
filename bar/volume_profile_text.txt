@@ -1,0 +1,137 @@
+Volume Profile – Nelogica Sistemas de Software
+Atendimento Nelogica
+_
+Olá Investidor!
+Seja bem-vindo(a) ao canal de atendimento em tempo real da Nelogica!
+Nossa equipe de Suporte Técnico atua 24 horas por dia! Conte com a gente para te auxiliar!
+Digitando...
+Chat
+-->
+Pular para o conteúdo principal
+Voltar ao Site
+Minhas atividades
+Comunidade
+Enviar uma solicitação
+Entrar
+Pesquisa
+Bem-vindo à Central de Ajuda
+Nelogica Sistemas de Software
+Ferramentas e Funcionalidades
+Ferramentas Gráficas
+Indicadores
+Artigos nessa seção
+Acumulação/Distribuição
+Acumulação/Distribuição Williams
+Aroon
+Balança de Poder
+Bandas de Bollinger
+Bollinger Band Width
+Canal de Donchian
+Canal Regressão Linear
+Candle Code
+CCI
+Exibir mais
+Artigos relacionados
+Volume Financeiro
+Como entrar em outra licença
+Plugin Tape Reading - Gráfico Tape Reading (Footprint)
+Acumulação/Distribuição
+Exportação e importação de arquivos de configuração
+Volume Profile
+Com o Volume Profile é possível visualizar no gráfico da plataforma em quais regiões houve maior
+volume de negociações
+.
+Para inserir o indicador
+Volume Profile
+, acesse o menu
+Exibir
+:
+Busque pelo nome do indicador e o adicione no gráfico, clicando na opção correspondente:
+Personalizando o Volume Profile
+É possível realizar
+customizações
+, clicando com o botão direito sobre o indicador e acessando as
+Propriedades.
+As alterações compreendem
+cores, transparência, periodicidade
+e
+outras opções
+listadas abaixo:
+Exibir Trades Diretos:
+são trades causados pelos brokers das grandes corretoras, sem ter ocorrido uma oferta no book e nem agressão;
+Exibir Trades de Leilão:
+Se marcado, será contabilizados os Trades realizados durante o leilão;
+Barras por Agressão:
+Representa em cores diferentes os volumes vindos de compra e venda;
+Exibir Volume Acumulado:
+Nesta opção o volume acumulado será apresentado na parte esquerda do gráfico e irá se ajustar conforme a visualização das barras;
+Destacar Maior Barra de Volume:
+Irá ficar em destaque o volume que teve maiores negociações; e
+Escrever Volume ao Destacar:
+É possível ver o valor numérico de cada barra, ao passar o mouse por cima.
+A opção
+Destacar Maior Barra de Volume
+também é conhecida como
+POC
+(Point of Control).
+Ela virá com a coloração da barra em vermelho:
+É importante destacar que o indicador possui um
+limite de periodicidade
+em sua plotagem, diferente para
+cada tipo de ativo
+:
+WIN
+- 8 dias
+WDO -
+30 dias
+DOL e IND
+- 180 dias
+Ativos Bovespa
+- 360 dias
+Caso seja configurado um número de dias maior do que o limite, ao clicar em Ok será ajustado para o máximo valor possível daquele ativo.
+O Volume Profile trata-se de um indicador pesado, que caso configurado para a máxima plotagem, poderá levar um tempo elevado para ser carregado.
+Volume Profile Personalizado
+Ao utilizarmos o indicador de forma personalizada será exibido um Volume Profile em bloco único considerando todos os dias do intervalo selecionado. Para selecionar o intervalo desejado, basta clicar com o botão direito do mouse e arrastar pela área do gráfico desejada, após selecionar a área é necessário selecionar o indicador:
+Exemplo:
+Selecionamos um período de 15 dias no gráfico de VALE3 (Tempo gráfico 1D)
+Ao todo temos 11 candles, porém 15 dias corridos e um único VP.
+Abaixo um GIF demonstrando a seleção da área do gráfico e a inserção do indicador:
+Volume Profile Automático
+Já ao utilizarmos o indicador na configuração Automática serão apenas os dias de negociação. Para selecionar o Volume Profile Automático é necessário clicar com o botão direito sobre o indicador, acessar as Propriedades do Volume Profile e selecionar o período Automático:
+Em gráficos diários a plotagem poderá ocorrer em blocos de candles e não necessariamente um a um.
+Exemplo:
+15 Dias VALE3 Automático (Tempo gráfico 1D)
+Ao todo temos 15 candles diários, com o Volume Profile exibido em blocos.
+Saiba mais sobre o indicador, acessando o vídeo abaixo:
+Achou
+útil este conteúdo?
+Não esqueça de nos avaliar abaixo.
+Desejamos bons trades!
+Esse artigo foi útil?
+Sim
+Não
+Usuários que acharam isso útil: 2 de 5
+Voltar ao topo
+Nelogica
+Sobre nós
+Carreiras
+Contato
+Integridade e Ética
+Produtos
+Profit
+Profit Store
+Data Feed
+Ajuda
+Conhecimento
+Blog
+Siga-nos
+Português do Brasil
+English (United States)
+©
+-->
+Usamos cookies para que sua experiência seja a melhor possível. Ao continuar navegando, você está ciente e de acordo com as nossas
+Políticas de Cookies
+e
+Políticas de Privacidade
+.
+Aceitar
