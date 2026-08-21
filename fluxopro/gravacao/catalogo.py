@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from pathlib import Path
 
 from fluxopro.gravacao import formato
+
+_logger = logging.getLogger("fluxopro.gravacao.catalogo")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,14 +106,35 @@ class Catalogo:
         """Recalcula o hash sha256 de cada arquivo gravado (linhas
         tab-separadas, mesmo formato usado pelo `Gravador` ao escrever) e
         compara com o que está no `meta.json`. Detecta arquivo truncado,
-        editado à mão ou corrompido em transporte."""
+        editado à mão ou corrompido em transporte.
+
+        Contrato: este método NUNCA deixa uma exceção de leitura escapar —
+        gzip truncado, EOF inesperado, byte inválido etc. contam como
+        integridade invalida (`False`), não como crash. Isso importa porque
+        é a única defesa contra gravação corrompida (não existe fonte
+        externa de histórico de book para WDO/WIN, ver docstring de
+        `gravador.py`); se o contrato fosse "levanta uma exceção às vezes,
+        um dict às vezes", um chamador que só testasse o caminho feliz
+        deixaria passar despercebido um arquivo corrompido cujo erro de
+        leitura não é o esperado.
+        """
         resultado: dict[str, bool] = {}
         for nome_base, hash_esperado in entrada.hashes_sha256.items():
             caminho = entrada.arquivo(nome_base)
             if caminho is None:
                 resultado[nome_base] = False
                 continue
-            resultado[nome_base] = _hash_arquivo(caminho) == hash_esperado
+            try:
+                hash_real = _hash_arquivo(caminho)
+            except (OSError, EOFError, UnicodeDecodeError, ValueError):
+                _logger.warning(
+                    "falha ao ler %s para verificacao de integridade "
+                    "(arquivo truncado/corrompido?) — marcando invalido",
+                    caminho,
+                )
+                resultado[nome_base] = False
+                continue
+            resultado[nome_base] = hash_real == hash_esperado
         return resultado
 
 

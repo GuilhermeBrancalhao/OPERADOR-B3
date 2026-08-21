@@ -108,6 +108,12 @@ class ConfigInferenciaMBP:
     `profundidade_topo_ticks` — a que distância do melhor preço um nível ainda
     é "negociável". Fora disso, uma queda sem negócio é cancelamento quase
     certo, e a confiança sobe.
+
+    `confianca_execucao_lado_nao_confirmado` — TETO (não valor fixo) para a
+    execução inferida a partir de negócio com agressor `UNKNOWN`. Ver
+    `_executar`: sem o lado do agressor, metade da reconciliação não
+    aconteceu, então a execução não pode valer o mesmo que uma com o lado
+    confirmado.
     """
 
     janela_reconciliacao_ns: int = 300 * UM_MILISSEGUNDO_NS
@@ -115,6 +121,7 @@ class ConfigInferenciaMBP:
 
     confianca_execucao_com_trade_exato: float = 0.90
     confianca_execucao_parcial: float = 0.70
+    confianca_execucao_lado_nao_confirmado: float = 0.60
     confianca_cancelamento_no_topo: float = 0.55
     confianca_cancelamento_fora_topo: float = 0.90
     confianca_insercao: float = 0.85
@@ -144,6 +151,13 @@ class _QuedaPendente:
     qty_original: int
     distancia_do_topo: int
 
+    # Quanto desta queda já foi atribuído a execução. Não é contabilidade
+    # redundante com `qty_restante`: ele distingue "sobra de uma queda que
+    # NEGOCIOU" de "queda que nunca viu negócio", e essas duas coisas não
+    # podem sair com a mesma confiança de cancelamento — ver
+    # `_resolver_como_cancelamento`.
+    qty_executada: int = 0
+
 
 class InferidorMBP:
     """Traduz book agregado + fluxo de negócios em eventos de ordem.
@@ -152,8 +166,35 @@ class InferidorMBP:
     consumam exatamente o mesmo `OrdemEvento` nos dois mundos — a diferença
     aparece em `fonte=MBP_INFERIDO` e `confianca<1.0`, nunca na forma do dado.
 
-    Custos: `ao_trade` e `ao_delta` são O(1) amortizado. `ao_snapshot` é O(k)
-    no número de níveis do snapshot, que é o custo mínimo de olhar o snapshot.
+    Custos — o que a reconciliação obriga, medido, não estimado:
+
+    * `ao_trade` e `ao_delta` são O(p) no número de itens vivos DO MESMO PREÇO
+      (quedas pendentes para um negócio, negócios em buffer para uma queda),
+      mais O(1) amortizado de manutenção das filas. Só o mesmo preço pode
+      casar, então este é o custo mínimo da regra; `p` é tipicamente 1 e é
+      limitado pelo que couber em `janela_reconciliacao_ns`.
+    * `ao_snapshot` é O(k) no número de níveis do snapshot, que é o custo
+      mínimo de olhar o snapshot.
+
+    O índice por preço (`_pendentes_por_preco`, `_trades_por_preco`) existe
+    exatamente para isso. Sem ele, cada negócio varria TODAS as quedas
+    pendentes e cada queda varria TODOS os negócios em buffer — custo
+    proporcional à janela inteira, não ao preço, e portanto crescente com a
+    LARGURA do book. Medido com negócios que não casam com nada, variando só
+    o número de níveis pendurados:
+
+        niveis pendurados |  varrendo a janela  |  com indice por preco
+                       50 |      ~130.000 neg/s |          ~330.000 neg/s
+                      200 |       ~41.000 neg/s |          ~330.000 neg/s
+                      800 |        ~7.300 neg/s |          ~330.000 neg/s
+
+    (ordens de grandeza de uma máquina só, não benchmark de referência — o que
+    importa aqui é a FORMA da curva, não o valor absoluto.)
+
+    A coluna da esquerda desaba porque o custo era do TAMANHO DA JANELA; a da
+    direita é plana porque passou a ser do preço. Num pipeline realista (book
+    de 20 níveis, tape casando, janela default de 300 ms) medem-se ~120.000
+    eventos/s, contra uma barra de 10.000.
     """
 
     def __init__(
@@ -167,8 +208,17 @@ class InferidorMBP:
         self.config = config if config is not None else ConfigInferenciaMBP()
 
         self._qty_por_nivel: dict[tuple[Side, int], int] = {}
+
+        # Duas visões das MESMAS estruturas, e as duas são necessárias:
+        # a deque global dá a ordem de EXPIRAÇÃO (FIFO por timestamp), o
+        # índice por preço dá a busca de CASAMENTO sem varrer a janela.
+        # Só o mesmo preço pode casar — o índice é por preço e não por
+        # (lado, preço) porque um agressor `UNKNOWN` casa com os dois lados.
         self._trades: deque[_TradeBuffer] = deque()
         self._pendentes: deque[_QuedaPendente] = deque()
+        self._trades_por_preco: dict[int, deque[_TradeBuffer]] = {}
+        self._pendentes_por_preco: dict[int, deque[_QuedaPendente]] = {}
+
         self._relogio_ns = 0
         self._seq = 0
 
@@ -195,6 +245,7 @@ class InferidorMBP:
         self._conciliar_pendentes_com(buffer)
         if buffer.qty_restante > 0:
             self._trades.append(buffer)
+            self._trades_por_preco.setdefault(buffer.price, deque()).append(buffer)
 
     def ao_snapshot(self, snapshot: BookSnapshot) -> None:
         """Book completo (caso do `market_book_get` do MT5): difere contra o estado."""
@@ -246,11 +297,32 @@ class InferidorMBP:
         limite = self._relogio_ns - self.config.janela_reconciliacao_ns
 
         while self._trades and self._trades[0].timestamp_ns < limite:
-            self._trades.popleft()
+            expirado = self._trades.popleft()
+            # Zerar antes de podar o índice: é assim que a poda preguiçosa do
+            # bucket sabe que este negócio morreu sem ter sido conciliado.
+            expirado.qty_restante = 0
+            self._podar_bucket(self._trades_por_preco, expirado.price)
 
         while self._pendentes and self._pendentes[0].timestamp_ns < limite:
             pendente = self._pendentes.popleft()
-            self._resolver_como_cancelamento(pendente)
+            self._resolver_como_cancelamento(pendente)  # zera `qty_restante`
+            self._podar_bucket(self._pendentes_por_preco, pendente.price)
+
+    @staticmethod
+    def _podar_bucket(indice: dict[int, deque], price: int) -> None:
+        """Descarta do início do bucket o que já não pode casar com nada.
+
+        Poda preguiçosa e amortizada: cada item entra e sai uma vez só. O
+        bucket vazio some do índice para que um pregão inteiro de preços
+        distintos não vire vazamento de memória.
+        """
+        bucket = indice.get(price)
+        if bucket is None:
+            return
+        while bucket and bucket[0].qty_restante <= 0:
+            bucket.popleft()
+        if not bucket:
+            del indice[price]
 
     # ------------------------------------------------------------------
     # observação de nível
@@ -291,6 +363,7 @@ class InferidorMBP:
         self._conciliar_pendente_com_buffer(pendente)
         if pendente.qty_restante > 0:
             self._pendentes.append(pendente)
+            self._pendentes_por_preco.setdefault(price, deque()).append(pendente)
 
     def _inserir_sintetica(
         self, timestamp_ns: int, side: Side, price: int, qty: int, qty_anterior: int
@@ -326,33 +399,50 @@ class InferidorMBP:
             return Side.BUY
         return None
 
-    def _casa(self, pendente: _QuedaPendente, buffer: _TradeBuffer) -> bool:
-        if buffer.price != pendente.price:
-            return False
+    def _lado_casa(self, pendente: _QuedaPendente, buffer: _TradeBuffer) -> bool:
+        """Decide só a perna do LADO da reconciliação. A do preço é estrutural.
+
+        A igualdade de preço não é conferida aqui porque não pode falhar: os
+        dois únicos chamadores percorrem o bucket de `_trades_por_preco` /
+        `_pendentes_por_preco` indexado exatamente pelo preço que se está
+        casando. Conferir de novo seria um ramo inalcançável — e ramo
+        inalcançável é pior que ramo ausente, porque parece proteção. Quem
+        garante o preço é o índice, e é o índice que os testes exercitam
+        (`test_negocio_em_outro_preco_nao_explica_a_queda`).
+        """
         lado = self._lado_passivo(buffer.agressor)
         # Agressor desconhecido casa com qualquer lado — o preço já é evidência
-        # forte, e o volume só pode ser consumido uma vez.
+        # forte, e o volume só pode ser consumido uma vez. O preço de pagar por
+        # essa folga é confiança menor, cobrada em `_executar`.
         return lado is None or lado is pendente.side
 
     def _conciliar_pendente_com_buffer(self, pendente: _QuedaPendente) -> None:
-        """Queda chegou DEPOIS do negócio: paga com o que já está no buffer."""
-        for buffer in self._trades:
+        """Queda chegou DEPOIS do negócio: paga com o que já está no buffer.
+
+        Percorre só os negócios DO MESMO PREÇO, na ordem de chegada — que é a
+        mesma ordem relativa da fila global, porque o bucket é alimentado por
+        ela. Negócio de outro preço nunca poderia casar, então visitá-lo era
+        trabalho puro.
+        """
+        for buffer in self._trades_por_preco.get(pendente.price, ()):
             if pendente.qty_restante <= 0:
                 break
-            if buffer.qty_restante <= 0 or not self._casa(pendente, buffer):
+            if buffer.qty_restante <= 0 or not self._lado_casa(pendente, buffer):
                 continue
             self._executar(pendente, buffer)
+        self._podar_bucket(self._trades_por_preco, pendente.price)
         while self._trades and self._trades[0].qty_restante <= 0:
             self._trades.popleft()
 
     def _conciliar_pendentes_com(self, buffer: _TradeBuffer) -> None:
         """Negócio chegou DEPOIS da queda: paga as quedas pendentes."""
-        for pendente in self._pendentes:
+        for pendente in self._pendentes_por_preco.get(buffer.price, ()):
             if buffer.qty_restante <= 0:
                 break
-            if pendente.qty_restante <= 0 or not self._casa(pendente, buffer):
+            if pendente.qty_restante <= 0 or not self._lado_casa(pendente, buffer):
                 continue
             self._executar(pendente, buffer)
+        self._podar_bucket(self._pendentes_por_preco, buffer.price)
         while self._pendentes and self._pendentes[0].qty_restante <= 0:
             self._pendentes.popleft()
 
@@ -364,6 +454,19 @@ class InferidorMBP:
             if exato
             else self.config.confianca_execucao_parcial
         )
+
+        # A reconciliação tem DUAS pernas: mesmo preço e mesmo lado passivo.
+        # Com agressor `UNKNOWN` (leilão de abertura/fechamento, e o RLP que
+        # anonimiza parte do volume de WDO/WIN na B3) a segunda perna não
+        # aconteceu — `_lado_casa` deixa passar assim mesmo, o que é a decisão certa,
+        # mas o resultado é uma hipótese mais fraca e não pode sair valendo o
+        # mesmo que uma execução com o lado confirmado. Teto, não valor fixo:
+        # assim a confiança do lado não confirmado nunca supera a do
+        # confirmado, qualquer que seja a configuração.
+        lado_confirmado = self._lado_passivo(buffer.agressor) is not None
+        if not lado_confirmado:
+            confianca = min(confianca, self.config.confianca_execucao_lado_nao_confirmado)
+
         atraso = abs(buffer.timestamp_ns - pendente.timestamp_ns)
         self.livro.executar(
             side=pendente.side,
@@ -379,6 +482,7 @@ class InferidorMBP:
                 "trade_id": buffer.trade_id,
                 "trade_qty_usada": qty,
                 "agressor": buffer.agressor.value,
+                "lado_passivo_confirmado": lado_confirmado,
                 "atraso_ns": atraso,
                 "janela_ns": self.config.janela_reconciliacao_ns,
                 "inferido": "execucao",
@@ -386,14 +490,24 @@ class InferidorMBP:
             },
         )
         pendente.qty_restante -= qty
+        pendente.qty_executada += qty
         buffer.qty_restante -= qty
 
     def _resolver_como_cancelamento(self, pendente: _QuedaPendente) -> None:
-        """Janela expirou sem negócio que explicasse a queda."""
+        """Janela expirou sem negócio que explicasse (todo) o saldo da queda."""
         no_topo = pendente.distancia_do_topo <= self.config.profundidade_topo_ticks
+
+        # A confiança ALTA do ramo "fora do topo" repousa numa premissa
+        # verificável: naquele preço não havia como negociar. Quando parte
+        # desta mesma queda casou com um negócio impresso NO PRÓPRIO PREÇO, a
+        # premissa está falsificada pela evidência do próprio módulo — o nível
+        # negociou. Emitir "fora do topo nao havia como negociar" com 0.90
+        # nesse caso seria publicar uma justificativa que os dados desmentem.
+        negociou = pendente.qty_executada > 0
+        negociavel = no_topo or negociou
         confianca = (
             self.config.confianca_cancelamento_no_topo
-            if no_topo
+            if negociavel
             else self.config.confianca_cancelamento_fora_topo
         )
         restante = pendente.qty_restante
@@ -408,7 +522,7 @@ class InferidorMBP:
                     timestamp_ns=pendente.timestamp_ns,
                     fonte=FonteMicro.MBP_INFERIDO,
                     confianca=confianca,
-                    evidencia=self._evidencia_cancelamento(pendente, no_topo, ordem.qty_restante),
+                    evidencia=self._evidencia_cancelamento(pendente, negociavel, ordem.qty_restante),
                 )
             else:
                 # A queda é menor que a ordem sintética do fim da fila: é um
@@ -421,25 +535,31 @@ class InferidorMBP:
                     fonte=FonteMicro.MBP_INFERIDO,
                     confianca=confianca,
                     tipo_evento=TipoEventoOrdem.CANCEL,
-                    evidencia=self._evidencia_cancelamento(pendente, no_topo, restante),
+                    evidencia=self._evidencia_cancelamento(pendente, negociavel, restante),
                 )
                 restante = 0
         pendente.qty_restante = 0
 
     def _evidencia_cancelamento(
-        self, pendente: _QuedaPendente, no_topo: bool, qty: int
+        self, pendente: _QuedaPendente, negociavel: bool, qty: int
     ) -> dict[str, object]:
+        negociou = pendente.qty_executada > 0
         return {
             "observado": "queda_de_qty_no_nivel_sem_negocio_no_preco",
             "queda_qty": pendente.qty_original,
             "qty_atribuida": qty,
+            "qty_ja_atribuida_a_execucao": pendente.qty_executada,
             "janela_ns": self.config.janela_reconciliacao_ns,
             "distancia_do_topo_ticks": pendente.distancia_do_topo,
-            "nivel_negociavel": no_topo,
+            "nivel_negociavel": negociavel,
+            "negocio_observado_no_preco": negociou,
             "inferido": "cancelamento",
             "ressalva": (
-                "no topo do livro a ausencia de negocio pode ser atraso de impressao"
-                if no_topo
+                "parte desta queda casou com negocio no proprio preco: o nivel"
+                " negociou, entao o saldo pode ser impressao ainda por chegar"
+                if negociou
+                else "no topo do livro a ausencia de negocio pode ser atraso de impressao"
+                if negociavel
                 else "fora do topo nao havia como negociar: cancelamento quase certo"
             ),
         }

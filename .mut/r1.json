@@ -1,0 +1,37 @@
+[
+ {"id":"M06","arquivo":"fluxopro/core/eventos.py","desc":"PriceGrid round()->int() (trunca)",
+  "de":"        ticks = round(razao)","para":"        ticks = int(razao)"},
+
+ {"id":"M09","arquivo":"fluxopro/core/relogio.py","desc":"RelogioReplay aceita retroceder",
+  "de":"        if timestamp_ns < self._atual_ns:","para":"        if False:"},
+
+ {"id":"M15","arquivo":"fluxopro/analytics/volume_profile.py","desc":"HVN >= vira > no limiar",
+  "de":"            if nivel.volume_total >= limiar","para":"            if nivel.volume_total > limiar"},
+
+ {"id":"M19","arquivo":"fluxopro/analytics/agressao.py","desc":"expiracao da janela > vira >=",
+  "de":"agora_ns - self._janela[0].timestamp_ns > janela_ns","para":"agora_ns - self._janela[0].timestamp_ns >= janela_ns"},
+
+ {"id":"M22","arquivo":"fluxopro/microestrutura/livro_mbo.py","desc":"fila FIFO vira LIFO (fila[0]->fila[-1])",
+  "de":"            frente = nivel.fila[0]","para":"            frente = nivel.fila[-1]"},
+
+ {"id":"M23","arquivo":"fluxopro/microestrutura/livro_mbo.py","desc":"popleft()->pop() ao zerar a ordem",
+  "de":"                nivel.fila.popleft()\n                nivel.n_ordens -= 1","para":"                nivel.fila.pop()\n                nivel.n_ordens -= 1"},
+
+ {"id":"M24","arquivo":"fluxopro/microestrutura/livro_mbo.py","desc":"janela de reposicao 1000x maior",
+  "de":"    janela_reposicao_ns: int = 2 * UM_SEGUNDO_NS","para":"    janela_reposicao_ns: int = 2000 * UM_SEGUNDO_NS"},
+
+ {"id":"M25","arquivo":"fluxopro/microestrutura/livro_mbo.py","desc":"melhor_bid() devolve o PIOR bid",
+  "de":"            price = -self._heap_bids[0]","para":"            price = -max(self._heap_bids)"},
+
+ {"id":"M26","arquivo":"fluxopro/microestrutura/livro_mbo.py","desc":"qty_a_frente SOMA o consumo",
+  "de":"        return max(0, ordem.qty_a_frente_na_entrada - consumido_desde_entrada)","para":"        return max(0, ordem.qty_a_frente_na_entrada + consumido_desde_entrada)"},
+
+ {"id":"M27b","arquivo":"fluxopro/microestrutura/eventos_mbo.py","desc":"SUBSTITUTA de M27 (detector deletado): CONFIANCA_OBSERVADO 1.0 -> 0.5",
+  "de":"CONFIANCA_OBSERVADO = 1.0","para":"CONFIANCA_OBSERVADO = 0.5"},
+
+ {"id":"M28","arquivo":"fluxopro/microestrutura/detectores.py","desc":"volume_minimo da Absorcao >= vira >",
+  "de":"        if volume_sell >= cfg.volume_minimo and volume_sell > volume_buy:","para":"        if volume_sell > cfg.volume_minimo and volume_sell > volume_buy:"},
+
+ {"id":"M30","arquivo":"fluxopro/microestrutura/detectores.py","desc":"IcebergPorRecarga deixa de exigir recarga observada",
+  "de":"        if ordem.n_recargas == 0 or razao < self.config.razao_minima:","para":"        if razao < self.config.razao_minima:"}
+]

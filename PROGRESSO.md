@@ -126,6 +126,103 @@ Memória: 2,5 MB (5,2 bytes/evento), sem vazamento. Núcleo+analytics sozinhos: 
 - **`AgressorSide.UNKNOWN`** (leilão, RLP) entra no volume mas some do delta ⇒ `volume ≠ delta_buy + delta_sell`, sem contador de volume não atribuído.
 - Hipótese do crítico **rejeitada por ele mesmo**: suspeitou de perda de precisão no VWAP, testou um dia inteiro (600k contratos), erro exatamente zero. Só vira defeito combinado com a falta de reset de sessão (cruza 2⁵³ por volta do 43º pregão contínuo).
 
+## RODADA 2 DA CRÍTICA: **NÃO PASSA** (`criticas/nucleo_r2.md`)
+
+As correções da onda 4 são **reais, mas parciais** — e o crítico achou coisa pior do que a rodada 1.
+
+### O maior gap: eu repeti o defeito que acabara de mandar corrigir
+`motor/sinais.py:109` e `:135` — `_dominancia` e `_micro_virou` reconstroem lista + somam varrendo, por trade. **É a mesma linha que a R1 condenou em `detectores.py:72`**, copiada para o motor de confluência, com a janela **60× maior** (5 minutos). Agravada por `_na_regiao`, que chama `val()` e `vah()` — e cada uma roda um `value_area()` separado com `sorted()` completo: **dois sorts por trade** no caminho quente. Eu escrevi esse código depois de ler o relatório que condenava exatamente esse padrão.
+
+### O benchmark da onda 4 não media o sistema
+`bench_carga.py` **nunca instancia `MotorSinais`**. Com N idêntico (40.000):
+
+| Estágio | ev/s | |
+|---|---|---|
+| + 3 detectores | 25.230 | PASSA |
+| **+ MotorSinais** | **258** | **NÃO PASSA — 39× abaixo** |
+
+Uma peça colapsa o pipeline em **98×**. Escalonamento do motor isolado ao dobrar N: ×4,64 / ×4,31 / ×3,16 / ×4,38 — **quadrático**. O sistema inteiro roda a **258 ev/s**, não a 10.000.
+
+### O que foi genuinamente corrigido
+9 de 12 re-mutações da R1 agora morrem. O `livro_mbo.py` foi coberto de verdade (FIFO→LIFO derruba 17 testes). O `DetectorAbsorcao` mediu **609.916 trades/s** — a alegação de 239.639 era conservadora — e as deques monotônicas estão **semanticamente corretas**: 0 divergências em 80.000 comparações contra varredura ingênua. As adições da onda 4 estão bem cobertas: **5 de 5 mutações mortas**. Onde a onda 4 mexeu, ela testou.
+
+### O que continua vivo, contrariando o "corrigimos tudo"
+- **M06** (`round()`→`int()` no `PriceGrid`) e **M09** (relógio de replay retrocede) **seguem vivas**.
+- **20 de 33 mutações NOVAS sobreviveram (61% — pior que os 36% da R1).**
+- **`inferencia_mbp.py`: 476 linhas, ZERO testes, 4/4 mutações vivas.** Inclui inverter o lado passivo e **transformar hipótese em fato** (confiança 0.55→1.0) — apagando a distinção observado × inferido que é a virtude declarada do projeto.
+- **A cadeia de integridade da gravação pode ser inteiramente desligada com a suíte verde**: `verificar_integridade` aprovando tudo, o leitor não levantando exceção, e o recorte de horário do replay virando `return True`.
+
+### Dois defeitos de lógica no motor — código meu
+1. **`pre_sinal` tem rótulo falso.** `delta_inicio` nunca é comparado com a segunda metade. Medido: micro melhorando, parada, ou **piorando 4× contra** produzem os três o mesmo `PRE_SINAL`. O "farol amarelo" acende igual nos três casos.
+2. **O modo de falha do WINFUT reproduz inteiro.** Fase vendedora de magnitude alta seguida de fase compradora de magnitude menor faz o motor emitir `CONFIRMADO` de compra, com `dominancia = 0.900` idêntica nas duas fases. E **1 único trade** leva de `CONFIRMADO` a `NENHUM` — zero histerese, contra o "se ele se sustentar" da fonte. Eu tinha registrado esse modo de falha no próprio PROGRESSO e implementei o motor sujeito a ele mesmo assim.
+3. **As faixas de convicção não estão implementadas** — só um corte binário; a faixa 80-85% não existe. E a divergência 70% × 75% documentada na fonte foi omitida do docstring.
+
+### Para dinheiro real, além de tudo acima
+`MotorSinais` e `InferidorMBP` **não são importados por nenhum módulo de produção** — o produto ainda não foi montado. E nenhuma medição de qualidade de sinal tocou tape real: tudo saiu do `SimuladorWDO`, **cujas dinâmicas de preço podem ser invertidas sem quebrar um teste**.
+
+## Onda 5 — correções da rodada 2
+
+| Peça | Modelo | Estado |
+|---|---|---|
+| **Motor de sinais: O(1) + faixas + WINFUT + histerese** | opus | ✅ **6 → 33 testes, 8/8 mutações mortas** |
+| **Inferência MBP→MBO: 476 linhas sem teste** | opus | ✅ **0 → 61 testes, 17/17 mutações mortas, 3 defeitos reais** |
+| **Integridade da gravação + M06 + M09** | sonnet | ✅ **31 testes, 8/8 mutações mortas** |
+
+### Inferência MBP→MBO — de zero a 61 testes, e 3 defeitos reais achados
+
+**Defeito 1 — o agressor `UNKNOWN` recebia confiança máxima (0,90).** A reconciliação tem duas pernas: preço e lado passivo. Com `UNKNOWN` a segunda simplesmente não acontece — e mesmo assim a execução saía valendo o mesmo que uma com lado confirmado. Não é hipotético: o RLP anonimiza parte do volume de WDO/WIN. Corrigido com teto configurável (aplicado por `min`, nunca por atribuição) e `lado_passivo_confirmado` na evidência.
+
+**Defeito 2 — evidência autocontraditória.** Numa queda fora do topo com negócio impresso *naquele mesmo preço*, o saldo saía com confiança 0,90 e a ressalva "fora do topo não havia como negociar" — enquanto o próprio módulo acabara de atribuir contratos a uma execução ali. A premissa da confiança alta estava falsificada pela evidência do evento anterior.
+
+**Defeito 3 — a docstring prometia O(1) amortizado e o código varria a janela inteira.** Cada negócio percorria todas as quedas pendentes e cada queda todos os negócios em buffer. Medido: 130.000 → 41.000 → **7.300 neg/s** com 50/200/800 níveis pendurados — **abaixo da barra**. Corrigido com índice por preço (poda preguiçosa, buckets vazios removidos): **~330.000 neg/s, plano**. A docstring agora traz a curva medida em vez da alegação.
+
+**Sofisticação que vale registro — mutante equivalente detectado.** Depois da correção do índice por preço, a mutação N23 da R2 virou **equivalente**: o ramo `if buffer.price != pendente.price` tornou-se inalcançável, então mutá-lo não muda comportamento nenhum. O builder percebeu, verificou os dois únicos chamadores, **removeu o ramo morto** e substituiu por N23a/N23b, que atacam o mecanismo que de fato garante o preço. Mutante equivalente é a armadilha clássica do teste de mutação — tratar como "sobrevivente" levaria a escrever teste para código impossível de executar.
+
+A mutação mais grave morta: **confiança de cancelamento 0,55 → 1,0**, que convertia hipótese em fato e apagava a distinção observado × inferido — a virtude declarada do módulo.
+
+### Motor de sinais — o gap #1 fechado, e o modo de falha do WINFUT morto
+
+**Performance** (mesmo tape determinístico, N=8.000):
+
+| | antes | depois |
+|---|---|---|
+| ev/s | 1.135 | **184.013** (162×) |
+| µs/ev | 880,95 | 5,43 |
+
+Com N=200.000 sobre um tape de 432 níveis distintos (o número de níveis que fazia `value_area()` doer): **117.591 ev/s**. A assinatura quadrática sumiu — ao dobrar N, o µs/ev antes ia ×1,33 → ×1,85 → ×2,36; agora fica ×1,05 → ×0,98 → ×1,02. Plano até 400.000 trades.
+
+**Pipeline completo**: o colapso de 98× ao ligar o motor virou queda de ~22%.
+
+| Estágio | R2 | depois |
+|---|---|---|
+| + 3 detectores | 25.230 | 51.079 |
+| **+ MotorSinais** | **258** | **39.678** |
+
+**Como**: janela de dominância com `deque` + contadores incrementais (padrão do `DetectorAbsorcao`); janela micro em **dois** deques separados por corte temporal monotônico, o que dá a comparação primeira × segunda metade em O(1); `value_area()` chamado **uma** vez e cacheado (VAL+VAH juntos), com invalidação por contagem **ou** tempo de tape — os dois porque cada critério sozinho tem ponto cego (tape lento segura o valor por minutos; tape em rajada processa dezenas de milhares de trades sem recalcular).
+
+**`pre_sinal` corrigido**: o corte passou a ser temporal (metades de mesma duração, não por contagem de trades) e exige que a segunda metade tenha **melhorado na direção do alvo**. Os três casos que a auditoria mediu agora se separam: −100→−20 é `PRE_SINAL`; −100→−100 e −100→−400 são `NA_REGIAO`.
+
+**WINFUT morto, com teste-controle**: `magnitude` = |delta| da janela normalizado pelo percentil 0,95 da distribuição **do próprio dia** (reservoir sampling com seed determinística). Mais histerese: promoção exige sustentação em trades **e** tempo; rebaixamento idem — um trade isolado não derruba mais o estágio.
+O teste roda 900 trades 90% vendedores de qty 20, seguidos de 900 trades 90% compradores de qty 9 (razão 0,45 — a mesma proporção do +915 contra −1925 do relato). Resultado: **nenhum** sinal de compra em todo o tape, com `bloqueio == "magnitude_relativa"`, `dominancia ≥ 0,85` e `faixa == MAXIMA_CONVICCAO` — ou seja, **não é o percentual que barra, é a magnitude**.
+O que torna isso prova e não alegação: há um **teste-controle** que roda o mesmo tape com o gate desligado e **exige que o motor caia no modo de falha**. E um terceiro que garante que o gate não é um "sempre não" — movimento na magnitude do próprio dia passa a `CONFIRMADO`.
+
+**Faixas de convicção** implementadas como enum parametrizável, com uma decisão honesta: existe uma `ZONA_CINZA` entre 0,65 e 0,70 porque **a fonte não dá rótulo a essa faixa** — preencher seria atribuir à fonte uma leitura que ela não deu. O docstring registra a divergência 70% × 75% citando os dois vídeos e a marca IMPRECISO da pesquisa, e declara 0.70 como escolha de engenharia, não leitura unívoca.
+
+**Bônus**: testes que exercem os **defaults de fábrica** — matam duas mutações que sobreviveram na R2 (`dominancia_minima`→0.0 e janela micro→1 dia) justamente porque nenhum teste tocava a config padrão.
+
+### Integridade da gravação — de decorativa a real
+A cadeia inteira que podia ser desligada com a suíte verde agora resiste. Testes que **corrompem o arquivo de propósito** (byte alterado, truncamento, hash divergente no meta sem tocar no dado) e provam que a verificação detecta e o leitor recusa. O recorte por horário passou a ser provado de verdade: eventos fora da janela **não** voltam.
+
+Isso importa porque o gravador é a **única** fonte de histórico de book que este projeto vai ter — não existe histórico público de book na B3. Base de replay corrompida em silêncio envenenaria todo backtest futuro.
+
+Um defeito real corrigido no caminho: `verificar_integridade` deixava escapar `EOFError` cru num gzip truncado, em vez de reportar `False` de forma consistente.
+
+**M06 morta** (`PriceGrid`: `round()` → `int()`): `int()` trunca em direção a zero, então diverge de `round()` em preços negativos e em frações — erro de conversão silencioso na fronteira mais crítica do sistema. Agora há 12 testes cobrindo erro de flutuante positivo e negativo.
+
+**M09 morta** (relógio de replay retrocedendo). O código já recusava corretamente; faltava o teste e a justificativa escrita. Política confirmada e documentada: **recusar com `ValueError`**, porque as janelas deslizantes a jusante assumem tempo monotônico e aceitar retrocesso corromperia estado em silêncio. Dado fora de ordem é problema de quem alimenta o relógio — reordenar antes de chamar —, não do relógio mentir que é monotônico. Timestamp igual ao atual continua permitido, pois não é retrocesso.
+
+**Três mutações extras fechadas por iniciativa do builder** (N14, N15, N11), por serem baratas e parte da mesma cadeia: `hora_inicio`/`hora_fim` trocados no meta, `fsync` de `FalhaCaptura` deixando de ser imediato, e inversão de ordem em `decodificar_niveis`.
+
 ## Onda 4 — correções do veredito
 
 | Peça | Modelo | Estado |
