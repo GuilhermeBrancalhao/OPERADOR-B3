@@ -1,0 +1,163 @@
+[
+ {
+  "id": "N01",
+  "arquivo": "fluxopro/dados/replay.py",
+  "desc": "replay: sort perde o desempate (ordem nao-deterministica no empate de ts)",
+  "de": "        combinados.sort(key=lambda item: (item[0], item[1], item[2]))",
+  "para": "        combinados.sort(key=lambda item: item[0])"
+ },
+ {
+  "id": "N03",
+  "arquivo": "fluxopro/dados/replay.py",
+  "desc": "replay: buyer_broker e seller_broker trocados na leitura do CSV",
+  "de": "                buyer_broker=linha.get(\"buyer_broker\") or \"\",\n                seller_broker=linha.get(\"seller_broker\") or \"\",",
+  "para": "                buyer_broker=linha.get(\"seller_broker\") or \"\",\n                seller_broker=linha.get(\"buyer_broker\") or \"\","
+ },
+ {
+  "id": "N04",
+  "arquivo": "fluxopro/dados/simulador.py",
+  "desc": "simulador: agressao de COMPRA empurra o preco para BAIXO",
+  "de": "            if agressor is AgressorSide.BUY:\n                self._preco_ticks += passo_ticks\n            else:\n                self._preco_ticks -= passo_ticks",
+  "para": "            if agressor is AgressorSide.BUY:\n                self._preco_ticks -= passo_ticks\n            else:\n                self._preco_ticks += passo_ticks"
+ },
+ {
+  "id": "N05",
+  "arquivo": "fluxopro/dados/simulador.py",
+  "desc": "simulador: regime de absorcao desligado (preco sempre desloca)",
+  "de": "        desloca_preco = topo_zerou and not absorcao",
+  "para": "        desloca_preco = topo_zerou"
+ },
+ {
+  "id": "N06",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "desc": "mt5: bids ordenados do PIOR para o melhor (topo de livro invertido)",
+  "de": "        bids_brutos.sort(key=lambda i: -i.price)",
+  "para": "        bids_brutos.sort(key=lambda i: i.price)"
+ },
+ {
+  "id": "N08",
+  "arquivo": "fluxopro/dados/leitor_gravacao.py",
+  "desc": "leitor: filtro de horario nunca exclui nada (recorte 09:00-10:30 ignorado)",
+  "de": "    def _dentro_do_intervalo(self, ts: int) -> bool:\n        if self._ts_inicio is not None and ts < self._ts_inicio:",
+  "para": "    def _dentro_do_intervalo(self, ts: int) -> bool:\n        return True\n        if self._ts_inicio is not None and ts < self._ts_inicio:"
+ },
+ {
+  "id": "N09",
+  "arquivo": "fluxopro/dados/leitor_gravacao.py",
+  "desc": "leitor: hash divergente deixa de levantar IntegridadeInvalidaError",
+  "de": "        falhas = [nome for nome, ok in resultado.items() if not ok]\n        if falhas:",
+  "para": "        falhas = [nome for nome, ok in resultado.items() if not ok]\n        if False:"
+ },
+ {
+  "id": "N10",
+  "arquivo": "fluxopro/dados/leitor_gravacao.py",
+  "desc": "leitor: sort perde o desempate por tipo/indice",
+  "de": "        combinados.sort(key=lambda item: (item[0], item[1], item[2]))",
+  "para": "        combinados.sort(key=lambda item: item[0])"
+ },
+ {
+  "id": "N11",
+  "arquivo": "fluxopro/gravacao/formato.py",
+  "desc": "formato: decodificar_niveis devolve os niveis em ordem INVERTIDA",
+  "de": "    return tuple(niveis)",
+  "para": "    return tuple(reversed(niveis))"
+ },
+ {
+  "id": "N12",
+  "arquivo": "fluxopro/gravacao/formato.py",
+  "desc": "formato: SCHEMA_VERSAO congelado errado (1 -> 99)",
+  "de": "SCHEMA_VERSAO = 1",
+  "para": "SCHEMA_VERSAO = 99"
+ },
+ {
+  "id": "N14",
+  "arquivo": "fluxopro/gravacao/gravador.py",
+  "desc": "gravador: meta.json grava hora_inicio = MAX e hora_fim = MIN",
+  "de": "            \"hora_inicio_ns\": min(horarios) if horarios else None,\n            \"hora_fim_ns\": max(horarios) if horarios else None,",
+  "para": "            \"hora_inicio_ns\": max(horarios) if horarios else None,\n            \"hora_fim_ns\": min(horarios) if horarios else None,"
+ },
+ {
+  "id": "N15",
+  "arquivo": "fluxopro/gravacao/gravador.py",
+  "desc": "gravador: fsync nunca forcado nem em FalhaCaptura",
+  "de": "        forcar_fsync = isinstance(evento, FalhaCaptura) or arq.n_desde_fsync >= self._fsync_a_cada",
+  "para": "        forcar_fsync = False"
+ },
+ {
+  "id": "N16",
+  "arquivo": "fluxopro/gravacao/catalogo.py",
+  "desc": "catalogo: verificar_integridade aprova qualquer arquivo",
+  "de": "            resultado[nome_base] = _hash_arquivo(caminho) == hash_esperado",
+  "para": "            resultado[nome_base] = True"
+ },
+ {
+  "id": "N17",
+  "arquivo": "fluxopro/gravacao/catalogo.py",
+  "desc": "catalogo: consultar_intervalo usa hora_inicio tambem como hora_fim",
+  "de": "            dt_fim = datetime.combine(data, hora_fim, tzinfo=timezone.utc)",
+  "para": "            dt_fim = datetime.combine(data, hora_inicio or hora_fim, tzinfo=timezone.utc)"
+ },
+ {
+  "id": "N18",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "motor: dominancia_minima 0.70 -> 0.0 (limiar de direcao do dia some)",
+  "de": "    dominancia_minima: float = 0.70",
+  "para": "    dominancia_minima: float = 0.0"
+ },
+ {
+  "id": "N22",
+  "arquivo": "fluxopro/motor/sinais.py",
+  "desc": "motor: janela da micro 15s -> 1 dia (a 'micro' deixa de ser curto prazo)",
+  "de": "    janela_micro_ns: int = 15_000_000_000  # 15s",
+  "para": "    janela_micro_ns: int = 86_400_000_000_000  # 1 dia"
+ },
+ {
+  "id": "N23",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "MBP: queda casa com negocio de QUALQUER PRECO (execucao atribuida ao nivel errado)",
+  "de": "        if buffer.price != pendente.price:\n            return False",
+  "para": "        if False:\n            return False"
+ },
+ {
+  "id": "N24",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "MBP: lado passivo invertido (agressao de compra consome o BID)",
+  "de": "        if agressor is AgressorSide.BUY:\n            return Side.SELL\n        if agressor is AgressorSide.SELL:\n            return Side.BUY",
+  "para": "        if agressor is AgressorSide.BUY:\n            return Side.BUY\n        if agressor is AgressorSide.SELL:\n            return Side.SELL"
+ },
+ {
+  "id": "N25",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "MBP: hipotese vira FATO (confianca de cancelamento no topo 0.55 -> 1.0)",
+  "de": "    confianca_cancelamento_no_topo: float = 0.55",
+  "para": "    confianca_cancelamento_no_topo: float = 1.0"
+ },
+ {
+  "id": "N26",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "MBP: pendencia expirada nunca vira cancelamento (evento some)",
+  "de": "            pendente = self._pendentes.popleft()\n            self._resolver_como_cancelamento(pendente)",
+  "para": "            self._pendentes.popleft()"
+ },
+ {
+  "id": "M06",
+  "arquivo": "fluxopro/core/eventos.py",
+  "desc": "PriceGrid round()->int() (trunca)",
+  "de": "        ticks = round(razao)",
+  "para": "        ticks = int(razao)"
+ },
+ {
+  "id": "M09",
+  "arquivo": "fluxopro/core/relogio.py",
+  "desc": "RelogioReplay aceita retroceder",
+  "de": "        if timestamp_ns < self._atual_ns:",
+  "para": "        if False:"
+ },
+ {
+  "id": "M27b",
+  "arquivo": "fluxopro/microestrutura/eventos_mbo.py",
+  "desc": "SUBSTITUTA de M27 (detector deletado): CONFIANCA_OBSERVADO 1.0 -> 0.5",
+  "de": "CONFIANCA_OBSERVADO = 1.0",
+  "para": "CONFIANCA_OBSERVADO = 0.5"
+ }
+]

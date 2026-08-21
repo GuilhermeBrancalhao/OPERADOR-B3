@@ -2,4 +2,10 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
-dados/
+# ANCORADO na raiz de proposito: `dados/` sem a barra inicial casava tambem
+# com `fluxopro/dados/`, tirando 7 modulos de codigo-fonte (~1.400 linhas,
+# incluindo mt5.py e simulador.py) do controle de versao. O repositorio nao
+# reconstruia o produto, e `git diff -- fluxopro/` ficava estruturalmente
+# cego a esses arquivos — as provas de "arvore limpa" das auditorias R1 e R2
+# passavam por cima deles sem enxergar nada.
+/dados/
