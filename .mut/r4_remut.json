@@ -1,0 +1,149 @@
+[
+ {
+  "id": "N01",
+  "arquivo": "fluxopro/dados/replay.py",
+  "desc": "replay: sort perde o desempate (ordem nao-deterministica no empate de ts)",
+  "de": "        combinados.sort(key=lambda item: (item[0], item[1], item[2]))",
+  "para": "        combinados.sort(key=lambda item: item[0])"
+ },
+ {
+  "id": "N03",
+  "arquivo": "fluxopro/dados/replay.py",
+  "desc": "replay: buyer_broker e seller_broker trocados na leitura do CSV",
+  "de": "                buyer_broker=linha.get(\"buyer_broker\") or \"\",\n                seller_broker=linha.get(\"seller_broker\") or \"\",",
+  "para": "                buyer_broker=linha.get(\"seller_broker\") or \"\",\n                seller_broker=linha.get(\"buyer_broker\") or \"\","
+ },
+ {
+  "id": "N04",
+  "arquivo": "fluxopro/dados/simulador.py",
+  "desc": "simulador: agressao de COMPRA empurra o preco para BAIXO",
+  "de": "            if agressor is AgressorSide.BUY:\n                self._preco_ticks += passo_ticks\n            else:\n                self._preco_ticks -= passo_ticks",
+  "para": "            if agressor is AgressorSide.BUY:\n                self._preco_ticks -= passo_ticks\n            else:\n                self._preco_ticks += passo_ticks"
+ },
+ {
+  "id": "N05",
+  "arquivo": "fluxopro/dados/simulador.py",
+  "desc": "simulador: regime de absorcao desligado (preco sempre desloca)",
+  "de": "        desloca_preco = topo_zerou and not absorcao",
+  "para": "        desloca_preco = topo_zerou"
+ },
+ {
+  "id": "N06",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "desc": "mt5: bids ordenados do PIOR para o melhor (topo de livro invertido)",
+  "de": "        bids_brutos.sort(key=lambda i: -i.price)",
+  "para": "        bids_brutos.sort(key=lambda i: i.price)"
+ },
+ {
+  "id": "N10",
+  "arquivo": "fluxopro/dados/leitor_gravacao.py",
+  "desc": "leitor: sort perde o desempate por tipo/indice",
+  "de": "        combinados.sort(key=lambda item: (item[0], item[1], item[2]))",
+  "para": "        combinados.sort(key=lambda item: item[0])"
+ },
+ {
+  "id": "N12",
+  "arquivo": "fluxopro/gravacao/formato.py",
+  "desc": "formato: SCHEMA_VERSAO congelado errado (1 -> 99)",
+  "de": "SCHEMA_VERSAO = 1",
+  "para": "SCHEMA_VERSAO = 99"
+ },
+ {
+  "id": "X01",
+  "arquivo": "fluxopro/analytics/brokers.py",
+  "desc": "brokers: janela expira com >= (trade exatamente na borda some)",
+  "de": "        while self._janela and agora_ns - self._janela[0].timestamp_ns > janela_ns:",
+  "para": "        while self._janela and agora_ns - self._janela[0].timestamp_ns >= janela_ns:"
+ },
+ {
+  "id": "X04",
+  "arquivo": "fluxopro/analytics/brokers.py",
+  "desc": "brokers: aceita trade de OUTRO simbolo (filtro desligado)",
+  "de": "        if trade.symbol != self._symbol:\n            return\n\n        if trade.buyer_broker:",
+  "para": "        if False:\n            return\n\n        if trade.buyer_broker:"
+ },
+ {
+  "id": "X06",
+  "arquivo": "fluxopro/microestrutura/perfil_player.py",
+  "desc": "perfil_player: quem agrediu invertido (comprador<->vendedor)",
+  "de": "        lado_comprador_agrediu = trade.side_agressor.name == \"BUY\"\n        lado_vendedor_agrediu = trade.side_agressor.name == \"SELL\"",
+  "para": "        lado_comprador_agrediu = trade.side_agressor.name == \"SELL\"\n        lado_vendedor_agrediu = trade.side_agressor.name == \"BUY\""
+ },
+ {
+  "id": "X08",
+  "arquivo": "fluxopro/microestrutura/perfil_player.py",
+  "desc": "perfil_player: perna vendedora nao conta clip (tamanho_medio_clip inflado)",
+  "de": "            acc.volume_vendido += trade.qty\n            acc.soma_qty += trade.qty\n            acc.n_clips += 1",
+  "para": "            acc.volume_vendido += trade.qty\n            acc.soma_qty += trade.qty"
+ },
+ {
+  "id": "X10",
+  "arquivo": "fluxopro/microestrutura/perfil_player.py",
+  "desc": "perfil_player: agressividade mede o lado PASSIVO",
+  "de": "        return 0.0 if total == 0 else self.n_trades_agressor / total",
+  "para": "        return 0.0 if total == 0 else self.n_trades_passivo / total"
+ },
+ {
+  "id": "X14",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "desc": "mt5: dedup de tick vira < (reprocessa o ultimo tick a cada poll)",
+  "de": "            if time_msc <= ultimo_tick_time_msc:",
+  "para": "            if time_msc < ultimo_tick_time_msc:"
+ },
+ {
+  "id": "X15",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "desc": "mt5: profundidade_maxima ignorada (book inteiro publicado)",
+  "de": "            for item in itens[: self._profundidade_maxima]:",
+  "para": "            for item in itens:"
+ },
+ {
+  "id": "X16",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "desc": "mt5: BookDelta de ADD sempre com position=0 (posicao no book perdida)",
+  "de": "                    price=nivel.price,\n                    qty=nivel.qty,\n                    position=posicao,\n                )\n            )\n        elif anterior_nivel.qty != nivel.qty:",
+  "para": "                    price=nivel.price,\n                    qty=nivel.qty,\n                    position=0,\n                )\n            )\n        elif anterior_nivel.qty != nivel.qty:"
+ },
+ {
+  "id": "X18",
+  "arquivo": "fluxopro/gravacao/catalogo.py",
+  "desc": "catalogo: escanear nao limpa o indice (entrada apagada do disco sobrevive ao re-escaneamento)",
+  "de": "        self._entradas.clear()\n        if not self._base.is_dir():",
+  "para": "        if not self._base.is_dir():"
+ },
+ {
+  "id": "X19",
+  "arquivo": "fluxopro/gravacao/catalogo.py",
+  "desc": "catalogo: arquivo() prefere o PLANO ao .gz (le a versao velha se as duas existirem)",
+  "de": "        if candidato_gz.exists():\n            return candidato_gz\n        if candidato_plano.exists():\n            return candidato_plano",
+  "para": "        if candidato_plano.exists():\n            return candidato_plano\n        if candidato_gz.exists():\n            return candidato_gz"
+ },
+ {
+  "id": "X20",
+  "arquivo": "fluxopro/gravacao/catalogo.py",
+  "desc": "catalogo: consultar_intervalo devolve a entrada mesmo com hora_fim ANTES de hora_inicio (intervalo vazio nao e recusado)",
+  "de": "        return entrada, ts_inicio, ts_fim",
+  "para": "        if ts_inicio is not None and ts_fim is not None and ts_fim < ts_inicio:\n            ts_inicio, ts_fim = ts_fim, ts_inicio\n        return entrada, ts_inicio, ts_fim"
+ },
+ {
+  "id": "X26",
+  "arquivo": "fluxopro/analytics/footprint.py",
+  "desc": "footprint: vizinho diagonal zerado deixa de marcar imbalance (politica invertida)",
+  "de": "            if qty_vendedor_vizinho == 0:\n                resultado.append(preco)",
+  "para": "            if qty_vendedor_vizinho == 0:\n                continue"
+ },
+ {
+  "id": "X27",
+  "arquivo": "fluxopro/analytics/footprint.py",
+  "desc": "footprint: media de volume por nivel divide pelo n de niveis + 1",
+  "de": "        return self._volume_total / len(self._niveis)",
+  "para": "        return self._volume_total / (len(self._niveis) + 1)"
+ },
+ {
+  "id": "X28",
+  "arquivo": "fluxopro/analytics/footprint.py",
+  "desc": "footprint: delta_divergente so olha alta (queda com delta positivo deixa de divergir)",
+  "de": "        if self.preco_fechamento < self.preco_abertura and self._delta > 0:\n            return True",
+  "para": "        if False:\n            return True"
+ }
+]

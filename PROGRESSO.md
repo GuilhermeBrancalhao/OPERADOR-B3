@@ -181,6 +181,39 @@ O efeito colateral é pior que a perda: `git diff -- fluxopro/` era **estrutural
 6. **14 de 28 mutações novas sobreviveram (50%).** Pior módulo: `perfil_player.py` — inverter quem agrediu passa batido.
 7. **8 de 12 componentes não têm `iniciar_nova_sessao`**, incluindo o `MotorSinais`: o p95 do dia 2 é o do dia 1.
 
+## RODADA 4 DA CRÍTICA: **NÃO PASSA** (`criticas/nucleo_r4.md`)
+
+### O maior gap foi criado pela correção da onda 7 — a 5ª casa
+`inferencia_mbp.py:759-763` — `_registrar_preco` faz `heappush` incondicional a cada transição `0 → qty` de nível, sem dedup, sem teto, com poda preguiçosa só pela cabeça do heap. Medido: **2.400.001 entradas de heap para 2 níveis vivos** após 16 min a 5.000 ev/s, e **244 ms de latência num único evento** quando o topo esvazia (orçamento: 100-200 µs). Invisível porque o µs/passo *cai* enquanto a estrutura infla. R1 detectores → R2 motor → R3 inferência → R3 livro → **R4 inferência de novo, pela mão que consertou**.
+
+### O que a onda 7 acertou (medido, não aceito)
+- **MT5: 50.000 ticks/s com zero perda — confere.** Melhor peça das 4 rodadas.
+- **Inferência: 1,00× plano, e resiste a 3 regimes que os builders não testaram** (preço cravado + cancelamento massivo + recarga; alternância rápida de topo; recarga sob topo estável): 0,98× a 1,04×.
+- **Fiação `app/`: melhor território das 4 rodadas** — 7 de 10 mutações morrem, incluindo as 3 inversões de prioridade do barramento.
+
+### Os outros três motivos
+2. **182 testes novos, e as 20 re-mutações da R3 sobrevivem — zero mortas.** Os testes são bons mas vivem só nos 3 módulos do escopo dos builders. `perfil_player.py` entra na 4ª rodada com as 3 inversões da própria semântica passando.
+3. **O relógio de máximo é uma catraca.** Regressão do servidor (troca de servidor da corretora, NTP) trava o offset inflado **para sempre** — 5.000 amostras corretas não o movem. 400 ms de regressão já excede a janela de reconciliação e reintroduz o modo de falha da R3, agora permanente.
+4. **Pipeline sem resposta medida**: 5.873 ev/s (simulador cru, NÃO PASSA) × 14.236 ev/s (book estável, PASSA). A barra cai *dentro* do intervalo, e ambos os regimes são sintéticos.
+
+### Achados menores
+- **Dedup 4.096 é penhasco, não degradação**: 0% de re-emissão em 4.096 chaves, **100% em 5.000**. E a consequência não é aceitável: Iceberg e Fantasma usam `order_id` sintético (6,5/evento) ⇒ **63 ms de memória** contra um fenômeno que dura segundos.
+- **WINFUT com 20.000 laterais: idêntico à R3** — 480 `CONFIRMADO` espúrios. O gate continua cedendo (o builder do motor não estava na onda 7).
+- **`qty_minima_imbalance = 0` está preso por teste** — cimento, não contrato.
+- **Parte D inalterada**: `MetaTrader5` não instalado, `dados/` não existe, zero bytes de mercado em disco. Nenhuma linha de `mt5.py` jamais executou contra corretora.
+
+Nota de método do crítico: a prova "byte a byte contra o blob de HEAD" da R3 **não reproduz** com `core.autocrlf=true` — a conclusão estava certa, o método não. A R4 normaliza CRLF: 66 arquivos, 0 divergências reais.
+
+## Onda 8 — correções da R4
+
+| Peça | Modelo | Estado |
+|---|---|---|
+| Inferência: 5ª casa (heap sem dedup/teto em `_registrar_preco`) | opus | 🔄 em voo |
+| MT5: relógio de máximo vira catraca — precisa esquecer | opus | 🔄 em voo |
+| Detectores: dedup 4.096 é penhasco; `order_id` sintético estoura em 63 ms | opus | 🔄 em voo |
+| Motor: WINFUT com 20.000 laterais ainda fura o gate | opus | 🔄 em voo |
+| Testes fracos: `perfil_player`, `brokers`, `simulador`, `footprint` (cimento) | sonnet | 🔄 em voo |
+
 ## Onda 7 — correções da R3 (retomada após queda por limite de gasto)
 
 Os 3 builders da onda 7 caíram por limite de gasto mensal **no meio da escrita**: `detectores.py` (+516 linhas) e `mt5.py` (+365 linhas) ficaram em disco SEM os testes correspondentes — código de produção novo com suíte cega, que é o estado mais perigoso possível (1 teste da app quebrou por referenciar a API antiga; o resto passa sem exercitar nada do que mudou). O terceiro (inferência) morreu sem escrever nada.
