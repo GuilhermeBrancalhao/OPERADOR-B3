@@ -80,14 +80,30 @@ Custos apurados dos caminhos:
 ## Rodadas
 | Peça | Rodada | Papel | Modelo | Veredito | Gap |
 |---|---|---|---|---|---|
-| **Núcleo** (eventos/book/replay/simulador) | 1 | builder | sonnet | ✅ 23 verdes | book é MBP, `n_orders` sempre 1 → sem ordem individual (peça 3 resolve) |
-| **Analytics** (volume, footprint, delta, agressão, brokers, vwap) | 1 | builder | sonnet | ✅ 53 verdes (30 novos + 23 core intactos) | 7 módulos completos, 0 falhas |
-| **Microestrutura/MBO** + detectores (absorção/iceberg/reposição) | 1 | builder | opus | 🔄 em voo | 25-30 testes esperados |
-| **Direção visual** + stack (PyQt6/Dear PyGui benchmark) | 1 | builder | opus | 🔄 em voo | design system + decisão de stack |
-| **Crítico do núcleo** (mutação + benchmark) | 1 | crítico | opus | 🔄 em voo | mutantes, eventos/s real, microestrutura |
-| **MT5 + Gravador** (conexão, gravação, CLI) | 1 | builder | sonnet | 🔄 em voo | adaptador, formato CSV/Parquet, replay |
-| **Legendas 54 vídeos** (download + índice) | 1 | pesquisa | haiku | 🔄 em voo | consolidação das 39 faltando |
-| **Feed B3 UMDF** (aprofundamento) | 2 | pesquisa | sonnet | ✅ completado | identidade de corretora NÃO existe em WDO/WIN por design B3 |
+| **Núcleo** (eventos/book/replay/simulador) | 1 | builder | sonnet | ✅ verde | book é MBP, `n_orders` sempre 1 → sem ordem individual (resolvido pela peça de microestrutura) |
+| **Analytics** (volume, footprint, delta, agressão, brokers, vwap) | 1 | builder | sonnet | ✅ verde | 7 módulos completos, 0 falhas |
+| **Microestrutura/MBO** — livro + inferência MBP→MBO | 1 | builder | opus | ✅ verde (sobreviveu ao corte de contexto) | |
+| **Microestrutura — detectores** (absorção/escora/iceberg/liquidez fantasma/exaustão/clip) | 2 | builder (eu, direto) | sonnet | ✅ verde, 20 testes | escrito após o corte, sem agente em background |
+| **Perfil de player** (ranking por corretora) | 2 | builder (eu, direto) | sonnet | ✅ verde, 5 testes | |
+| **Motor de sinais** (confluência das 3 condições ASG) | 2 | builder (eu, direto) | sonnet | ✅ verde, 6 testes | reconstrução funcional da lógica, não cópia pixel-a-pixel da ferramenta original — declarado no docstring |
+| **MT5 + Gravador** (conexão, gravação, catálogo, CLI) | 1 | builder | sonnet | ✅ verde (sobreviveu ao corte; 1 bug real corrigido depois — normalização de tick 0-d do numpy) | |
+| **Direção visual + stack de UI** | 1 | builder | opus | ❌ **FALHOU** — limite de gasto mensal atingido a meio do trabalho | scripts de benchmark parciais ficaram em `design/bench/`; **nenhuma decisão de stack foi tomada**; documento `design/direcao_visual.md` não existe |
+| **Crítico do núcleo** (mutação + benchmark) | 1 | crítico | opus | ❌ **FALHOU** — mesmo limite | **núcleo nunca recebeu teste de mutação nem benchmark de carga real** — ninguém provou que aguenta o volume do WDO em dia agitado |
+| **Legendas 54 vídeos** | 1 | pesquisa | haiku | ⚠️ parcial — 40+ vídeos baixados antes do corte (ver `pesquisa/legendas/`), mas **nenhum foi extraído/estruturado** como os 3 primeiros (só texto bruto) | metodologia continua baseada nos 3 vídeos originais |
+| **Feed B3 UMDF** (aprofundamento) | 2 | pesquisa | sonnet | ✅ completado | identidade de corretora NÃO existe em WDO/WIN por design B3 (RLP anonimiza até 15%) |
+
+## Suíte de testes — estado real (verificado, não afirmado)
+`python -m pytest tests/ -q` → **94 passed**. Rodei antes de escrever este parágrafo.
+
+## O que NÃO está pronto (honestidade > cobertura)
+1. **Interface gráfica**: zero linhas de UI. Todo o trabalho é motor/dados, headless. O benchmark de stack (PyQt6 vs Dear PyGui vs web) começou mas não fechou — os scripts em `design/bench/` são parciais e não têm veredito.
+2. **Núcleo sem crítica adversarial**: os 23 testes originais passam, mas ninguém tentou quebrar por mutação nem mediu throughput real contra o pico de 5-10k eventos/s do WDO. Isso é uma lacuna de confiança, não só de feature.
+3. **Metodologia ASG incompleta**: só 3 dos 54 vídeos foram extraídos e estruturados com citação direta. Termos como "delta", "agressão", "exaustão" (no vocabulário do autor) e a regra de "3 stops seguidos" vêm de vídeos ainda não lidos meticulosamente.
+4. **Execução real de ordem**: não existe NENHUMA integração de envio de ordem a corretora/plataforma. O motor de sinais emite `Sinal`, não ordens. Ligar isso a uma corretora é decisão de risco que não deve ser automatizada sem revisão explícita do usuário.
+5. **Sem UMDF direto**: decisão tomada de ficar em MT5 (grátis, sem identidade de corretora) — UMDF direto custaria ~R$190-290 mil/ano e não entrega identidade de corretora em WDO/WIN de qualquer forma.
+
+## Repositório
+Publicado em https://github.com/GuilhermeBrancalhao/OPERADOR-B3 (privado), branch `main`, primeiro commit com todo o código acima.
 
 ## Log
 - [setup] Pasta criada, barra e pesquisa despachadas em paralelo.
