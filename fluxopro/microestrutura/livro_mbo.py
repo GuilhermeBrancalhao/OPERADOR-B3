@@ -15,15 +15,35 @@ Custos no caminho quente (chamado por evento de book, a fonte mais volumosa):
 * `executar`   — O(1) amortizado por contrato consumido.
 * `modificar`  — O(1).
 * `melhor_bid`/`melhor_ask` — O(1) amortizado (heap com remoção preguiçosa).
+* `ultima_ordem_ativa` — O(1) amortizado. TAMBÉM é caminho quente, ao
+  contrário do que esta lista deixava implícito: é por onde passa todo
+  cancelamento inferido pelo `InferidorMBP`. A fila é podada pelas DUAS
+  pontas — `executar` descarta morto pela frente, `ultima_ordem_ativa` pelo
+  fim — porque é nessas duas pontas que as ordens saem.
 
 Não há varredura de lista grande em nenhum desses caminhos. As APIs de
 inspeção (`nivel`, `niveis_ordenados`) percorrem a fila e são de diagnóstico,
 não de caminho quente.
 
-Integridade: um livro CRUZADO (melhor bid >= melhor ask) é dado corrompido ou
-evento perdido. O livro aceita o estado — recusar derrubaria a ingestão — mas
-nunca em silêncio: ver `esta_cruzado`, `n_cruzamentos_detectados` e
-`assinar_cruzamento`. A verificação é O(1) e roda só onde o topo pode mudar.
+Integridade: um livro CRUZADO (melhor bid >= melhor ask) tem DUAS causas
+possíveis, e elas não significam a mesma coisa.
+
+* **Alimentado por feed MBO real**, cruzamento é dado corrompido, evento
+  perdido ou reordenação do feed. Mercado casado não cruza.
+* **Alimentado pelo `InferidorMBP`** (book agregado por preço), cruzamento é
+  também — e na prática, principalmente — DEFASAGEM DA PONTE: a queda de
+  quantidade num nível só vira `cancelar` quando a janela de reconciliação
+  expira, enquanto as inserções do lado oposto entram na hora. Nesse intervalo
+  o livro reconstruído exibe liquidez que o feed já tirou. Isso não é feed
+  ruim; é o preço de diferir o veredito execução×cancelamento.
+
+O livro aceita o estado nos dois casos — recusar derrubaria a ingestão — mas
+nunca em silêncio, e nunca confundindo um com o outro: ver `esta_cruzado`,
+`cruzamento_e_transitorio`, `n_cruzamentos_detectados`,
+`n_cruzamentos_por_reconciliacao` e `assinar_cruzamento`. Quem alimenta o
+livro com defasagem declara isso em `registrar_liquidez_nao_aplicada`; sem
+essa declaração todo cruzamento é tratado como corrupção, que é o padrão
+certo. A verificação é O(1) e roda só onde o topo pode mudar.
 
 Determinismo: a mesma sequência de chamadas produz sempre o mesmo estado e a
 mesma sequência de eventos. Nenhuma estrutura depende de ordem de iteração de
@@ -78,6 +98,10 @@ class ConfigLivroMBO:
 @dataclass(frozen=True, slots=True)
 class CruzamentoLivro:
     """Alerta de livro cruzado (ou travado): o melhor bid alcançou o melhor ask.
+
+    Emitido só quando o cruzamento é atribuído à FONTE — dado corrompido,
+    evento perdido, reordenação. Defasagem conhecida de quem alimenta o livro
+    (a ponte MBP) não produz alerta; ver `cruzamento_e_transitorio`.
 
     Não é um `OrdemEvento` de propósito: não é um fato do ciclo de vida de
     nenhuma ordem, é um diagnóstico sobre a INTEGRIDADE do livro. Misturá-lo no
@@ -148,9 +172,16 @@ class LivroMBO:
         self._heap_asks: list[int] = []
 
         # Integridade: livro cruzado. Ver `esta_cruzado`.
+        # `n_cruzamentos_detectados` conta só o que é problema da FONTE.
+        # `n_cruzamentos_por_reconciliacao` conta o que é defasagem conhecida
+        # de quem alimenta o livro — separado, porque somar os dois num
+        # contador só é o que fazia o número mentir em modo MBP.
         self.n_cruzamentos_detectados = 0
+        self.n_cruzamentos_por_reconciliacao = 0
         self._cruzado = False
+        self._cruzamento_contado = False
         self._ouvintes_cruzamento: list[Callable[[CruzamentoLivro], None]] = []
+        self._liquidez_nao_aplicada: Callable[[Side, int], bool] | None = None
 
     # ------------------------------------------------------------------
     # publicação
@@ -169,29 +200,65 @@ class LivroMBO:
     # integridade — livro cruzado
     # ------------------------------------------------------------------
     def assinar_cruzamento(self, callback: Callable[[CruzamentoLivro], None]) -> None:
-        """Registra ouvinte de alerta de livro cruzado. Opcional."""
+        """Registra ouvinte de alerta de livro cruzado. Opcional.
+
+        Só recebe cruzamento atribuído à FONTE. Cruzamento transitório de
+        reconciliação não é empurrado por aqui de propósito: alertar por algo
+        que a própria ponte vai desfazer sozinha em 300 ms transformaria o
+        canal de integridade em ruído proporcional ao volume do tape, que é
+        exatamente o que faz um alerta deixar de ser lido. Ele fica registrado
+        em `n_cruzamentos_por_reconciliacao`.
+        """
         self._ouvintes_cruzamento.append(callback)
+
+    def registrar_liquidez_nao_aplicada(self, consulta: Callable[[Side, int], bool]) -> None:
+        """Quem alimenta o livro declara que aplica as saídas com DEFASAGEM.
+
+        `consulta(side, price)` responde: "existe liquidez que a fonte já tirou
+        deste nível e que o livro ainda exibe porque o veredito não saiu?".
+
+        Existe por causa do `InferidorMBP`. Reconstruir MBO a partir de book
+        agregado obriga a DIFERIR a queda de quantidade: até a janela de
+        reconciliação expirar, aquela queda ainda pode ser explicada por um
+        negócio cuja impressão não chegou, e aplicá-la na hora como
+        cancelamento apagaria a distinção que o módulo inteiro existe para
+        fazer. Enquanto isso as inserções do lado oposto entram na hora — logo
+        o livro reconstruído fica cruzado POR CONSTRUÇÃO DA PONTE, sem que
+        nada de errado tenha acontecido com o feed.
+
+        Sem esta declaração, todo cruzamento é tratado como corrupção. Esse é
+        o padrão certo: feed MBO real não cruza, e um livro que não sabe de
+        defasagem nenhuma não deve inventar desculpa para o que vê.
+        """
+        self._liquidez_nao_aplicada = consulta
 
     @property
     def esta_cruzado(self) -> bool:
         """`True` quando o melhor bid alcançou o melhor ask. O(1) amortizado.
 
+        É o FATO GEOMÉTRICO, e só ele: o topo de um lado alcançou o do outro.
+        Não é sinônimo de "feed corrompido" — ver `cruzamento_e_transitorio`.
+
         POLÍTICA — sinalizar, nunca levantar exceção.
 
-        Num livro real de mercado casado isto não pode acontecer: significa dado
-        corrompido, evento perdido ou reordenação do feed. Ainda assim, levantar
-        exceção aqui seria a decisão errada: `adicionar`/`executar` rodam por
-        evento de book (a fonte mais volumosa do sistema) e um feed ruim de
-        madrugada derrubaria a aplicação inteira em vez de degradar. Pior:
-        estouraria dentro do laço de ingestão, deixando o livro num estado
-        parcialmente aplicado — exatamente a corrupção que se queria evitar.
+        Levantar exceção aqui seria a decisão errada: `adicionar`/`executar`
+        rodam por evento de book (a fonte mais volumosa do sistema) e um feed
+        ruim de madrugada derrubaria a aplicação inteira em vez de degradar.
+        Pior: estouraria dentro do laço de ingestão, deixando o livro num
+        estado parcialmente aplicado — exatamente a corrupção que se queria
+        evitar.
 
-        Então a política é: o livro ACEITA o estado cruzado (é o que o feed
-        disse), mas nunca em silêncio. Quem consome escolhe o rigor:
+        Então a política é: o livro ACEITA o estado cruzado, mas nunca em
+        silêncio. Quem consome escolhe o rigor:
 
-        * `esta_cruzado` — leitura barata de gate ("não operar com livro sujo");
-        * `n_cruzamentos_detectados` — contador de saúde da sessão;
-        * `assinar_cruzamento` — alerta empurrado, para quem quer reagir na hora.
+        * `esta_cruzado` — o fato geométrico;
+        * `cruzamento_e_transitorio` — se o cruzamento ATUAL é defasagem
+          conhecida da ponte MBP em vez de problema da fonte. O gate de
+          "não operar com livro sujo" é
+          `esta_cruzado and not cruzamento_e_transitorio`;
+        * `n_cruzamentos_detectados` — episódios atribuídos à FONTE;
+        * `n_cruzamentos_por_reconciliacao` — episódios de defasagem da ponte;
+        * `assinar_cruzamento` — alerta empurrado dos primeiros.
 
         Cruzado (`bid > ask`) e TRAVADO (`bid == ask`) contam igual: nos dois
         casos existe negócio possível que o feed não reportou, e o spread
@@ -208,30 +275,85 @@ class LivroMBO:
         ask = self.melhor_ask()
         return ask is not None and bid >= ask
 
+    @property
+    def cruzamento_e_transitorio(self) -> bool:
+        """O cruzamento ATUAL é defasagem da ponte, não problema da fonte?
+
+        A pergunta é feita a quem alimenta o livro
+        (`registrar_liquidez_nao_aplicada`) sobre os DOIS topos que estão se
+        cruzando: algum dos dois exibe liquidez que a fonte já tirou? Se sim, o
+        cruzamento é artefato da reconciliação e se desfaz sozinho quando o
+        veredito sair.
+
+        `False` quando não há defasagem declarada — inclusive quando não há
+        cruzamento nenhum.
+
+        A atribuição é feita pela CAUSA, não por um relógio. A alternativa
+        óbvia — "só conte se persistir além da janela de reconciliação" —
+        depende de calibrar um limiar contra outro limiar e erra na borda
+        exata (o cruzamento pode nascer no mesmo timestamp da queda que o
+        causou e durar a janela inteira). Perguntar pelo estado responde a
+        mesma coisa sem limiar nenhum, e se corrige sozinha: quando o veredito
+        sai, o `cancelar`/`executar` que o aplica chama esta verificação de
+        novo — se o livro AINDA estiver cruzado, já não há defasagem para
+        explicar e o episódio passa a contar como problema da fonte.
+        """
+        if self._liquidez_nao_aplicada is None:
+            return False
+        bid = self.melhor_bid()
+        if bid is None:
+            return False
+        ask = self.melhor_ask()
+        if ask is None or bid < ask:
+            return False
+        return self._liquidez_nao_aplicada(Side.BUY, bid) or self._liquidez_nao_aplicada(
+            Side.SELL, ask
+        )
+
     def _verificar_cruzamento(self, timestamp_ns: int) -> None:
         """Atualiza o latch de cruzamento. Chamado só onde o topo pode mudar.
 
-        O contador é por TRANSIÇÃO (não-cruzado -> cruzado), não por evento:
-        um feed que fica cruzado por mil mensagens é UMA anomalia, e contar mil
+        O contador é por EPISÓDIO (não-cruzado -> cruzado), não por evento: um
+        feed que fica cruzado por mil mensagens é UMA anomalia, e contar mil
         transformaria o contador em ruído proporcional ao volume.
+
+        Um episódio pode começar como defasagem da ponte e VIRAR problema da
+        fonte: enquanto houver liquidez não aplicada explicando o cruzamento,
+        ele conta em `n_cruzamentos_por_reconciliacao`; se o livro continuar
+        cruzado depois que a explicação sumir, o mesmo episódio passa a contar
+        em `n_cruzamentos_detectados` e alerta. É o caso do feed que corrompe
+        durante uma reconciliação, e ele não pode ficar escondido atrás da
+        desculpa da ponte.
         """
-        cruzado = self.esta_cruzado
-        if cruzado and not self._cruzado:
-            self.n_cruzamentos_detectados += 1
-            if self._ouvintes_cruzamento:
-                bid = self.melhor_bid()
-                ask = self.melhor_ask()
-                if bid is not None and ask is not None:
-                    alerta = CruzamentoLivro(
-                        timestamp_ns=timestamp_ns,
-                        symbol=self.symbol,
-                        melhor_bid=bid,
-                        melhor_ask=ask,
-                        n_cruzamentos=self.n_cruzamentos_detectados,
-                    )
-                    for ouvinte in self._ouvintes_cruzamento:
-                        ouvinte(alerta)
-        self._cruzado = cruzado
+        if not self.esta_cruzado:
+            self._cruzado = False
+            self._cruzamento_contado = False
+            return
+
+        if self.cruzamento_e_transitorio:
+            if not self._cruzado:
+                self.n_cruzamentos_por_reconciliacao += 1
+            self._cruzado = True
+            return
+
+        self._cruzado = True
+        if self._cruzamento_contado:
+            return
+        self._cruzamento_contado = True
+        self.n_cruzamentos_detectados += 1
+        if self._ouvintes_cruzamento:
+            bid = self.melhor_bid()
+            ask = self.melhor_ask()
+            if bid is not None and ask is not None:
+                alerta = CruzamentoLivro(
+                    timestamp_ns=timestamp_ns,
+                    symbol=self.symbol,
+                    melhor_bid=bid,
+                    melhor_ask=ask,
+                    n_cruzamentos=self.n_cruzamentos_detectados,
+                )
+                for ouvinte in self._ouvintes_cruzamento:
+                    ouvinte(alerta)
 
     # ------------------------------------------------------------------
     # estrutura interna
@@ -663,18 +785,39 @@ class LivroMBO:
         )
 
     def ultima_ordem_ativa(self, side: Side, price: int) -> Ordem | None:
-        """Ordem de MENOR prioridade viva no nível (fim da fila).
+        """Ordem de MENOR prioridade viva no nível (fim da fila). O(1) amortizado.
 
         É o alvo convencional de um cancelamento inferido a partir de dado
         agregado: sem identidade de ordem, cancelar a mais nova preserva a
         ordem mais antiga, que é a que carrega a informação de permanência.
+
+        NÃO é API de inspeção: é caminho quente. Cada cancelamento inferido
+        pelo `InferidorMBP` passa por aqui, e um cancelamento grande passa
+        várias vezes seguidas (`_resolver_como_cancelamento` chama em laço até
+        cobrir a queda). Como quem sai por aqui sai justamente do FIM da fila,
+        e a remoção do livro é preguiçosa, a versão anterior — `for ordem in
+        reversed(nivel.fila)` — revarria um sufixo de mortos que crescia a
+        cada cancelamento: O(n²) por nível ao longo da sessão. Medido no
+        `.mut/bench_r3.py` estágio 6 (a configuração real, MBP -> livro ->
+        detectores), era o segundo maior custo do pipeline inteiro.
+
+        A poda pelo fim é o espelho exato da que `executar` já fazia pela
+        frente, e é segura porque `ativa=False` é definitivo: `adicionar`
+        recusa `order_id` já ativo, `cancelar`/`expirar` nunca reativam, e o
+        aumento de quantidade em `modificar` mata a entrada antiga e APPENDA
+        uma nova. Uma entrada inativa na fila não volta a viver, então retirá-la
+        não perde informação nenhuma — o histórico do nível mora nos contadores
+        (`n_ordens_historicas`, `consumido_acumulado`), não na deque.
         """
         nivel = self._lado(side).get(price)
         if nivel is None:
             return None
-        for ordem in reversed(nivel.fila):
-            if ordem.ativa and ordem.qty_restante > 0:
-                return ordem
+        fila = nivel.fila
+        while fila:
+            ultima = fila[-1]
+            if ultima.ativa and ultima.qty_restante > 0:
+                return ultima
+            fila.pop()
         return None
 
     def qty_total(self, side: Side, price: int) -> int:

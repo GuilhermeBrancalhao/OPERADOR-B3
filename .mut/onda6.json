@@ -1,0 +1,86 @@
+[
+ {
+  "id": "Y1",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "DESFAZ O INDICE: a queda volta a varrer TODOS os buckets do preco e testa o lado dentro do laco (correcao preservada, custo de volta)",
+  "de": "        for buffer in self._em_ordem_de_chegada(\n            indice.get(chave_do_lado, ()), indice.get(chave_desconhecidos, ())\n        ):",
+  "para": "        _varredura = [\n            b\n            for _cod in (_COD_COMPRA, _COD_VENDA, _COD_DESCONHECIDO)\n            for b in indice.get((pendente.price, _cod), ())\n            if b.lado_passivo is None or b.lado_passivo is pendente.side\n        ]\n        for buffer in _varredura:"
+ },
+ {
+  "id": "Y2",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "DESFAZ O INDICE do outro lado: o negocio volta a varrer as quedas dos DOIS lados e filtra no laco",
+  "de": "            chaves = (buffer.chave,)\n            candidatos = indice.get(buffer.chave, ())",
+  "para": "            chaves = ((buffer.price, _COD_COMPRA), (buffer.price, _COD_VENDA))\n            candidatos = [\n                p for c in chaves for p in indice.get(c, ())\n                if p.side is buffer.lado_passivo\n            ]"
+ },
+ {
+  "id": "Y3",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "a chave do indice perde a perna do LADO: compra e venda no mesmo bucket",
+  "de": "        if side is Side.SELL:\n            return _COD_VENDA",
+  "para": "        if side is Side.SELL:\n            return _COD_COMPRA"
+ },
+ {
+  "id": "Y4",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "poda pelo FIM do bucket em vez do inicio: o prefixo morto fica e a varredura volta",
+  "de": "        while bucket and bucket[0].qty_restante <= 0:\n            bucket.popleft()",
+  "para": "        while bucket and bucket[-1].qty_restante <= 0:\n            bucket.pop()"
+ },
+ {
+  "id": "Y5",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "o bucket do lado fura a fila do bucket dos desconhecidos (ordem de chegada perdida)",
+  "de": "        return InferidorMBP._intercalar(primeiro, segundo)",
+  "para": "        return list(primeiro) + list(segundo)"
+ },
+ {
+  "id": "Y6",
+  "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+  "desc": "`tem_liquidez_nao_aplicada` sempre diz que sim: a ponte vira anistia geral",
+  "de": "        return excedente > 0",
+  "para": "        return excedente >= 0"
+ },
+ {
+  "id": "Y7",
+  "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+  "desc": "VOLTA A CONTAR CRUZAMENTO TRANSITORIO: o contador de feed corrompido conta a defasagem da ponte de novo",
+  "de": "        if self.cruzamento_e_transitorio:",
+  "para": "        if False and self.cruzamento_e_transitorio:"
+ },
+ {
+  "id": "Y8",
+  "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+  "desc": "o cruzamento transitorio deixa de ser registrado: anistia SILENCIOSA",
+  "de": "            if not self._cruzado:\n                self.n_cruzamentos_por_reconciliacao += 1",
+  "para": "            if not self._cruzado:\n                pass"
+ },
+ {
+  "id": "Y9",
+  "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+  "desc": "`cruzamento_e_transitorio` nao olha os topos que cruzam: qualquer defasagem serve de desculpa",
+  "de": "        return self._liquidez_nao_aplicada(Side.BUY, bid) or self._liquidez_nao_aplicada(\n            Side.SELL, ask\n        )",
+  "para": "        return True"
+ },
+ {
+  "id": "Y10",
+  "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+  "desc": "episodio que persiste depois da explicacao sumir nunca passa a acusar (latch preso)",
+  "de": "        self._cruzado = True\n        if self._cruzamento_contado:\n            return",
+  "para": "        if self._cruzado or self._cruzamento_contado:\n            self._cruzado = True\n            return\n        self._cruzado = True"
+ },
+ {
+  "id": "Y11",
+  "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+  "desc": "a poda pelo FIM da fila some: `ultima_ordem_ativa` volta a revarrer o sufixo de mortos",
+  "de": "        fila = nivel.fila\n        while fila:\n            ultima = fila[-1]\n            if ultima.ativa and ultima.qty_restante > 0:\n                return ultima\n            fila.pop()\n        return None",
+  "para": "        for ultima in reversed(nivel.fila):\n            if ultima.ativa and ultima.qty_restante > 0:\n                return ultima\n        return None"
+ },
+ {
+  "id": "Y12",
+  "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+  "desc": "a poda pelo fim tira a ordem VIVA junto com as mortas",
+  "de": "            if ultima.ativa and ultima.qty_restante > 0:\n                return ultima\n            fila.pop()",
+  "para": "            fila.pop()\n            if ultima.ativa and ultima.qty_restante > 0:\n                return ultima"
+ }
+]

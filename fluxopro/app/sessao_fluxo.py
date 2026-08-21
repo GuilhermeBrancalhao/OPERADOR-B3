@@ -24,20 +24,25 @@ uma UI desenha), sem ser caminho crítico do motor. O custo do duplo registro é
 um `dict.setdefault` + duas somas por trade.
 
 **2. Detecção vinda do livro inferido não pode sair com confiança 1.0.**
-`microestrutura/detectores.py` declara na docstring que "em feed agregado a
-confiança do evento de origem se propaga" — mas o código emite
-`confianca=1.0` fixo em todos os detectores. `DetectorEscora`,
-`DetectorIcebergPorRecarga` e `DetectorLiquidezFantasma` só rodam sobre o
-`LivroMBO`, que em fonte MT5/simulador é **inteiramente sintético** (montado
-pelo `InferidorMBP` a partir de book agregado). Publicar isso como fato
-apagaria a distinção observado × inferido, que é a virtude declarada do
-projeto.
+`DetectorEscora`, `DetectorIcebergPorRecarga` e `DetectorLiquidezFantasma` só
+rodam sobre o `LivroMBO`, que em fonte MT5/simulador é **inteiramente
+sintético** (montado pelo `InferidorMBP` a partir de book agregado). Publicar
+isso como fato apagaria a distinção observado × inferido, que é a virtude
+declarada do projeto.
 
-Como não é papel desta camada mutar `detectores.py` (e há revisão adversarial
-em curso nesses arquivos), a correção é aplicada **na fronteira**:
-`DeteccaoAnotada` carrega `fonte` e `confianca_efetiva = confianca_detector *
-confianca_do_OrdemEvento_gatilho`, e é isso que chega ao consumidor. Fica
-registrado como defeito a corrigir na origem — ver o texto de entrega.
+Isso já foi corrigido NA ORIGEM: `microestrutura/detectores.py` propaga a
+confiança da cadeia de `OrdemEvento` que sustenta cada detecção (política do
+mínimo — ver a docstring daquele módulo). O que esta camada faz é duas coisas:
+
+* **fiação** — `_ligar_livro` chama `detector.acompanhar(livro)` nos três
+  detectores de livro ANTES de assinar `_ao_ordem_evento`, para que o evento
+  gatilho já esteja na cadeia quando `verificar` roda. Sem essa linha o
+  mecanismo existe e fica inerte, e toda detecção sai `DESCONHECIDA`;
+* **fronteira** — `DeteccaoAnotada` carrega `fonte` e
+  `confianca_efetiva = min(confianca_do_detector, confianca_do_gatilho)`.
+  Era produto enquanto o detector emitia 1.0 fixo; com a propagação viva, o
+  produto cobraria a mesma incerteza duas vezes (0,55 × 0,55 = 0,3025). Ver
+  `SessaoFluxo._emitir_deteccao`.
 """
 
 from __future__ import annotations
@@ -88,11 +93,15 @@ from fluxopro.motor.sinais import EstagioSinal, MotorSinais, Sinal
 class DeteccaoAnotada:
     """`Deteccao` + a procedência do dado que a gerou.
 
-    `confianca_efetiva` é o produto da confiança do detector pela confiança do
-    `OrdemEvento` que o disparou (1.0 quando o gatilho foi o tape, que é
-    observado). É uma COTA SUPERIOR: uma escora exige três reposições
-    inferidas e aqui só entra a confiança da última. Melhor um teto honesto
-    que um 1.0 falso.
+    `confianca_efetiva` é o MÍNIMO entre a confiança que o detector propagou e
+    a do `OrdemEvento` gatilho (1.0 quando o gatilho foi o tape, que é
+    observado). Ver `SessaoFluxo._emitir_deteccao` para por que mínimo e não
+    produto.
+
+    Isto deixou de ser uma cota grosseira: `detectores.py` passou a propagar o
+    mínimo da cadeia inteira, então uma escora de três reposições inferidas sai
+    com a confiança da PIOR das três, não só com a da última. O `min` daqui
+    permanece como rede: cobre o caso de detector sem cadeia registrada.
     """
 
     deteccao: Deteccao
@@ -232,10 +241,7 @@ class SessaoFluxo:
             self.det_liquidez_fantasma = DetectorLiquidezFantasma(
                 self.grid.tick_size, cfg.liquidez_fantasma
             )
-            # Ouvinte direto em vez do barramento: `LivroMBO.assinar_evento`
-            # existe para isso e evita republicar no meio de um `publicar`.
-            self.livro.assinar_evento(self._ao_ordem_evento)
-            self.livro.assinar_cruzamento(self._ao_cruzamento)
+            self._ligar_livro(self.livro)
 
             barramento.assinar(Trade, self._ao_trade_micro, prioridade=PRIORIDADE_MICRO)
             barramento.assinar(
@@ -348,6 +354,35 @@ class SessaoFluxo:
         if self._ao_sinal is not None:
             self._ao_sinal(sinal)
 
+    def _ligar_livro(self, livro: LivroMBO) -> None:
+        """Assina o livro — na ORDEM que faz a procedência chegar a tempo.
+
+        Os três detectores de livro entram primeiro, via `acompanhar`, e só
+        depois entra `_ao_ordem_evento`. A ordem não é estética:
+        `LivroMBO._emitir` percorre `_ouvintes` na ordem de registro, então
+        quem assina antes vê o evento antes. Assinando primeiro, o evento
+        gatilho já está na cadeia de procedência do detector quando
+        `_ao_ordem_evento` chama `verificar` — que é a diferença entre a
+        detecção sair com o mínimo da cadeia inteira (N reposições inferidas)
+        e sair com `procedencia: DESCONHECIDA`.
+
+        Invertida a ordem, nada quebra e nenhum teste de fiação reclama: as
+        detecções apenas voltam a sair mudas sobre a própria origem. É
+        exatamente a classe de defeito que este projeto vem perseguindo, então
+        vale a linha de comentário e o teste que prende a ordem.
+        """
+        for detector in (
+            self.det_escora,
+            self.det_iceberg,
+            self.det_liquidez_fantasma,
+        ):
+            if detector is not None:
+                detector.acompanhar(livro)
+        # Ouvinte direto em vez do barramento: `LivroMBO.assinar_evento`
+        # existe para isso e evita republicar no meio de um `publicar`.
+        livro.assinar_evento(self._ao_ordem_evento)
+        livro.assinar_cruzamento(self._ao_cruzamento)
+
     def _ao_ordem_evento(self, evento: OrdemEvento) -> None:
         """Fecha o elo `InferidorMBP -> LivroMBO -> detectores de livro`.
 
@@ -407,10 +442,30 @@ class SessaoFluxo:
     def _emitir_deteccao(
         self, deteccao: Deteccao, fonte: FonteMicro, confianca_gatilho: float
     ) -> None:
+        """Publica a detecção com a confiança da fronteira. `min`, não produto.
+
+        Era produto quando `detectores.py` emitia `confianca=1.0` fixo: o
+        detector não sabia de onde vinha o dado, e a única confiança real era a
+        do `OrdemEvento` gatilho — multiplicar por 1,0 era só um jeito de
+        deixá-la passar.
+
+        Agora o detector propaga a cadeia inteira (mínimo dos `OrdemEvento` que
+        sustentam a detecção) e o gatilho JÁ ESTÁ nessa cadeia, porque
+        `_ligar_livro` assina os detectores antes deste método. Manter o
+        produto cobraria a mesma incerteza duas vezes: uma cadeia de 0,55
+        disparada por um evento de 0,55 sairia 0,3025 — pessimismo fabricado,
+        e a distinção entre "inferido" e "muito inferido" viraria ruído.
+
+        `min` é a mesma política do detector (t-norm de Gödel: idempotente e
+        monótona), e continua sendo uma COTA — não um relaxamento. Ele importa
+        no caso em que o detector NÃO tem cadeia (`procedencia: DESCONHECIDA`,
+        confiança no default `CONFIANCA_OBSERVADO`): aí é o gatilho que segura
+        o teto, e a fronteira segue impedindo que hipótese saia como fato.
+        """
         anotada = DeteccaoAnotada(
             deteccao=deteccao,
             fonte=fonte,
-            confianca_efetiva=deteccao.confianca * confianca_gatilho,
+            confianca_efetiva=min(deteccao.confianca, confianca_gatilho),
         )
         cont = self.contadores
         cont.n_deteccoes += 1
@@ -543,9 +598,11 @@ class SessaoFluxo:
             self.det_liquidez_fantasma = DetectorLiquidezFantasma(
                 self.grid.tick_size, cfg.liquidez_fantasma
             )
-            # Religar: o livro novo não conhece os ouvintes do antigo.
-            self.livro.assinar_evento(self._ao_ordem_evento)
-            self.livro.assinar_cruzamento(self._ao_cruzamento)
+            # Religar: o livro novo não conhece os ouvintes do antigo. Mesma
+            # função da montagem inicial, para que a ordem de assinatura (e
+            # portanto a procedência) não possa divergir entre os dois
+            # caminhos.
+            self._ligar_livro(self.livro)
 
         self._ultimo_estagio = None
 

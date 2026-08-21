@@ -160,6 +160,105 @@ Uma peça colapsa o pipeline em **98×**. Escalonamento do motor isolado ao dobr
 ### Para dinheiro real, além de tudo acima
 `MotorSinais` e `InferidorMBP` **não são importados por nenhum módulo de produção** — o produto ainda não foi montado. E nenhuma medição de qualidade de sinal tocou tape real: tudo saiu do `SimuladorWDO`, **cujas dinâmicas de preço podem ser invertidas sem quebrar um teste**.
 
+## RODADA 3 DA CRÍTICA: **NÃO PASSA** (`criticas/nucleo_r3.md`)
+
+### O maior gap era meu, e não era de código: o `.gitignore`
+O padrão `dados/` que **eu** escrevi não estava ancorado na raiz, então casava também com `fluxopro/dados/`. **Sete módulos de código-fonte (~1.400 linhas) ficaram fora do controle de versão** — incluindo `mt5.py` (a única fonte ao vivo) e `simulador.py` (a fonte de toda medição de qualidade já feita). Clonar o repositório e coletar os testes dava `ModuleNotFoundError`: **o repositório não reconstruía o produto**.
+
+O efeito colateral é pior que a perda: `git diff -- fluxopro/` era **estruturalmente cego** a esses arquivos. As provas de "árvore limpa" das rodadas 1 e 2 passavam por cima deles sem enxergar nada — a R2 mutou dez coisas em `fluxopro/dados/` e fechou com diff vazio. Uma mutação esquecida ali teria entrado no produto sem ninguém notar.
+
+**Corrigido e provado**: padrão ancorado (`/dados/`) com o porquê escrito no arquivo; clone limpo agora coleta **401 testes** (antes 277 com 5 erros de import).
+
+### O que a R3 confirmou como genuinamente corrigido
+13 das 20 mutações sobreviventes da R2 morrem (N24 derruba 19 testes; N26 derruba 31). As três dívidas antigas da R1 (M06/M09/M27b) fechadas. `MotorSinais` a 152.874 ev/s com custo por evento **plano** — o defeito quadrático dele acabou de verdade, e os números do builder conferem sem inflação. Replay reproduz o vivo (0 divergências em 4.000), determinismo idêntico em 500k eventos.
+
+### O que continua quebrado
+1. **`mt5.py:214-215` — o feed trava para sempre, em silêncio, acima de 1.000 negócios/s** (dez vezes abaixo da barra). O cursor é truncado ao segundo e a chamada devolve sempre os mesmos 1.000 primeiros. Reproduzido: 1.000 de 3.000 ticks entregues, resto perdido, **zero `FalhaCaptura`** — o detector de gap mede intervalo de *poll*, não de *dado*. E o mock do teste ignora os parâmetros, então nenhum teste podia pegar.
+2. **O quadrático mudou de casa pela terceira vez**, agora em `inferencia_mbp.py`. No regime real do WDO (preço cravado, spread 1 tick): 17.676 → 11.332 → 6.677 → 2.877 → **1.639 passos/s** conforme o tape acelera. A docstring publica uma tabela medida no **eixo errado** (largura do book) afirmando curva plana — a correção anterior otimizou e mediu o eixo que não domina o custo.
+3. **Pipeline com tudo ligado: 7.851 ev/s**, abaixo da barra.
+4. **Dois relógios na borda** (servidor × local): a mesma sequência vira `CANCEL` em vez de `TRADE`, e **uma gravação real fica irreproduzível** — no replay saem todos os books primeiro, todos os trades depois.
+5. **O teste do WINFUT é honesto, mas está no único ponto da curva em que o gate segura.** O crítico construiu a variante que **passa**: com 20.000 trades laterais entre o pico e o repique, o p95 do reservoir desce e o motor emite **480 sinais de compra**.
+6. **14 de 28 mutações novas sobreviveram (50%).** Pior módulo: `perfil_player.py` — inverter quem agrediu passa batido.
+7. **8 de 12 componentes não têm `iniciar_nova_sessao`**, incluindo o `MotorSinais`: o p95 do dia 2 é o do dia 1.
+
+## Onda 7 — correções da R3 (retomada após queda por limite de gasto)
+
+Os 3 builders da onda 7 caíram por limite de gasto mensal **no meio da escrita**: `detectores.py` (+516 linhas) e `mt5.py` (+365 linhas) ficaram em disco SEM os testes correspondentes — código de produção novo com suíte cega, que é o estado mais perigoso possível (1 teste da app quebrou por referenciar a API antiga; o resto passa sem exercitar nada do que mudou). O terceiro (inferência) morreu sem escrever nada.
+
+Retomada com 3 builders novos, cada um instruído a **auditar o parcial antes de confiar nele**:
+
+| Peça | Estado |
+|---|---|
+| **Detectores: completar parcial + retenção/confiança/dedup** | ✅ **26 → 67 testes, 21/21 mutações mortas, 7 pontas soltas no parcial + dupla penalização achada** |
+| **MT5: completar parcial + mock honesto + 3.000 ticks/s** | ✅ **10 → 36 testes, 14/14 mutações mortas, 3 defeitos NOVOS achados no parcial** |
+| **Inferência: quadrático (3ª casa) + `esta_cruzado`** | ✅ **12/12 mutações mortas, 15,7× → 1,00× no eixo certo, e achou a 4ª casa do quadrático** |
+
+### Detectores — o mecanismo de procedência estava INERTE no produto
+A auditoria do parcial achou 7 pontas soltas, e a mais grave redefine o que o parcial "entregou": **`acompanhar()` — a fiação inteira de propagação de confiança — tinha zero chamadores.** O mecanismo existia, era bonito, e estava desligado: toda detecção saía `procedencia: DESCONHECIDA`, confiança 1,0. O builder ligou em `sessao_fluxo._ligar_livro` e mediu o A/B no pipeline real: sem fiação, 0,85 publicado; com fiação, **0,55** — a fronteira sozinha publicava 0,85 para uma cadeia cujo elo mais fraco é 0,55.
+
+E ao ligar, apareceu uma **dupla penalização**: a fronteira multiplicava a confiança do gatilho, que agora já está NA cadeia — 0,55 × 0,55 = 0,30, pessimismo fabricado. Corrigida para `min` (o mesmo t-norm do detector).
+
+**Retenção, medida contra o HEAD real** (via `git show HEAD:` — não de memória):
+
+| detector | retidos ANTES | DEPOIS |
+|---|---|---|
+| Exaustão (200k trades) | **200.000** | **5** |
+| Escora (50k níveis) | 50.000 | 4.096 (teto FIFO) |
+| Iceberg (50k ordens) | 50.000 | 4.096 |
+| Fantasma | sem dedup — re-emitia | 4.096 |
+
+**Auto-mutação 21/21** — e uma sobrevivente era **gap real, não mutante equivalente**: neutralizar a checagem de âncora da Exaustão passava por todos os testes porque em todos a mudança de âncora roteava por outro gatilho antes. Um fuzz sobre 23.308 emissões achou **914 casos** em que não roteava (`progrediu` compara as *pontas* da janela — preço que vagueia no meio e volta move a âncora invisivelmente). Fixado com traço determinístico de 7 trades + controle, e registrado como `PENDENTE(sensibilidade)`.
+
+Aviso operacional registrado: um harness de mutação anterior morreu no meio e **deixou o arquivo mutado em disco** — o snapshot de bytes pegou; `git diff` sozinho não diria qual das 600 linhas era a mutação. Performance por detector: 3× a 50× a barra; a fiação custa +6,1% em DOM realista (passa a barra), +19,5% no simulador (viés documentado do simulador, não da mudança).
+
+### Inferência — o quadrático morto no eixo certo, e a 4ª casa encontrada
+**Estrutura**: índice por `(preço, lado_passivo)` — as duas pernas da reconciliação viraram a chave, e `_lado_casa` (15,7 milhões de chamadas na R3) foi **deletado**: o teste de lado dentro do laço era exatamente o custo. Bucket extra para agressor `UNKNOWN` (casa com os dois lados), consumo intercalado por ordem de chegada, `popleft` de prefixo morto — O(1) amortizado. Detalhe fino: código do lado como `int` na chave, porque `Enum.__hash__` é método Python hasheado 3×/negócio — medido, com enum a correção ficava 3× mais cara no caminho frio.
+
+**A curva, medida em candidatos percorridos por passo** (métrica determinística — tempo de parede varia 4× nesta máquina, e foi confiando nele que a rodada anterior se convenceu do eixo errado):
+
+| tape/s | ANTES | DEPOIS |
+|---|---|---|
+| 500 → 10.000 | 149 → 2.337 (**15,7×**) | **1,0 → 1,0 (1,00×)** |
+
+Tempo de parede a 10.000/s: 1.532 → **45.154 passos/s**. E a prova do erro anterior: **o eixo antigo (largura do book) mede 0,0 candidatos percorridos** antes e depois — o laço nem rodava ali; era isso que a tabela publicava como prova de velocidade.
+
+**`esta_cruzado` — atribuição pela causa, não por relógio.** O inferidor declara ao livro a defasagem de liquidez que ainda deve (`registrar_liquidez_nao_aplicada`), e a resposta sai da **diferença entre o que o livro exibe e o que o feed diz existir** — não de um contador paralelo que dessincroniza. `n_cruzamentos_detectados` volta a significar corrupção de fonte; `n_cruzamentos_por_reconciliacao` registra o transitório (não é anistia silenciosa); e o mecanismo **auto-corrige**: episódio que persiste depois da explicação sumir passa a acusar. Medido: feed limpo 5 → 0 acusações; feed corrompido 1 → 1, com alerta.
+
+**A 4ª casa do quadrático — encontrada por profiling, fora do escopo pedido**: `livro_mbo.py:ultima_ordem_ativa` varria `reversed(nivel.fila)` a cada cancelamento inferido, e o sufixo de ordens mortas crescia a cada um — O(n²) por nível ao longo do pregão, **segundo maior custo do pipeline inteiro**. Corrigido com poda pelo fim, espelho da que `executar` já fazia pela frente. R1: detectores. R2: motor. R3: inferência. Agora: livro. A forma é sempre a mesma — varredura que cresce com o estado acumulado.
+
+**Y4 sobreviveu na primeira rodada e o defeito era do TESTE**: a suíte de custo comparava só a *forma* da curva (razão entre taxas), então uma degradação que cresce com a duração da sessão passava. Teto absoluto + eixo de duração de pregão adicionados; o buraco está documentado para não voltar.
+
+Duas pendências medidas e apontadas: `.mut/bench_r3.py` estágio 6 **mede o eixo errado de novo** (o simulador espalha preços, a patologia não dispara — quem usar aquele número como portão repete o erro), e `Enum.__hash__` com ~1M de chamadas no estágio 6 (constante, não crescimento; cirurgia ampla demais para builders em paralelo).
+
+### MT5 — o parcial estava certo na estrutura e errado em 3 pontos que só teste honesto revela
+A estratégia de paginação do builder morto estava **correta** (cursor `(time_msc, ordem_no_ms)`, escalada de `count` na saturação, `FalhaCaptura` em cursor congelado). Mas ao escrever os testes contra um mock que honra `de`/`count`, apareceram 3 defeitos do próprio parcial:
+
+1. **O relógio único mentia com o tape parado.** O offset servidor-local era estimado pela *última* amostra — mas um tick só pode ser visto depois de acontecer, então toda amostra subestima. Mercado quieto ⇒ o mesmo tick velho re-observado a cada poll ⇒ relógio derivado **preso na hora do último negócio** (erro medido: −60s, crescendo 50ms/poll). Todo `BookSnapshot` sairia carimbado no passado, 200× fora da janela de reconciliação. O parcial matou "dois relógios" e criou "um relógio que mente". Corrigido com estimador de **máximo**: erro constante, limitado pela idade do tick mais fresco.
+2. **Partida a frio do epoch**: cursor zerado fazia `copy_ticks_from(sym, 0, ...)` devolver os primeiros ticks **do histórico, de anos atrás**, publicados como tape ao vivo. Agora o primeiro poll semeia o cursor com `symbol_info_tick`.
+3. **O(n²) sobre o segundo**: `date_from` em segundos re-recebe o segundo inteiro a cada poll e o laço varria tudo de novo — 36% de um núcleo a 10k ticks/s. Busca binária pelo ms do cursor: caiu a 12,4%, linear de novo.
+
+**Números**: ~80.000 ticks/s sustentados, **zero perda até 50.000 ticks/s** (5× a barra). Antes: 1.000 de 3.000 entregues e o feed morto para sempre. O mock novo respeita cursor e count — a mutação T08 sobreviveu na primeira rodada e o builder reescreveu o teste (congelando `time_ns`) até ela morrer, em vez de aceitar.
+
+Decisão registrada como não-goal: **sem detector de staleness de dado** — sem calendário de sessão, tape quieto e feed morto são indistinguíveis e o alarme seria falso-positivo o dia todo; a saturação de cursor cobre o modo de falha que a R3 mediu.
+
+## Onda 6 — o produto montado (e 5 defeitos que 3 auditorias não pegaram)
+
+`fluxopro/app/` + `scripts/operar.py` existem: `ConfigOperacao`, `SessaoFluxo`, `ConsoleFluxo` e um CLI que roda com simulador (sem corretora), replay ou MT5. **401 testes verdes.** O CLI foi executado de verdade e imprime sinais, detecções com evidência, e resumo de sessão.
+
+**Ordem de prioridade do barramento** declarada com teste de comportamento: perfil de sessão antes do motor (senão o motor lê o mercado de um trade atrás) e `InferidorMBP` antes do motor. Uma escolha fina: o motor recebe `VolumeProfile` de sessão e **não** `VolumeProfilePorPeriodo` — este último *troca o objeto* na virada de bucket, e o motor guardaria referência a um perfil morto, em silêncio.
+
+**Limitação real do `Barramento`, reportada em vez de escondida**: sete componentes assinam a si mesmos no construtor sem parâmetro de prioridade, então a montagem não consegue ordená-los — a única alavanca é a ordem de construção. Mitigado (tudo que a app assina usa prioridade explícita, com teste prendendo os 13 assinantes na ordem exata), não resolvido na raiz.
+
+### 5 defeitos que nenhuma das 3 auditorias pegou
+1. **`DetectorExaustao` vaza memória sem limite**: 200.000 trades entram, 200.000 ficam retidos — a 5.000 trades/s × 6h são ~108 milhões de objetos vivos. O `DetectorClipInstitucional`, 60 linhas abaixo, já fazia certo.
+2. **Detectores de livro publicam hipótese como fato**: emitem `confianca=1.0` fixo sobre um `LivroMBO` que em MT5/simulador é inteiramente sintético.
+3. **`esta_cruzado` não significa "feed corrompido" em modo MBP**: 14 cruzamentos em 1.200 eventos limpos, porque a ponte cruza o livro **por construção** enquanto reconcilia.
+4. **`DetectorExaustao` sem deduplicação**: dispara 2-3 vezes no mesmo preço em 30 ms.
+5. Virada de sessão: dois componentes carregam o dia anterior e a app **não tem como consertar**, porque assinam no construtor e o `Barramento` não expõe `desassinar`.
+
+### Sobre o benchmark: 8.853 ev/s, com diagnóstico
+12% abaixo da barra — mas o builder mediu a causa em vez de justificar: o `SimuladorWDO` regenera o fundo do book a cada tick, gerando **6,5× mais eventos de ordem** que um DOM real. Controle medido: com book estável, o mesmo pipeline faz **17.659 ev/s**; a microestrutura isolada faz 86.444 ordens/s. Qualquer benchmark futuro que use o simulador herda esse viés.
+
 ## Onda 5 — correções da rodada 2
 
 | Peça | Modelo | Estado |

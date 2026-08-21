@@ -8,16 +8,101 @@ rótulo. Nenhum detector afirma fato onde só há hipótese: em feed agregado
 
 Termos usados de propósito NEUTROS: `LiquidezFantasma` em vez de "spoofing"
 (acusação legal que este código não tem base para fazer).
+
+## Procedência: como a confiança do evento de origem se propaga
+
+Três detectores leem o `LivroMBO` (`DetectorEscora`,
+`DetectorIcebergPorRecarga`, `DetectorLiquidezFantasma`). Em fonte MT5 ou
+simulador esse livro é **inteiramente sintético** — reconstruído pelo
+`InferidorMBP` a partir de book agregado por preço. Uma detecção feita ali é
+hipótese sobre hipótese; publicá-la com `confianca=1.0` apagaria justamente a
+distinção observado × inferido que este pacote existe para preservar.
+
+Cada um desses três mantém um **livro-razão de procedência** alimentado pelos
+`OrdemEvento` que constroem a evidência que ele lê:
+
+    detector.acompanhar(livro)          # uma linha: assina o fluxo do livro
+    # ou, no caminho pull:
+    detector.verificar(..., evento=ev)  # o evento gatilho entra na cadeia
+
+**Política de combinação: MÍNIMO da cadeia (elo mais fraco).** Justificativa,
+porque a escolha não é neutra:
+
+* A detecção é uma **conjunção**, não uma disjunção: a escora só existe se
+  *cada uma* das N reposições aconteceu; o iceberg só existe se *cada* recarga
+  aconteceu. A confiança de uma conjunção nunca é maior que a do termo menos
+  confiável — o mínimo é a cota superior correta.
+* **Produto seria correto sob independência, e os eventos não são
+  independentes.** Todos saem do mesmo `InferidorMBP`, com a mesma janela de
+  reconciliação, sobre o mesmo dado agregado: os erros são fortemente
+  correlacionados. Multiplicar três hipóteses de 0,60 daria 0,216 e
+  transformaria detecção legítima em ruído — pessimismo fabricado, tão
+  inventado quanto o 1,0 que se quer eliminar.
+* **Média (ponderada ou não) deixa um elo certo MASCARAR um chute.** Quatro
+  eventos observados (1,0) e um inferido a 0,30 dariam 0,86 — e a detecção
+  inteira depende exatamente do elo de 0,30.
+* O mínimo é o t-norm de Gödel: **idempotente** (ver o mesmo fato inferido
+  duas vezes não o torna mais certo) e **monótono** (juntar um fato observado
+  nunca AUMENTA a confiança da cadeia). São precisamente as duas propriedades
+  que a promessa "nunca apresentar hipótese como fato" exige.
+
+`evidencia["procedencia"]` publica o rótulo (`OBSERVADA` / `INFERIDA` /
+`DESCONHECIDA`) e `evidencia["n_eventos_procedencia"]` o tamanho da cadeia,
+para que a decisão seja auditável e não precise de fé.
+
+**Cadeia vazia** (`DESCONHECIDA`): quem nunca chamou `acompanhar`/`observar`
+não deu ao detector nenhuma procedência, e o detector não inventa uma — cai
+no default do pacote (`CONFIANCA_OBSERVADO`, o mesmo default de
+`OrdemEvento`) e **declara na evidência** que não há cadeia. Ausência de
+informação declarada não é a mesma coisa que afirmação de fato; o 1,0 mudo
+que existia antes era. Nesse caso `evidencia["fonte"]` sai `None`, não
+`"MBO"`: publicar o rótulo de feed observado sobre uma cadeia que não existe
+seria cometer, no dicionário de auditoria, exatamente o erro que a confiança
+deixou de cometer.
+
+## Memória: todo estado retido tem teto
+
+Detector de fluxo roda a 5–10 mil eventos/s por 6 horas. Qualquer estrutura
+que cresça sem poda vira vazamento em minutos, não em dias:
+
+* janelas de trade são `deque(maxlen=...)` dimensionadas pela config
+  (`DetectorExaustao`, `DetectorClipInstitucional`) ou podadas por tempo
+  (`DetectorAbsorcao`);
+* os livros-razão de procedência/dedup dos detectores de livro são
+  `_MapaProcedencia`, um dicionário com **teto rígido** e despejo FIFO — nunca
+  o `set` que crescia um item por nível/ordem ao longo do pregão.
+
+## Virada de sessão
+
+Todo detector expõe `iniciar_nova_sessao()`, que devolve o objeto ao estado de
+recém-construído (janelas vazias, dedup rearmado, livro-razão de procedência
+zerado) **sem trocar a instância nem a config**. Sem isso um nível sinalizado
+no dia 1 fica mudo no dia 2 (`criticas/nucleo_r3.md` §C.4) e a janela de tape
+atravessa o fechamento colando o último trade de ontem no primeiro de hoje.
+
+`fluxopro/app/sessao_fluxo.py` opta por **recriar** os detectores na virada,
+porque lá a virada também troca o `LivroMBO` e a religação dos ouvintes é
+necessária de qualquer jeito. Os dois caminhos existem de propósito: quem
+segura a referência (uma UI, um backtest que compara dias) reseta no lugar;
+quem reconstrói a montagem inteira recria. O que **não** pode existir é
+detector sem nenhum dos dois — que era o estado anterior.
 """
 
 from __future__ import annotations
 
-from collections import deque
+from collections import OrderedDict, deque
+from collections.abc import Hashable
 from dataclasses import dataclass, field
 from enum import Enum, unique
+from itertools import islice
 
 from fluxopro.core.eventos import AgressorSide, Side, Trade
-from fluxopro.microestrutura.eventos_mbo import FonteMicro, Ordem
+from fluxopro.microestrutura.eventos_mbo import (
+    CONFIANCA_OBSERVADO,
+    FonteMicro,
+    Ordem,
+    OrdemEvento,
+)
 from fluxopro.microestrutura.livro_mbo import LivroMBO
 
 
@@ -40,6 +125,185 @@ class Deteccao:
     price: int | None
     confianca: float
     evidencia: dict[str, object] = field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Procedência — a cadeia de eventos que sustenta uma detecção de livro
+# ---------------------------------------------------------------------------
+
+#: Teto de chaves rastreadas por detector de livro. Dimensionado para cobrir
+#: com folga o que um pregão de WDO produz de níveis/ordens VIVOS ao mesmo
+#: tempo, mantendo o custo de memória em dezenas de KB. Não é limite de
+#: throughput: é limite de RETENÇÃO.
+LIMITE_CHAVES_RASTREADAS = 4096
+
+
+@dataclass(slots=True)
+class _Procedencia:
+    """Cadeia de evidência de UMA chave (um nível de preço, uma ordem).
+
+    `confianca` é o mínimo já visto e `fonte` degrada para `MBP_INFERIDO` no
+    primeiro evento inferido — as duas grandezas são monótonas para baixo, de
+    modo que a ordem de chegada dos eventos não muda o resultado.
+    """
+
+    confianca: float = CONFIANCA_OBSERVADO
+    fonte: FonteMicro = FonteMicro.MBO
+    n_eventos: int = 0
+    sinalizado: bool = False
+
+    def somar(self, confianca: float, fonte: FonteMicro) -> None:
+        if confianca < self.confianca:
+            self.confianca = confianca
+        if fonte is FonteMicro.MBP_INFERIDO:
+            self.fonte = FonteMicro.MBP_INFERIDO
+        self.n_eventos += 1
+
+    @property
+    def rotulo(self) -> str:
+        if self.n_eventos == 0:
+            return "DESCONHECIDA"
+        return "INFERIDA" if self.fonte is FonteMicro.MBP_INFERIDO else "OBSERVADA"
+
+    def como_evidencia(self) -> dict[str, object]:
+        """Publica a cadeia. Com cadeia vazia, `fonte` é `None` — nunca `MBO`.
+
+        `self.fonte` nasce `MBO` porque é o default de `OrdemEvento`, mas com
+        `n_eventos == 0` esse valor não foi observado: ninguém o registrou. Ele
+        é o default, e default publicado como medição é a mesma mentira que o
+        `confianca=1.0` fixo era.
+        """
+        return {
+            "procedencia": self.rotulo,
+            "n_eventos_procedencia": self.n_eventos,
+            "fonte": self.fonte.value if self.n_eventos else None,
+        }
+
+
+class _MapaProcedencia:
+    """Dicionário de procedência com TETO RÍGIDO e despejo FIFO.
+
+    Substitui o `set` de `_ja_sinalizado` que `DetectorEscora` e
+    `DetectorIcebergPorRecarga` usavam: aquele crescia um item por nível de
+    preço (ou por `order_id`) e nunca era podado — num pregão inteiro isso é um
+    item por ordem que passou pelo livro. Aqui a entrada mais antiga sai quando
+    o teto é alcançado.
+
+    Consequência aceita e documentada: uma chave despejada pode voltar a
+    emitir. É o preço de um teto, e a chave despejada é sempre a MENOS
+    recentemente ALIMENTADA — a que tem menos chance de ainda estar num
+    episódio vivo. Memória limitada vale mais que dedup perfeito sobre uma
+    chave que o mercado esqueceu.
+
+    "Alimentada", e não "lida", de propósito: só `de`/`somar` (ingestão de
+    evento, marcação de `sinalizado`) renovam a posição na fila; `obter` e
+    `rearmar` leem sem renovar. A atividade que mantém uma chave viva é o
+    mercado mexer nela, não o detector perguntar por ela — se a consulta
+    renovasse, um `verificar` chamado em laço sobre uma chave morta a
+    seguraria no mapa indefinidamente, e o teto deixaria de refletir o que
+    ainda está acontecendo.
+    """
+
+    __slots__ = ("_limite", "_itens")
+
+    def __init__(self, limite: int = LIMITE_CHAVES_RASTREADAS) -> None:
+        self._limite = max(1, int(limite))
+        self._itens: OrderedDict[Hashable, _Procedencia] = OrderedDict()
+
+    def __len__(self) -> int:
+        return len(self._itens)
+
+    @property
+    def limite(self) -> int:
+        return self._limite
+
+    def obter(self, chave: Hashable) -> _Procedencia | None:
+        return self._itens.get(chave)
+
+    def de(self, chave: Hashable) -> _Procedencia:
+        """Entrada da chave, criando-a (e podando o excedente) se preciso."""
+        item = self._itens.get(chave)
+        if item is None:
+            item = _Procedencia()
+            self._itens[chave] = item
+            while len(self._itens) > self._limite:
+                self._itens.popitem(last=False)
+        else:
+            self._itens.move_to_end(chave)
+        return item
+
+    def somar(self, chave: Hashable, confianca: float, fonte: FonteMicro) -> _Procedencia:
+        item = self.de(chave)
+        item.somar(confianca, fonte)
+        return item
+
+    def rearmar(self, chave: Hashable) -> None:
+        """Desmarca a chave sem apagar a cadeia de procedência."""
+        item = self._itens.get(chave)
+        if item is not None:
+            item.sinalizado = False
+
+    def limpar(self) -> None:
+        """Esquece tudo. Usado na virada de sessão, não no caminho quente."""
+        self._itens.clear()
+
+
+class _DetectorDeLivro:
+    """Base dos detectores que leem o `LivroMBO` — carrega a procedência.
+
+    Não é herança por economia de linhas: é o ponto único onde a política de
+    combinação (mínimo da cadeia, ver docstring do módulo) fica escrita, para
+    que os três detectores não possam divergir dela em silêncio.
+    """
+
+    __slots__ = ("_procedencia",)
+
+    def __init__(self, limite_chaves: int = LIMITE_CHAVES_RASTREADAS) -> None:
+        self._procedencia = _MapaProcedencia(limite_chaves)
+
+    # -- ingestão de procedência -------------------------------------------
+    def acompanhar(self, livro: LivroMBO) -> None:
+        """Assina o fluxo de eventos do livro. É a fiação recomendada.
+
+        A partir daqui toda detecção deste detector carrega a confiança dos
+        `OrdemEvento` que a sustentam, sem o chamador precisar repassar nada.
+        """
+        livro.assinar_evento(self.observar)
+
+    def observar(self, evento: OrdemEvento) -> None:
+        """Registra um `OrdemEvento` na cadeia da chave que ele afeta."""
+        self._procedencia.somar(self._chave_do_evento(evento), evento.confianca, evento.fonte)
+
+    def _chave_do_evento(self, evento: OrdemEvento) -> Hashable:  # pragma: no cover - abstrato
+        raise NotImplementedError
+
+    # -- ciclo de vida ------------------------------------------------------
+    def iniciar_nova_sessao(self) -> None:
+        """Esquece o pregão anterior: cadeia de procedência e dedup zerados.
+
+        Não desassina o livro — a assinatura feita por `acompanhar` é do
+        chamador. Quem troca o `LivroMBO` na virada (é o que a app faz, porque
+        `n_reposicoes` é acumulado "desde que o nível nasceu") tem de chamar
+        `acompanhar` no livro novo, exatamente como na montagem inicial.
+        """
+        self._procedencia.limpar()
+
+    # -- leitura ------------------------------------------------------------
+    @property
+    def n_chaves_rastreadas(self) -> int:
+        """Tamanho corrente do livro-razão. Existe para o teste de retenção."""
+        return len(self._procedencia)
+
+    def esta_sinalizado(self, chave: Hashable) -> bool:
+        """A chave já emitiu no episódio corrente? Leitura de dedup.
+
+        Substitui o `chave in detector._ja_sinalizado` que a API antiga
+        permitia — existe para que teste e UI leiam o dedup sem alcançar o
+        mapa privado, e para que a consulta NÃO renove a posição da chave na
+        fila de despejo (ver `_MapaProcedencia`).
+        """
+        item = self._procedencia.obter(chave)
+        return item is not None and item.sinalizado
 
 
 # ---------------------------------------------------------------------------
@@ -80,21 +344,34 @@ class DetectorAbsorcao:
     5–10 mil trades/s significava 25–50 mil elementos varridos cinco vezes por
     evento: custo total quadrático na taxa do mercado.
 
+    **Retenção.** A janela é podada por TEMPO, não por contagem: o teto é
+    `janela_ns × taxa do tape` (a 5 mil trades/s e 5 s de janela, ~25 mil
+    `_TradeJanela` — ~2 MB, constante, independente do tamanho do pregão). É um
+    teto de verdade, não crescimento: `tests/test_micro_detectores.py::
+    test_absorcao_retencao_limitada_pela_janela_de_tempo` processa 200.000
+    trades e mede.
+    PENDENTE(retenção): um tape com timestamp CONGELADO (feed defeituoso
+    repetindo o mesmo `time_msc`) não expira nada e a janela cresce com o
+    número de trades. Um teto duro por contagem mudaria a semântica dos
+    contadores de volume, então fica registrado em vez de mal-consertado —
+    `test_absorcao_janela_cresce_com_timestamp_congelado` documenta o limite.
+
     **Deduplicação (`_ja_sinalizado`).** Sem ela o detector re-emite o mesmo
     alerta a cada trade enquanto a condição durar — a crítica R1 mediu 98,2% dos
     trades sinalizados num tape lateral. Absorção é um EPISÓDIO (um player
     segurando uma faixa de preço), não um estado instantâneo, então vale um
-    alerta por episódio. Diferente de `DetectorEscora`/`DetectorIceberg`, que
-    usam um `set` que nunca é podado (vaza um item por nível ao longo do
-    pregão), aqui basta **um único slot** `(lado_absorvedor, preço_âncora)`:
-    a janela deslizante só consegue sustentar um episódio por vez.
+    alerta por episódio. Aqui basta **um único slot**
+    `(lado_absorvedor, preço_âncora)`: a janela deslizante só consegue sustentar
+    um episódio por vez. (`DetectorEscora`/`DetectorIcebergPorRecarga` precisam
+    de um mapa, porque a chave deles é o nível/a ordem — mas o mapa deles também
+    tem teto, ver `_MapaProcedencia`.)
 
     Regra de rearme — explícita, três gatilhos, todos significando "o episódio
     anterior acabou":
 
     1. **O preço deslocou** (`deslocamento > deslocamento_maximo_ticks`): a
        própria condição de absorção quebrou — quem estava segurando cedeu ou
-       saiu. É o análogo direto do `discard` que `DetectorEscora` faz quando
+       saiu. É o análogo direto do `rearmar` que `DetectorEscora` faz quando
        `n_reposicoes` cai abaixo do mínimo.
     2. **O preço-âncora saiu da faixa da janela**: o mercado migrou para outro
        preço; uma absorção no preço novo é um fenômeno novo, não a repetição
@@ -104,6 +381,10 @@ class DetectorAbsorcao:
 
     Só rearma por evento observado — nunca por decurso de tempo isolado —, de
     modo que um episódio contínuo produz exatamente um alerta.
+
+    Procedência: este detector lê o TAPE (`Trade`), que é impresso pela bolsa e
+    portanto observado. Não há cadeia a propagar — `CONFIANCA_OBSERVADO` aqui é
+    fato, não default preguiçoso.
 
     PENDENTE(config): `volume_minimo` é absoluto e, na escala real do WDO
     (~125 mil lotes numa janela de 5s a 5 mil trades/s), o default de 300 é
@@ -126,6 +407,21 @@ class DetectorAbsorcao:
         self._seq = 0
         # (lado que absorve, preço no momento do alerta) do episódio em curso.
         self._ja_sinalizado: tuple[Side, int] | None = None
+
+    def iniciar_nova_sessao(self) -> None:
+        """Zera a janela e o dedup. O `_seq` também: ele só ordena a janela."""
+        self._janela.clear()
+        self._max_precos.clear()
+        self._min_precos.clear()
+        self._volume_buy = 0
+        self._volume_sell = 0
+        self._seq = 0
+        self._ja_sinalizado = None
+
+    @property
+    def n_trades_retidos(self) -> int:
+        """Tamanho corrente da janela. Existe para o teste de retenção."""
+        return len(self._janela)
 
     def ao_trade(self, trade: Trade) -> Deteccao | None:
         if trade.symbol != self.symbol:
@@ -220,12 +516,14 @@ class DetectorAbsorcao:
             tipo=TipoDeteccao.ABSORCAO,
             side=side,
             price=trade.price,
-            confianca=1.0,
+            confianca=CONFIANCA_OBSERVADO,  # tape impresso: fato, não hipótese
             evidencia={
                 "volume_agressao_dominante": volume_dominante,
                 "volume_lado_oposto": volume_oposto,
                 "deslocamento_ticks": deslocamento,
                 "n_trades_janela": len(self._janela),
+                "procedencia": "OBSERVADA",
+                "fonte": FonteMicro.MBO.value,
             },
         )
 
@@ -238,37 +536,71 @@ class DetectorAbsorcao:
 @dataclass(frozen=True, slots=True)
 class ConfigEscora:
     n_reposicoes_minimo: int = 3
+    #: Teto de níveis de preço com estado retido (dedup + procedência).
+    max_niveis_rastreados: int = LIMITE_CHAVES_RASTREADAS
 
 
-class DetectorEscora:
-    """Nível cuja quantidade é reposta repetidamente após ser consumida."""
+class DetectorEscora(_DetectorDeLivro):
+    """Nível cuja quantidade é reposta repetidamente após ser consumida.
+
+    **Procedência.** As reposições que sustentam a detecção são `OrdemEvento`
+    do nível `(side, price)`; a confiança emitida é o MÍNIMO da cadeia daquele
+    nível (ver a docstring do módulo para por que mínimo e não produto/média).
+    Ligue com `acompanhar(livro)`, ou passe o evento gatilho em
+    `verificar(..., evento=ev)`.
+
+    **Retenção.** O `set` de `_ja_sinalizado` da versão anterior nunca era
+    podado: um item por nível de preço que já atingiu o limiar, para sempre
+    (defeito apontado pela crítica R2 e repetido na R3, seção C.4). Agora o
+    estado vive num `_MapaProcedencia` com teto `max_niveis_rastreados` e
+    despejo FIFO.
+    """
+
+    __slots__ = ("config",)
 
     def __init__(self, config: ConfigEscora | None = None) -> None:
-        self.config = config if config is not None else ConfigEscora()
-        self._ja_sinalizado: set[tuple[Side, int]] = set()
+        cfg = config if config is not None else ConfigEscora()
+        super().__init__(cfg.max_niveis_rastreados)
+        self.config = cfg
+
+    def _chave_do_evento(self, evento: OrdemEvento) -> Hashable:
+        return (evento.side, evento.price)
 
     def verificar(
-        self, livro: LivroMBO, side: Side, price: int, timestamp_ns: int
+        self,
+        livro: LivroMBO,
+        side: Side,
+        price: int,
+        timestamp_ns: int,
+        evento: OrdemEvento | None = None,
     ) -> Deteccao | None:
+        if evento is not None:
+            self.observar(evento)
         n_reposicoes = livro.n_reposicoes(side, price)
         chave = (side, price)
         if n_reposicoes < self.config.n_reposicoes_minimo:
-            self._ja_sinalizado.discard(chave)
+            # Rearma o nível sem apagar a cadeia de procedência: o contador de
+            # reposições do livro é cumulativo, então o que muda aqui é só o
+            # direito de emitir de novo.
+            self._procedencia.rearmar(chave)
             return None
-        if chave in self._ja_sinalizado:
+        proc = self._procedencia.de(chave)
+        if proc.sinalizado:
             return None  # já emitido para este nível — evita repetir a cada tick
-        self._ja_sinalizado.add(chave)
+        proc.sinalizado = True
+        evidencia: dict[str, object] = {
+            "n_reposicoes": n_reposicoes,
+            "qty_total_atual": livro.qty_total(side, price),
+        }
+        evidencia.update(proc.como_evidencia())
         return Deteccao(
             timestamp_ns=timestamp_ns,
             symbol=livro.symbol,
             tipo=TipoDeteccao.ESCORA,
             side=side,
             price=price,
-            confianca=1.0,
-            evidencia={
-                "n_reposicoes": n_reposicoes,
-                "qty_total_atual": livro.qty_total(side, price),
-            },
+            confianca=proc.confianca,
+            evidencia=evidencia,
         )
 
 
@@ -281,6 +613,8 @@ class DetectorEscora:
 class ConfigIceberg:
     razao_minima: float = 3.0
     volume_executado_minimo: int = 200
+    #: Teto de `order_id` com estado retido (dedup + procedência).
+    max_ordens_rastreadas: int = LIMITE_CHAVES_RASTREADAS
 
 
 # DELETADO: `DetectorIceberg` (proxy por nível de preço).
@@ -321,7 +655,7 @@ class ConfigIceberg:
 # limitação a ser disfarçada por proxy.
 
 
-class DetectorIcebergPorRecarga:
+class DetectorIcebergPorRecarga(_DetectorDeLivro):
     """Versão observada (feed MBO real): usa `Ordem.n_recargas`, não proxy.
 
     É o único detector de iceberg do módulo. A recarga observada — mesma
@@ -330,14 +664,36 @@ class DetectorIcebergPorRecarga:
     emissão mesmo quando a razão executado/exibido é alta: essa combinação é
     alcançável (ex.: `LivroMBO.modificar` para cima recria a `Ordem` com
     `qty_original` novo e `qty_executada` herdado) e NÃO é iceberg.
+
+    **Procedência.** A cadeia é por `order_id`: as recargas e execuções que
+    formam a razão. Confiança emitida = mínimo da cadeia daquela ordem.
+
+    **Retenção.** O `set[str]` de `order_id` sinalizados crescia um item por
+    ordem sinalizada e nunca era podado. Agora vive no `_MapaProcedencia` com
+    teto `max_ordens_rastreadas`.
     """
 
-    def __init__(self, config: ConfigIceberg | None = None) -> None:
-        self.config = config if config is not None else ConfigIceberg()
-        self._ja_sinalizado: set[str] = set()
+    __slots__ = ("config",)
 
-    def verificar(self, ordem: Ordem, symbol: str, timestamp_ns: int) -> Deteccao | None:
-        if ordem.order_id in self._ja_sinalizado:
+    def __init__(self, config: ConfigIceberg | None = None) -> None:
+        cfg = config if config is not None else ConfigIceberg()
+        super().__init__(cfg.max_ordens_rastreadas)
+        self.config = cfg
+
+    def _chave_do_evento(self, evento: OrdemEvento) -> Hashable:
+        return evento.order_id
+
+    def verificar(
+        self,
+        ordem: Ordem,
+        symbol: str,
+        timestamp_ns: int,
+        evento: OrdemEvento | None = None,
+    ) -> Deteccao | None:
+        if evento is not None:
+            self.observar(evento)
+        proc_existente = self._procedencia.obter(ordem.order_id)
+        if proc_existente is not None and proc_existente.sinalizado:
             return None
         volume_executado = ordem.qty_executada
         if volume_executado < self.config.volume_executado_minimo:
@@ -346,21 +702,24 @@ class DetectorIcebergPorRecarga:
         razao = volume_executado / base
         if ordem.n_recargas == 0 or razao < self.config.razao_minima:
             return None
-        self._ja_sinalizado.add(ordem.order_id)
+        proc = self._procedencia.de(ordem.order_id)
+        proc.sinalizado = True
+        evidencia: dict[str, object] = {
+            "order_id": ordem.order_id,
+            "qty_original": ordem.qty_original,
+            "qty_executada": volume_executado,
+            "n_recargas": ordem.n_recargas,
+            "razao": razao,
+        }
+        evidencia.update(proc.como_evidencia())
         return Deteccao(
             timestamp_ns=timestamp_ns,
             symbol=symbol,
             tipo=TipoDeteccao.ICEBERG,
             side=ordem.side,
             price=ordem.price,
-            confianca=1.0,
-            evidencia={
-                "order_id": ordem.order_id,
-                "qty_original": ordem.qty_original,
-                "qty_executada": volume_executado,
-                "n_recargas": ordem.n_recargas,
-                "razao": razao,
-            },
+            confianca=proc.confianca,
+            evidencia=evidencia,
         )
 
 
@@ -374,23 +733,53 @@ class ConfigLiquidezFantasma:
     qty_minima: int = 200
     vida_maxima_ns: int = 1_000_000_000
     ticks_proximidade: int = 2
+    #: Teto de `order_id` com estado retido (dedup + procedência).
+    max_ordens_rastreadas: int = LIMITE_CHAVES_RASTREADAS
 
 
-class DetectorLiquidezFantasma:
+class DetectorLiquidezFantasma(_DetectorDeLivro):
     """Quantidade grande que aparece e some sem executar, perto do preço.
 
     Termo deliberadamente neutro — o código só observa retirada rápida sem
     execução; não afirma intenção nem usa a palavra "spoof".
+
+    **Procedência.** A cadeia é por `order_id`: a entrada e a retirada da
+    ordem. Em livro inferido as duas são hipóteses do `InferidorMBP` (foi
+    cancelamento ou foi execução que não vimos?), e é exatamente essa dúvida
+    que a confiança emitida precisa carregar.
+
+    **Dedup por episódio.** Uma ordem some UMA vez; chamar `verificar` de novo
+    com a mesma `Ordem` (o objeto continua acessível pelo livro) re-emitia o
+    mesmo alerta. Agora o `order_id` é marcado — no mesmo mapa com teto que
+    guarda a procedência, sem estrutura nova e sem crescimento.
     """
 
-    def __init__(self, grid_tick_size: float, config: ConfigLiquidezFantasma | None = None) -> None:
-        self.config = config if config is not None else ConfigLiquidezFantasma()
+    __slots__ = ("config", "_tick_size")
+
+    def __init__(
+        self, grid_tick_size: float, config: ConfigLiquidezFantasma | None = None
+    ) -> None:
+        cfg = config if config is not None else ConfigLiquidezFantasma()
+        super().__init__(cfg.max_ordens_rastreadas)
+        self.config = cfg
         self._tick_size = grid_tick_size
 
+    def _chave_do_evento(self, evento: OrdemEvento) -> Hashable:
+        return evento.order_id
+
     def verificar(
-        self, ordem: Ordem, symbol: str, melhor_preco_oposto: int | None
+        self,
+        ordem: Ordem,
+        symbol: str,
+        melhor_preco_oposto: int | None,
+        evento: OrdemEvento | None = None,
     ) -> Deteccao | None:
+        if evento is not None:
+            self.observar(evento)
         cfg = self.config
+        proc_existente = self._procedencia.obter(ordem.order_id)
+        if proc_existente is not None and proc_existente.sinalizado:
+            return None
         if ordem.ativa or ordem.qty_executada > 0:
             return None  # se executou nada, não é o fenômeno buscado
         if ordem.qty_original < cfg.qty_minima:
@@ -404,18 +793,22 @@ class DetectorLiquidezFantasma:
             distancia_ticks = abs(ordem.price - melhor_preco_oposto)
             if distancia_ticks > cfg.ticks_proximidade:
                 return None
+        proc = self._procedencia.de(ordem.order_id)
+        proc.sinalizado = True
+        evidencia: dict[str, object] = {
+            "order_id": ordem.order_id,
+            "qty_original": ordem.qty_original,
+            "vida_ns": vida_ns,
+        }
+        evidencia.update(proc.como_evidencia())
         return Deteccao(
             timestamp_ns=ordem.timestamp_saida_ns,
             symbol=symbol,
             tipo=TipoDeteccao.LIQUIDEZ_FANTASMA,
             side=ordem.side,
             price=ordem.price,
-            confianca=1.0,
-            evidencia={
-                "order_id": ordem.order_id,
-                "qty_original": ordem.qty_original,
-                "vida_ns": vida_ns,
-            },
+            confianca=proc.confianca,
+            evidencia=evidencia,
         )
 
 
@@ -431,49 +824,135 @@ class ConfigExaustao:
 
 
 class DetectorExaustao:
-    """Agressão de um lado com volume decrescente e sem progresso de preço."""
+    """Agressão de um lado com volume decrescente e sem progresso de preço.
+
+    **Retenção — o defeito que este detector tinha.** `self._trades` era uma
+    `list` com `append` e NENHUMA poda, enquanto o corpo só lia
+    `self._trades[-n_trades_janela:]`. Todo trade do pregão ficava vivo para
+    que 5 fossem usados: 200.000 trades entravam, 200.000 ficavam retidos; a
+    5.000 trades/s por 6 horas isso é ~108 milhões de objetos `Trade`
+    referenciados por um detector que precisa de cinco. O padrão certo já
+    estava 60 linhas abaixo, em `DetectorClipInstitucional`. Agora a janela é
+    `deque(maxlen=n_trades_janela)` — dimensionada pela config, não por
+    constante — e o `deque` também elimina a cópia por fatia que o corpo fazia
+    a cada trade.
+
+    **Deduplicação por episódio** (mesmo padrão de `DetectorAbsorcao`, com a
+    regra de rearme escrita). Sem ela o detector disparava 2–3 vezes no mesmo
+    preço dentro de 30 ms: cada trade novo que mantivesse a condição gerava um
+    alerta. Exaustão é um EPISÓDIO (um lado agredindo cada vez menos sem tirar
+    o preço do lugar), então vale um alerta por episódio, guardado num único
+    slot `(lado, preço_âncora)` — a janela por contagem só sustenta um episódio
+    por vez.
+
+    Regra de rearme — três gatilhos, todos significando "o episódio acabou":
+
+    1. **A continuidade quebrou**: entrou na janela um trade de lado diferente
+       (ou `UNKNOWN`). A agressão de um lado só, que é a premissa do fenômeno,
+       deixou de existir.
+    2. **O preço progrediu dentro da janela** (`preco_fim != preco_inicio`): a
+       condição de exaustão quebrou — quem agredia conseguiu andar. É o análogo
+       exato do gatilho 1 de `DetectorAbsorcao` (o deslocamento).
+    3. **O lado ou o preço-âncora mudaram** em relação ao alerta anterior:
+       exaustão de outro lado, ou no preço vizinho, é fenômeno novo.
+
+    Diferente de `DetectorAbsorcao`, NÃO há gatilho de "janela esvaziou": esta
+    janela é por CONTAGEM, não por tempo, e nunca esvazia sozinha. O análogo é
+    o gatilho 1. Queda de volume abaixo do limiar NÃO rearma — mesmo critério
+    da absorção, onde volume abaixo do mínimo também não rearma: a condição
+    afrouxou, o episódio não terminou.
+
+    **Os três gatilhos são independentes — o 3 não é redundante.** Parece que
+    toda mudança de âncora teria de passar antes pelo gatilho 1 ou 2, e não
+    passa: `progrediu` compara as PONTAS da janela (`janela[0]` × `janela[-1]`),
+    não o intervalo. Um tape cujo preço sai de 5002, passa por 5003 no meio e
+    volta a 5002 nas pontas tem `progrediu == False`, e a âncora migra sem o
+    gatilho 2 ver. Medido: num fuzz de 23.308 emissões, 914 chegaram ao gatilho
+    3 com `_ja_sinalizado` não-nulo e âncora diferente. Preso por
+    `test_exaustao_gatilho_3_dispara_com_a_janela_de_pontas_iguais` (e pelo
+    controle logo abaixo dele) — a auto-mutação `if False:` na comparação de
+    âncora sobrevivia a todos os outros testes de exaustão.
+
+    PENDENTE(sensibilidade): que `progrediu` olhe só as pontas é uma escolha
+    herdada, não medida. Um critério por AMPLITUDE da janela (máximo − mínimo,
+    como o `deslocamento` de `DetectorAbsorcao`) seria mais fiel a "o preço
+    andou" e reduziria emissões em tape oscilante. Trocar muda a taxa de
+    detecção do produto, então fica registrado em vez de alterado de passagem.
+
+    Procedência: lê o TAPE, que é observado. `CONFIANCA_OBSERVADO` aqui é fato.
+    """
 
     def __init__(self, symbol: str, config: ConfigExaustao | None = None) -> None:
         self.symbol = symbol
         self.config = config if config is not None else ConfigExaustao()
-        self._trades: list[Trade] = []
+        # maxlen pela config: a janela retém exatamente o que lê, nunca o
+        # pregão inteiro.
+        self._trades: deque[Trade] = deque(maxlen=max(1, self.config.n_trades_janela))
+        # (lado agressor, preço-âncora) do episódio já alertado.
+        self._ja_sinalizado: tuple[Side, int] | None = None
+
+    def iniciar_nova_sessao(self) -> None:
+        """Zera a janela e o dedup — o dia 2 não continua o episódio do dia 1."""
+        self._trades.clear()
+        self._ja_sinalizado = None
+
+    @property
+    def n_trades_retidos(self) -> int:
+        """Tamanho corrente da janela. Existe para o teste de retenção."""
+        return len(self._trades)
 
     def ao_trade(self, trade: Trade) -> Deteccao | None:
         if trade.symbol != self.symbol:
             return None
         cfg = self.config
         self._trades.append(trade)
-        if len(self._trades) < cfg.n_trades_janela:
+        janela = self._trades
+        n = len(janela)
+        if n < cfg.n_trades_janela:
             return None
-        janela = self._trades[-cfg.n_trades_janela:]
         lado = janela[0].side_agressor
-        if any(t.side_agressor != lado for t in janela) or lado.name == "UNKNOWN":
+        if any(t.side_agressor is not lado for t in janela) or lado.name == "UNKNOWN":
+            # Gatilho 1: a agressão de lado único quebrou — episódio encerrado.
+            self._ja_sinalizado = None
             return None
 
         terco = max(1, cfg.n_trades_janela // 3)
-        vol_inicio = sum(t.qty for t in janela[:terco])
-        vol_fim = sum(t.qty for t in janela[-terco:])
+        vol_inicio = sum(t.qty for t in islice(janela, 0, terco))
+        vol_fim = sum(t.qty for t in islice(janela, n - terco, n))
         if vol_inicio == 0:
             return None
         queda = 1.0 - (vol_fim / vol_inicio)
         preco_inicio = janela[0].price
         preco_fim = janela[-1].price
         progrediu = preco_fim != preco_inicio
+        if progrediu:
+            # Gatilho 2: o preço andou — a condição de exaustão quebrou.
+            self._ja_sinalizado = None
+            return None
 
-        if queda >= cfg.queda_volume_minima and not progrediu:
+        if queda >= cfg.queda_volume_minima:
             side = Side.BUY if lado.name == "BUY" else Side.SELL
+            anterior = self._ja_sinalizado
+            if anterior is not None and (anterior[0] is not side or anterior[1] != preco_fim):
+                # Gatilho 3: lado ou preço-âncora novos — episódio novo.
+                anterior = None
+            if anterior is not None:
+                return None  # mesmo episódio, já alertado
+            self._ja_sinalizado = (side, preco_fim)
             return Deteccao(
                 timestamp_ns=trade.timestamp_ns,
                 symbol=self.symbol,
                 tipo=TipoDeteccao.EXAUSTAO,
                 side=side,
                 price=preco_fim,
-                confianca=1.0,
+                confianca=CONFIANCA_OBSERVADO,  # tape impresso: fato
                 evidencia={
                     "volume_inicio_janela": vol_inicio,
                     "volume_fim_janela": vol_fim,
                     "queda_relativa": queda,
                     "preco_moveu": progrediu,
+                    "procedencia": "OBSERVADA",
+                    "fonte": FonteMicro.MBO.value,
                 },
             )
         return None
@@ -492,13 +971,35 @@ class ConfigClipInstitucional:
 
 
 class DetectorClipInstitucional:
-    """Sequência de trades de tamanho e intervalo regulares (assinatura TWAP/POV)."""
+    """Sequência de trades de tamanho e intervalo regulares (assinatura TWAP/POV).
+
+    Retenção: `deque(maxlen=n_trades_minimo)` — o `pop(0)` da versão anterior
+    já mantinha a janela no tamanho certo (era daqui que o padrão correto
+    deveria ter sido copiado para `DetectorExaustao`), mas era O(n) por trade e
+    dependia de uma comparação de tamanho no corpo. O `maxlen` faz a poda ser
+    estrutural: não existe caminho de código que a esqueça.
+
+    Dedup: o flag `_ja_sinalizado_janela` já era por JANELA (um alerta por
+    conjunto de N trades) e continua com a mesma semântica — rearma exatamente
+    quando a janela estava cheia e um trade novo empurrou o mais antigo para
+    fora.
+    """
 
     def __init__(self, symbol: str, config: ConfigClipInstitucional | None = None) -> None:
         self.symbol = symbol
         self.config = config if config is not None else ConfigClipInstitucional()
-        self._trades: list[Trade] = []
+        self._trades: deque[Trade] = deque(maxlen=max(1, self.config.n_trades_minimo))
         self._ja_sinalizado_janela: bool = False
+
+    def iniciar_nova_sessao(self) -> None:
+        """Zera a janela e o dedup por janela."""
+        self._trades.clear()
+        self._ja_sinalizado_janela = False
+
+    @property
+    def n_trades_retidos(self) -> int:
+        """Tamanho corrente da janela. Existe para o teste de retenção."""
+        return len(self._trades)
 
     @staticmethod
     def _cv(valores: list[float]) -> float:
@@ -513,9 +1014,11 @@ class DetectorClipInstitucional:
         if trade.symbol != self.symbol:
             return None
         cfg = self.config
+        # A janela já estava cheia? Então este trade EXPULSA o mais antigo e a
+        # janela passa a ser outra — mesmo ponto em que o `pop(0)` rearmava.
+        estava_cheia = len(self._trades) == self._trades.maxlen
         self._trades.append(trade)
-        if len(self._trades) > cfg.n_trades_minimo:
-            self._trades.pop(0)
+        if estava_cheia:
             self._ja_sinalizado_janela = False
         if len(self._trades) < cfg.n_trades_minimo:
             return None
@@ -538,12 +1041,14 @@ class DetectorClipInstitucional:
                 tipo=TipoDeteccao.CLIP_INSTITUCIONAL,
                 side=Side.BUY if trade.side_agressor.name == "BUY" else Side.SELL,
                 price=trade.price,
-                confianca=1.0,
+                confianca=CONFIANCA_OBSERVADO,  # tape impresso: fato
                 evidencia={
                     "cv_quantidade": cv_qty,
                     "cv_intervalo": cv_intervalo,
                     "n_trades": len(self._trades),
                     "qty_media": sum(qtys) / len(qtys),
+                    "procedencia": "OBSERVADA",
+                    "fonte": FonteMicro.MBO.value,
                 },
             )
         return None

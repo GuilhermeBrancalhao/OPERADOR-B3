@@ -15,6 +15,8 @@ FIFO e LIFO, e foi exatamente por isso que a mutação sobreviveu.
 
 from __future__ import annotations
 
+from collections import deque
+
 import pytest
 
 from fluxopro.core.barramento import Barramento
@@ -964,6 +966,134 @@ def test_descruzar_e_cruzar_de_novo_conta_duas_vezes():
     assert livro.n_cruzamentos_detectados == 2
 
 
+# ---------------------------------------------------------------------------
+# TAREFA 2b — cruzamento TRANSITÓRIO DE RECONCILIAÇÃO não é feed corrompido
+# ---------------------------------------------------------------------------
+# `n_cruzamentos_detectados` sempre foi documentado como "dado corrompido,
+# evento perdido ou reordenação do feed". Em modo MBP isso era falso: o
+# `InferidorMBP` só aplica uma queda de quantidade quando a janela de
+# reconciliação expira, enquanto as inserções do lado oposto entram na hora, e
+# o livro reconstruído fica cruzado POR CONSTRUÇÃO DA PONTE. O contador estava
+# medindo a ponte e chamando aquilo de feed ruim.
+#
+# A atribuição agora é pela CAUSA: quem alimenta o livro declara, em
+# `registrar_liquidez_nao_aplicada`, se ainda deve liquidez ao nível que está
+# cruzando.
+
+
+def _com_defasagem(livro: LivroMBO, defasados: set[tuple[Side, int]]) -> None:
+    """Declara ao livro que estes níveis exibem liquidez que a fonte já tirou."""
+    livro.registrar_liquidez_nao_aplicada(lambda side, price: (side, price) in defasados)
+
+
+def test_sem_declaracao_de_defasagem_todo_cruzamento_e_da_fonte():
+    """O padrão tem de ser o rigoroso: feed MBO real não cruza.
+
+    Um livro que não sabe de defasagem nenhuma não pode inventar desculpa para
+    o que vê — senão a correção do modo MBP viraria uma anistia geral.
+    """
+    livro = _livro()
+    livro.adicionar("a1", Side.SELL, 10001, 10, 1_000)
+    livro.adicionar("b1", Side.BUY, 10005, 10, 2_000)
+
+    assert livro.esta_cruzado is True
+    assert livro.cruzamento_e_transitorio is False
+    assert livro.n_cruzamentos_detectados == 1
+    assert livro.n_cruzamentos_por_reconciliacao == 0
+
+
+def test_cruzamento_explicado_por_defasagem_nao_conta_como_feed_corrompido():
+    """O caso do modo MBP: o bid que cruza é liquidez que a fonte já tirou."""
+    livro = _livro()
+    alertas: list[CruzamentoLivro] = []
+    livro.assinar_cruzamento(alertas.append)
+    # a ponte ainda não aplicou a saída do bid 10005
+    _com_defasagem(livro, {(Side.BUY, 10005)})
+
+    livro.adicionar("b1", Side.BUY, 10005, 10, 1_000)
+    livro.adicionar("a1", Side.SELL, 10001, 10, 2_000)
+
+    assert livro.esta_cruzado is True, "o fato geométrico continua sendo verdade"
+    assert livro.cruzamento_e_transitorio is True
+    assert livro.n_cruzamentos_detectados == 0, "isto não é feed corrompido"
+    assert alertas == [], "alertar por algo que a ponte desfaz sozinha é ruído"
+    # mas NÃO em silêncio: fica registrado no contador que diz a verdade
+    assert livro.n_cruzamentos_por_reconciliacao == 1
+
+
+def test_defasagem_no_lado_errado_nao_explica_o_cruzamento():
+    """A pergunta é feita sobre os DOIS topos que cruzam, não sobre o livro todo.
+
+    Sem isto, qualquer defasagem em qualquer nível viraria desculpa para
+    qualquer cruzamento — que é a forma preguiçosa de fazer o contador mentir
+    na direção oposta.
+    """
+    livro = _livro()
+    _com_defasagem(livro, {(Side.BUY, 9000)})  # nível que não participa do cruzamento
+
+    livro.adicionar("a1", Side.SELL, 10001, 10, 1_000)
+    livro.adicionar("b1", Side.BUY, 10005, 10, 2_000)
+
+    assert livro.cruzamento_e_transitorio is False
+    assert livro.n_cruzamentos_detectados == 1
+    assert livro.n_cruzamentos_por_reconciliacao == 0
+
+
+def test_cruzamento_que_persiste_depois_da_explicacao_passa_a_acusar():
+    """Feed que corrompe DURANTE uma reconciliação não pode ficar escondido.
+
+    É o buraco óbvio de qualquer anistia: se a desculpa da ponte valesse para
+    o episódio inteiro, bastaria haver uma queda pendente para o livro parar
+    de acusar. Quando a explicação some e o livro continua cruzado, o mesmo
+    episódio passa a contar como problema da fonte.
+    """
+    livro = _livro()
+    alertas: list[CruzamentoLivro] = []
+    livro.assinar_cruzamento(alertas.append)
+    defasados = {(Side.BUY, 10005)}
+    _com_defasagem(livro, defasados)
+
+    livro.adicionar("b1", Side.BUY, 10005, 10, 1_000)
+    livro.adicionar("a1", Side.SELL, 10001, 10, 2_000)
+    assert livro.n_cruzamentos_detectados == 0
+    assert livro.n_cruzamentos_por_reconciliacao == 1
+
+    # a ponte resolveu o que devia — e o livro CONTINUA cruzado
+    defasados.clear()
+    livro.adicionar("a2", Side.SELL, 10001, 5, 3_000)
+
+    assert livro.esta_cruzado is True
+    assert livro.cruzamento_e_transitorio is False
+    assert livro.n_cruzamentos_detectados == 1
+    assert len(alertas) == 1
+    assert alertas[0].melhor_bid == 10005 and alertas[0].melhor_ask == 10001
+
+
+def test_livro_nao_cruzado_nunca_e_transitorio():
+    """`cruzamento_e_transitorio` fala do cruzamento ATUAL, não do livro."""
+    livro = _livro()
+    _com_defasagem(livro, {(Side.BUY, BID), (Side.SELL, ASK)})
+    assert livro.cruzamento_e_transitorio is False
+    livro.adicionar("b1", Side.BUY, BID, 10, 1_000)
+    livro.adicionar("a1", Side.SELL, ASK, 10, 1_100)
+    assert livro.esta_cruzado is False
+    assert livro.cruzamento_e_transitorio is False
+
+
+def test_episodio_transitorio_conta_uma_vez_so():
+    """O contador de reconciliação é por episódio, como o da fonte."""
+    livro = _livro()
+    _com_defasagem(livro, {(Side.BUY, 10005), (Side.BUY, 10006)})
+
+    livro.adicionar("b1", Side.BUY, 10005, 10, 1_000)
+    livro.adicionar("a1", Side.SELL, 10001, 10, 2_000)
+    livro.adicionar("b2", Side.BUY, 10005, 10, 2_100)
+    livro.adicionar("b3", Side.BUY, 10006, 10, 2_200)
+
+    assert livro.n_cruzamentos_por_reconciliacao == 1
+    assert livro.n_cruzamentos_detectados == 0
+
+
 def test_execucao_que_resolve_o_cruzamento_reabre_o_latch():
     livro = _livro()
     livro.adicionar("a1", Side.SELL, 10001, 10, 1_000)
@@ -1057,3 +1187,113 @@ def test_esta_cruzado_nao_varre_a_fila_do_nivel():
         assert livro.melhor_bid() == 5000
     finally:
         nivel.fila = fila_original
+
+
+# ---------------------------------------------------------------------------
+# `ultima_ordem_ativa` é CAMINHO QUENTE, não inspeção
+# ---------------------------------------------------------------------------
+# Todo cancelamento inferido pelo `InferidorMBP` sai por aqui, e sai pelo FIM
+# da fila. Com remoção preguiçosa só pela frente, o sufixo de mortos crescia a
+# cada cancelamento e era revarrido no cancelamento seguinte — O(n²) por nível
+# ao longo do pregão. É a MESMA forma do defeito quadrático que a auditoria
+# perseguiu em `detectores.py`, `motor/sinais.py` e `inferencia_mbp.py`.
+
+
+class _FilaContada(deque):
+    """Deque que conta quantos itens foram olhados por índice ou iteração."""
+
+    def __init__(self, itens, contador: list[int]) -> None:
+        super().__init__(itens)
+        self._contador = contador
+
+    def __getitem__(self, i):
+        self._contador[0] += 1
+        return super().__getitem__(i)
+
+    def __iter__(self):
+        contador = self._contador
+        for item in super().__iter__():
+            contador[0] += 1
+            yield item
+
+    def __reversed__(self):
+        contador = self._contador
+        for item in super().__reversed__():
+            contador[0] += 1
+            yield item
+
+
+def _custo_de_cancelar_do_fim(n_ordens: int) -> float:
+    """Itens da fila olhados por cancelamento, cancelando sempre o último vivo."""
+    livro = _livro()
+    ts = 1_000
+    for i in range(n_ordens):
+        ts += 1
+        livro.adicionar(f"o{i}", Side.BUY, BID, 10, ts)
+
+    nivel = livro._bids[BID]
+    contador = [0]
+    nivel.fila = _FilaContada(nivel.fila, contador)
+
+    for _ in range(n_ordens):
+        ts += 1
+        ordem = livro.ultima_ordem_ativa(Side.BUY, BID)
+        assert ordem is not None
+        livro.cancelar(ordem.order_id, ts)
+    assert livro.ultima_ordem_ativa(Side.BUY, BID) is None
+    return contador[0] / n_ordens
+
+
+def test_cancelar_pelo_fim_da_fila_e_O_1_amortizado():
+    """Esvaziar um nível pelo fim não pode custar o quadrado do tamanho dele.
+
+    Um nível de WDO acumula centenas de ordens sintéticas ao longo do dia. Se
+    este teste morrer, a leitura é: a fila voltou a ser podada por uma ponta
+    só, e cada cancelamento inferido passou a repassar por cima de todos os
+    cancelamentos anteriores daquele preço.
+    """
+    pequeno = _custo_de_cancelar_do_fim(50)
+    grande = _custo_de_cancelar_do_fim(800)
+
+    assert grande <= 2 * pequeno + 2, (
+        f"custo por cancelamento cresceu com o tamanho da fila: "
+        f"{pequeno:.1f} itens olhados com 50 ordens contra {grande:.1f} com 800. "
+        "O sufixo de ordens mortas voltou a ser revarrido."
+    )
+    assert grande <= 8, f"{grande:.1f} itens olhados por cancelamento — há varredura"
+
+
+def test_poda_pelo_fim_nao_perde_ordem_viva_nem_muda_a_prioridade():
+    """A poda é remoção de morto, não atalho: quem está vivo continua na fila."""
+    livro = _livro()
+    for i, oid in enumerate(("A", "B", "C")):
+        livro.adicionar(oid, Side.BUY, BID, 10, 1_000 + i)
+
+    assert livro.ultima_ordem_ativa(Side.BUY, BID).order_id == "C"
+    livro.cancelar("C", 2_000)
+    assert livro.ultima_ordem_ativa(Side.BUY, BID).order_id == "B"
+    # A e B seguem inteiros, na ordem, com a fila e o total coerentes
+    assert _ids_da_fila(livro) == ["A", "B"]
+    assert livro.qty_total(Side.BUY, BID) == 20
+    # e a frente continua sendo consumida por prioridade, não pela poda
+    eventos = livro.executar(Side.BUY, BID, 10, 3_000)
+    assert [e.order_id for e in eventos] == ["A"]
+    assert _ids_da_fila(livro) == ["B"]
+
+
+def test_poda_pelo_fim_respeita_ordem_que_perdeu_prioridade_por_aumento():
+    """`modificar` com aumento mata a entrada antiga e appenda outra.
+
+    A entrada antiga fica inativa NO MEIO da fila; a nova vai para o fim. A
+    poda pelo fim não pode confundir as duas nem devolver a morta.
+    """
+    livro = _livro()
+    livro.adicionar("A", Side.BUY, BID, 10, 1_000)
+    livro.adicionar("B", Side.BUY, BID, 10, 1_100)
+
+    livro.modificar("A", 30, 1_200)  # A perde prioridade e vai para o fim
+
+    ultima = livro.ultima_ordem_ativa(Side.BUY, BID)
+    assert ultima is not None
+    assert ultima.order_id == "A" and ultima.qty_restante == 30
+    assert _ids_da_fila(livro) == ["B", "A"]

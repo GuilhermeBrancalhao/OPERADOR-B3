@@ -1,0 +1,206 @@
+[
+ {
+  "id": "T01",
+  "estado": "MORTA",
+  "desc": "cursor NUNCA avanca dentro do lote (o defeito original: feed congela)",
+  "linha": "12 failed, 24 passed in 11.81s",
+  "testes": [
+   "test_tres_mil_ticks_no_mesmo_segundo_chegam_todos_em_ordem_e_sem_duplicata",
+   "test_dez_mil_ticks_no_mesmo_segundo_com_o_count_de_fabrica",
+   "test_cursor_impossibilitado_de_avancar_emite_falha_captura_explicita",
+   "test_saturacao_com_teto_baixo_nao_congela_o_feed_para_sempre",
+   "test_saturacao_nao_pode_rebobinar_o_cursor_para_tras",
+   "test_tick_exatamente_no_timestamp_do_cursor_nao_duplica_nem_some",
+   "test_virada_de_segundo_com_tape_denso_entrega_tudo_uma_vez_so",
+   "test_virada_de_segundo_de_verdade_entre_dois_segundos_densos",
+   "test_tick_invalido_na_ponta_do_lote_nao_prende_o_cursor",
+   "test_sequencia_intercalada_de_trades_e_books_sai_monotonica",
+   "test_adaptador_nao_republica_o_historico_na_partida",
+   "test_adaptador_mt5_publica_trades_via_fila_ate_thread_principal"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T02",
+  "estado": "MORTA",
+  "desc": "saturacao no teto NAO e reportada (volta a perder tape em silencio)",
+  "linha": "2 failed, 34 passed in 1.55s",
+  "testes": [
+   "test_cursor_impossibilitado_de_avancar_emite_falha_captura_explicita",
+   "test_saturacao_com_teto_baixo_nao_congela_o_feed_para_sempre"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T03",
+  "estado": "MORTA",
+  "desc": "deduplicacao por (time_msc, ordem) removida (irmaos do ms re-entregues)",
+  "linha": "11 failed, 25 passed in 1.80s",
+  "testes": [
+   "test_tres_mil_ticks_no_mesmo_segundo_chegam_todos_em_ordem_e_sem_duplicata",
+   "test_dez_mil_ticks_no_mesmo_segundo_com_o_count_de_fabrica",
+   "test_cursor_impossibilitado_de_avancar_emite_falha_captura_explicita",
+   "test_saturacao_com_teto_baixo_nao_congela_o_feed_para_sempre",
+   "test_saturacao_nao_pode_rebobinar_o_cursor_para_tras",
+   "test_tick_exatamente_no_timestamp_do_cursor_nao_duplica_nem_some",
+   "test_virada_de_segundo_com_tape_denso_entrega_tudo_uma_vez_so",
+   "test_virada_de_segundo_de_verdade_entre_dois_segundos_densos",
+   "test_sequencia_intercalada_de_trades_e_books_sai_monotonica",
+   "test_adaptador_nao_republica_o_historico_na_partida",
+   "test_adaptador_mt5_publica_trades_via_fila_ate_thread_principal"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T04",
+  "estado": "MORTA",
+  "desc": "os DOIS relogios de volta: BookSnapshot carimbado com o relogio LOCAL",
+  "linha": "2 failed, 34 passed in 1.52s",
+  "testes": [
+   "test_book_e_trade_da_mesma_rodada_de_poll_sao_ordenaveis",
+   "test_sequencia_intercalada_de_trades_e_books_sai_monotonica"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T05",
+  "estado": "MORTA",
+  "desc": "FalhaCaptura de cursor congelado suprimida (perda de dado em silencio)",
+  "linha": "2 failed, 34 passed in 1.63s",
+  "testes": [
+   "test_cursor_impossibilitado_de_avancar_emite_falha_captura_explicita",
+   "test_saturacao_com_teto_baixo_nao_congela_o_feed_para_sempre"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T06",
+  "estado": "MORTA",
+  "desc": "paginacao limitada a UMA pagina (nunca escala o count)",
+  "linha": "7 failed, 29 passed in 1.61s",
+  "testes": [
+   "test_tres_mil_ticks_no_mesmo_segundo_chegam_todos_em_ordem_e_sem_duplicata",
+   "test_paginacao_escala_o_count_no_mesmo_segundo_em_vez_de_avancar_o_de",
+   "test_lote_exatamente_cheio_dispara_nova_pagina_em_vez_de_seguir",
+   "test_cursor_impossibilitado_de_avancar_emite_falha_captura_explicita",
+   "test_saturacao_com_teto_baixo_nao_congela_o_feed_para_sempre",
+   "test_virada_de_segundo_com_tape_denso_entrega_tudo_uma_vez_so",
+   "test_virada_de_segundo_de_verdade_entre_dois_segundos_densos"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T07",
+  "estado": "MORTA",
+  "desc": "offset do relogio pela ULTIMA amostra (tick velho prende o relogio derivado)",
+  "linha": "1 failed, 35 passed in 1.28s",
+  "testes": [
+   "test_relogio_servidor_estima_offset_pelo_maximo_e_nao_pela_ultima_amostra"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T08",
+  "estado": "MORTA",
+  "desc": "piso monotonico do relogio derivado removido (eventos empatam/retrocedem)",
+  "linha": "3 failed, 33 passed in 1.26s",
+  "testes": [
+   "test_relogio_servidor_e_estritamente_monotonico",
+   "test_relogio_derivado_nunca_empata_com_o_ultimo_tick_observado",
+   "test_relogio_derivado_nunca_retrocede_apos_tick_mais_novo"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T09",
+  "estado": "MORTA",
+  "desc": "partida a frio do epoch (republica o historico como tape ao vivo)",
+  "linha": "1 failed, 35 passed in 1.24s",
+  "testes": [
+   "test_adaptador_nao_republica_o_historico_na_partida"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T10",
+  "estado": "MORTA",
+  "desc": "busca binaria vira upper bound (pula os irmaos do ms do cursor)",
+  "linha": "4 failed, 32 passed in 1.22s",
+  "testes": [
+   "test_tick_exatamente_no_timestamp_do_cursor_nao_duplica_nem_some",
+   "test_busca_binaria_do_primeiro_do_ms",
+   "test_adaptador_nao_republica_o_historico_na_partida",
+   "test_adaptador_mt5_publica_trades_via_fila_ate_thread_principal"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T11",
+  "estado": "MORTA",
+  "desc": "cursor congelado NAO pula o segundo (gira em falso para sempre)",
+  "linha": "2 failed, 34 passed in 1.18s",
+  "testes": [
+   "test_cursor_impossibilitado_de_avancar_emite_falha_captura_explicita",
+   "test_saturacao_com_teto_baixo_nao_congela_o_feed_para_sempre"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T12",
+  "estado": "MORTA",
+  "desc": "trade carimbado com o relogio LOCAL em vez do time_msc do servidor",
+  "linha": "3 failed, 33 passed in 1.20s",
+  "testes": [
+   "test_book_e_trade_da_mesma_rodada_de_poll_sao_ordenaveis",
+   "test_falha_captura_usa_o_mesmo_relogio_do_trade",
+   "test_sequencia_intercalada_de_trades_e_books_sai_monotonica"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T13",
+  "estado": "MORTA",
+  "desc": "ordem no ms fora do trade_id (negocios do mesmo ms com id igual)",
+  "linha": "8 failed, 28 passed in 1.22s",
+  "testes": [
+   "test_tres_mil_ticks_no_mesmo_segundo_chegam_todos_em_ordem_e_sem_duplicata",
+   "test_dez_mil_ticks_no_mesmo_segundo_com_o_count_de_fabrica",
+   "test_cursor_impossibilitado_de_avancar_emite_falha_captura_explicita",
+   "test_saturacao_com_teto_baixo_nao_congela_o_feed_para_sempre",
+   "test_saturacao_nao_pode_rebobinar_o_cursor_para_tras",
+   "test_tick_exatamente_no_timestamp_do_cursor_nao_duplica_nem_some",
+   "test_virada_de_segundo_com_tape_denso_entrega_tudo_uma_vez_so",
+   "test_virada_de_segundo_de_verdade_entre_dois_segundos_densos"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ },
+ {
+  "id": "T14",
+  "estado": "MORTA",
+  "desc": "cursor pedido pelo segundo SEGUINTE (pula o resto do segundo corrente)",
+  "linha": "6 failed, 30 passed in 1.44s",
+  "testes": [
+   "test_cursor_impossibilitado_de_avancar_emite_falha_captura_explicita",
+   "test_tick_exatamente_no_timestamp_do_cursor_nao_duplica_nem_some",
+   "test_virada_de_segundo_com_tape_denso_entrega_tudo_uma_vez_so",
+   "test_sequencia_intercalada_de_trades_e_books_sai_monotonica",
+   "test_adaptador_nao_republica_o_historico_na_partida",
+   "test_adaptador_mt5_publica_trades_via_fila_ate_thread_principal"
+  ],
+  "restaurado_byte_a_byte": true,
+  "sha256": "e52be97c4dacc8ef8f353774d508e57a8e6f952ad66bbc1440e41a43ffd95cc5"
+ }
+]

@@ -1,0 +1,132 @@
+[
+ {
+  "id": "Y1",
+  "estado": "MORTA",
+  "desc": "DESFAZ O INDICE: a queda volta a varrer TODOS os buckets do preco e testa o lado dentro do laco (correcao preservada, custo de volta)",
+  "resumo": "5 failed, 148 passed in 22.80s",
+  "testes": [
+   "test_custo_do_casamento_nao_cresce_com_a_duracao_do_pregao",
+   "test_custo_do_casamento_nao_cresce_com_a_taxa_do_tape",
+   "test_negocio_desconhecido_mais_antigo_paga_antes_do_conhecido_mais_novo"
+  ]
+ },
+ {
+  "id": "Y2",
+  "estado": "MORTA",
+  "desc": "DESFAZ O INDICE do outro lado: o negocio volta a varrer as quedas dos DOIS lados e filtra no laco",
+  "resumo": "4 failed, 149 passed in 26.11s",
+  "testes": [
+   "test_custo_do_casamento_nao_cresce_com_a_duracao_do_pregao",
+   "test_custo_do_casamento_nao_cresce_com_a_taxa_do_tape"
+  ]
+ },
+ {
+  "id": "Y3",
+  "estado": "MORTA",
+  "desc": "a chave do indice perde a perna do LADO: compra e venda no mesmo bucket",
+  "resumo": "4 failed, 149 passed in 2.87s",
+  "testes": [
+   "test_agressao_de_compra_explica_queda_no_ask_e_nao_no_bid",
+   "test_agressao_de_compra_sozinha_nao_explica_queda_no_bid",
+   "test_agressao_de_venda_explica_queda_no_bid_e_nao_no_ask",
+   "test_bucket_de_um_nivel_nao_guarda_o_lado_oposto"
+  ]
+ },
+ {
+  "id": "Y4",
+  "estado": "MORTA",
+  "desc": "poda pelo FIM do bucket em vez do inicio: o prefixo morto fica e a varredura volta",
+  "resumo": "2 failed, 151 passed in 9.14s",
+  "testes": [
+   "test_custo_do_casamento_nao_cresce_com_a_duracao_do_pregao",
+   "test_custo_do_casamento_nao_cresce_com_a_taxa_do_tape"
+  ]
+ },
+ {
+  "id": "Y5",
+  "estado": "MORTA",
+  "desc": "o bucket do lado fura a fila do bucket dos desconhecidos (ordem de chegada perdida)",
+  "resumo": "2 failed, 151 passed in 2.41s",
+  "testes": [
+   "test_negocio_desconhecido_mais_antigo_paga_antes_do_conhecido_mais_novo",
+   "test_queda_mais_antiga_paga_primeiro_mesmo_sendo_do_outro_lado"
+  ]
+ },
+ {
+  "id": "Y6",
+  "estado": "MORTA",
+  "desc": "`tem_liquidez_nao_aplicada` sempre diz que sim: a ponte vira anistia geral",
+  "resumo": "3 failed, 150 passed in 2.38s",
+  "testes": [
+   "test_feed_mbp_genuinamente_corrompido_continua_acusando",
+   "test_liquidez_nao_aplicada_e_a_diferenca_entre_o_feed_e_o_livro",
+   "test_queda_explicada_por_negocio_nao_deixa_defasagem"
+  ]
+ },
+ {
+  "id": "Y7",
+  "estado": "MORTA",
+  "desc": "VOLTA A CONTAR CRUZAMENTO TRANSITORIO: o contador de feed corrompido conta a defasagem da ponte de novo",
+  "resumo": "5 failed, 148 passed in 2.49s",
+  "testes": [
+   "test_cruzamento_explicado_por_defasagem_nao_conta_como_feed_corrompido",
+   "test_cruzamento_que_persiste_depois_da_explicacao_passa_a_acusar",
+   "test_episodio_transitorio_conta_uma_vez_so",
+   "test_feed_mbp_limpo_nao_acusa_um_unico_cruzamento_de_feed",
+   "test_o_livro_realmente_cruzou_e_isso_ficou_registrado"
+  ]
+ },
+ {
+  "id": "Y8",
+  "estado": "MORTA",
+  "desc": "o cruzamento transitorio deixa de ser registrado: anistia SILENCIOSA",
+  "resumo": "4 failed, 149 passed in 2.41s",
+  "testes": [
+   "test_cruzamento_explicado_por_defasagem_nao_conta_como_feed_corrompido",
+   "test_cruzamento_que_persiste_depois_da_explicacao_passa_a_acusar",
+   "test_episodio_transitorio_conta_uma_vez_so",
+   "test_o_livro_realmente_cruzou_e_isso_ficou_registrado"
+  ]
+ },
+ {
+  "id": "Y9",
+  "estado": "MORTA",
+  "desc": "`cruzamento_e_transitorio` nao olha os topos que cruzam: qualquer defasagem serve de desculpa",
+  "resumo": "3 failed, 150 passed in 2.40s",
+  "testes": [
+   "test_cruzamento_que_persiste_depois_da_explicacao_passa_a_acusar",
+   "test_defasagem_no_lado_errado_nao_explica_o_cruzamento",
+   "test_feed_mbp_genuinamente_corrompido_continua_acusando"
+  ]
+ },
+ {
+  "id": "Y10",
+  "estado": "MORTA",
+  "desc": "episodio que persiste depois da explicacao sumir nunca passa a acusar (latch preso)",
+  "resumo": "1 failed, 152 passed in 2.38s",
+  "testes": [
+   "test_cruzamento_que_persiste_depois_da_explicacao_passa_a_acusar"
+  ]
+ },
+ {
+  "id": "Y11",
+  "estado": "MORTA",
+  "desc": "a poda pelo FIM da fila some: `ultima_ordem_ativa` volta a revarrer o sufixo de mortos",
+  "resumo": "1 failed, 152 passed in 2.41s",
+  "testes": [
+   "test_cancelar_pelo_fim_da_fila_e_O_1_amortizado"
+  ]
+ },
+ {
+  "id": "Y12",
+  "estado": "MORTA",
+  "desc": "a poda pelo fim tira a ordem VIVA junto com as mortas",
+  "resumo": "4 failed, 149 passed in 2.02s",
+  "testes": [
+   "test_cancelamento_tira_do_fim_da_fila",
+   "test_poda_pelo_fim_nao_perde_ordem_viva_nem_muda_a_prioridade",
+   "test_poda_pelo_fim_respeita_ordem_que_perdeu_prioridade_por_aumento",
+   "test_quantidade_do_livro_sintetico_segue_o_book_agregado"
+  ]
+ }
+]

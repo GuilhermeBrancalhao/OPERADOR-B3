@@ -1,0 +1,100 @@
+[
+ {
+  "id": "T01",
+  "desc": "cursor NUNCA avanca dentro do lote (o defeito original: feed congela)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "            if time_msc > novo.time_msc:\n                novo = _CursorTick(time_msc, ordem + 1)\n            elif time_msc == novo.time_msc and ordem + 1 > novo.ordem_no_ms:\n                novo = _CursorTick(time_msc, ordem + 1)",
+  "para": "            if False:\n                novo = _CursorTick(time_msc, ordem + 1)\n            elif False:\n                novo = _CursorTick(time_msc, ordem + 1)"
+ },
+ {
+  "id": "T02",
+  "desc": "saturacao no teto NAO e reportada (volta a perder tape em silencio)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "            if count >= self._teto_ticks_por_chamada:\n                return ticks, True, count",
+  "para": "            if count >= self._teto_ticks_por_chamada:\n                return ticks, False, count"
+ },
+ {
+  "id": "T03",
+  "desc": "deduplicacao por (time_msc, ordem) removida (irmaos do ms re-entregues)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "            if time_msc == cursor.time_msc and ordem < cursor.ordem_no_ms:\n                continue",
+  "para": "            if False:\n                continue"
+ },
+ {
+  "id": "T04",
+  "desc": "os DOIS relogios de volta: BookSnapshot carimbado com o relogio LOCAL",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "            # DERIVADO: `market_book_get` não devolve tempo nenhum. Relógio\n            # do servidor, o mesmo dos trades — nunca `time.time_ns()`.\n            timestamp_ns=self._agora_ns(),",
+  "para": "            timestamp_ns=time.time_ns(),"
+ },
+ {
+  "id": "T05",
+  "desc": "FalhaCaptura de cursor congelado suprimida (perda de dado em silencio)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "        return trades, novo, falhas",
+  "para": "        return trades, novo, []"
+ },
+ {
+  "id": "T06",
+  "desc": "paginacao limitada a UMA pagina (nunca escala o count)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "            if len(ticks) < count:",
+  "para": "            if len(ticks) <= count:"
+ },
+ {
+  "id": "T07",
+  "desc": "offset do relogio pela ULTIMA amostra (tick velho prende o relogio derivado)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "        if not self._sincronizado or estimativa > self._offset_ns:",
+  "para": "        if True:"
+ },
+ {
+  "id": "T08",
+  "desc": "piso monotonico do relogio derivado removido (eventos empatam/retrocedem)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "        if derivado <= self._ultimo_ns:",
+  "para": "        if False:"
+ },
+ {
+  "id": "T09",
+  "desc": "partida a frio do epoch (republica o historico como tape ao vivo)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "        cursor = self._cursor_inicial(mt5)",
+  "para": "        cursor = _CursorTick()"
+ },
+ {
+  "id": "T10",
+  "desc": "busca binaria vira upper bound (pula os irmaos do ms do cursor)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "        if int(ticks[meio][\"time_msc\"]) < time_msc:",
+  "para": "        if int(ticks[meio][\"time_msc\"]) <= time_msc:"
+ },
+ {
+  "id": "T11",
+  "desc": "cursor congelado NAO pula o segundo (gira em falso para sempre)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "                novo = _CursorTick((de_s + 1) * 1000, 0)",
+  "para": "                novo = novo"
+ },
+ {
+  "id": "T12",
+  "desc": "trade carimbado com o relogio LOCAL em vez do time_msc do servidor",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "                    timestamp_ns=time_msc * 1_000_000,",
+  "para": "                    timestamp_ns=time.time_ns(),"
+ },
+ {
+  "id": "T13",
+  "desc": "ordem no ms fora do trade_id (negocios do mesmo ms com id igual)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "                    trade_id=f\"MT5-{time_msc}-{ordem}-{int(tick['flags'])}\",",
+  "para": "                    trade_id=f\"MT5-{time_msc}-{int(tick['flags'])}\","
+ },
+ {
+  "id": "T14",
+  "desc": "cursor pedido pelo segundo SEGUINTE (pula o resto do segundo corrente)",
+  "arquivo": "fluxopro/dados/mt5.py",
+  "de": "        return self.time_msc // 1000 if self.time_msc else 0",
+  "para": "        return self.time_msc // 1000 + 1 if self.time_msc else 0"
+ }
+]

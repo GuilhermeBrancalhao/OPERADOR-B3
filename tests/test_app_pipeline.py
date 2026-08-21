@@ -362,19 +362,40 @@ def test_virada_de_sessao_zera_a_calibracao_do_gate_winfut():
 
 
 def test_virada_de_sessao_reabre_os_niveis_ja_sinalizados():
-    """Segundo achado da §C.4: `DetectorEscora._ja_sinalizado` e
-    `DetectorIcebergPorRecarga._ja_sinalizado` nunca são limpos, então um
-    nível sinalizado no dia 1 ficaria MUDO para sempre."""
+    """Segundo achado da §C.4: o dedup de `DetectorEscora` /
+    `DetectorIcebergPorRecarga` nunca era limpo, então um nível sinalizado no
+    dia 1 ficaria MUDO para sempre.
+
+    A intenção do teste não mudou; a API do detector, sim. O `set` de
+    `_ja_sinalizado` — que crescia um item por nível ao longo do pregão e é o
+    defeito #4 dos cinco — virou o `_MapaProcedencia` com teto, lido por
+    `n_chaves_rastreadas` / `esta_sinalizado`. O que continua sendo verificado
+    é exatamente o mesmo: no dia 1 há nível sinalizado, e depois da virada não
+    há mais nenhum.
+    """
     montagem, coletor = rodar()
     escora = montagem.sessao.det_escora
     assert escora is not None
-    assert escora._ja_sinalizado, "o tape deveria ter sinalizado algum nivel"
+    assert escora.n_chaves_rastreadas > 0, "o tape deveria ter alimentado a escora"
+    de_escora = [
+        d for d in coletor.deteccoes if d.deteccao.tipo is TipoDeteccao.ESCORA
+    ]
+    assert de_escora, "o tape deveria ter sinalizado algum nivel"
+    assert escora.esta_sinalizado(
+        (de_escora[0].deteccao.side, de_escora[0].deteccao.price)
+    ), "o nivel que emitiu tinha de ficar marcado no dedup"
 
     montagem.sessao.iniciar_nova_sessao(timestamp_ns=10**18)
 
     nova = montagem.sessao.det_escora
     assert nova is not None and nova is not escora
-    assert nova._ja_sinalizado == set()
+    assert nova.n_chaves_rastreadas == 0
+    for d in de_escora:
+        assert not nova.esta_sinalizado((d.deteccao.side, d.deteccao.price))
+    # e o reset no lugar (sem trocar a instância) faz a mesma coisa — é o
+    # caminho de quem segura a referência do detector, ver `detectores.py`
+    escora.iniciar_nova_sessao()
+    assert escora.n_chaves_rastreadas == 0
 
 
 def test_virada_de_sessao_recria_o_livro_reconstruido():
@@ -502,3 +523,143 @@ def test_o_console_imprime_tudo_o_que_a_sessao_produziu():
     assert f"eventos processados : {c.n_eventos_bus}" in texto
     assert "SINAL" in texto and "DETECCAO" in texto
     assert "[OBS]" in texto and "[INF" in texto
+
+
+# ---------------------------------------------------------------------------
+# A fronteira observado × inferido, depois que a propagação passou a ser real
+# ---------------------------------------------------------------------------
+
+
+def test_a_deteccao_de_livro_carrega_a_cadeia_inteira_e_nao_so_o_gatilho():
+    """`SessaoFluxo._ligar_livro` tem de assinar os detectores ANTES de
+    `_ao_ordem_evento` — senão o mecanismo de procedência existe e fica inerte.
+
+    O modo de falha é silencioso: sem `acompanhar`, todo `verificar` roda sobre
+    cadeia vazia, as detecções saem `DESCONHECIDA` com confiança 1,0, e nenhum
+    outro teste desta suíte reclama (a fronteira ainda capa pelo gatilho). Por
+    isso a asserção é sobre a EVIDÊNCIA, não só sobre o número.
+    """
+    _, coletor = rodar()
+    de_livro = [d for d in coletor.deteccoes if d.deteccao.tipo in TIPOS_DE_LIVRO]
+    assert de_livro
+    for d in de_livro:
+        ev = d.deteccao.evidencia
+        assert ev["procedencia"] == "INFERIDA", ev
+        assert ev["fonte"] == FonteMicro.MBP_INFERIDO.value
+        assert ev["n_eventos_procedencia"] > 1, (
+            "cadeia de 0 ou 1 evento: os detectores nao estao seguindo o livro"
+        )
+        assert d.deteccao.confianca < CONFIANCA_OBSERVADO
+
+
+def test_a_fronteira_nao_penaliza_a_mesma_incerteza_duas_vezes():
+    """`confianca_efetiva` é `min`, não produto — com a cadeia viva, o produto
+    cobraria a incerteza do gatilho uma segunda vez.
+
+    Números explícitos: cadeia 0,55 e gatilho 0,55 (o gatilho JÁ está na
+    cadeia, porque `_ligar_livro` assina os detectores primeiro). `min` dá
+    0,55; produto daria 0,3025 e transformaria detecção legítima em ruído.
+    """
+    from fluxopro.microestrutura.detectores import Deteccao
+    from fluxopro.core.eventos import Side
+
+    montagem, coletor = rodar()
+    sessao = montagem.sessao
+    coletadas: list[DeteccaoAnotada] = []
+    sessao._ao_deteccao = coletadas.append
+
+    deteccao = Deteccao(
+        timestamp_ns=1,
+        symbol=sessao.config.symbol,
+        tipo=TipoDeteccao.ESCORA,
+        side=Side.BUY,
+        price=5000,
+        confianca=0.55,
+        evidencia={"procedencia": "INFERIDA"},
+    )
+    sessao._emitir_deteccao(deteccao, FonteMicro.MBP_INFERIDO, 0.55)
+    assert coletadas[-1].confianca_efetiva == 0.55
+    assert coletadas[-1].confianca_efetiva != pytest.approx(0.3025)
+
+    # e continua sendo COTA: detector sem cadeia (1,0) é capado pelo gatilho
+    sem_cadeia = Deteccao(
+        timestamp_ns=2,
+        symbol=sessao.config.symbol,
+        tipo=TipoDeteccao.ESCORA,
+        side=Side.BUY,
+        price=5000,
+        confianca=CONFIANCA_OBSERVADO,
+        evidencia={"procedencia": "DESCONHECIDA"},
+    )
+    sessao._emitir_deteccao(sem_cadeia, FonteMicro.MBP_INFERIDO, 0.4)
+    assert coletadas[-1].confianca_efetiva == 0.4
+    assert coletadas[-1].inferida
+
+    # detecção de tape: gatilho observado, nada é rebaixado
+    sessao._emitir_deteccao(sem_cadeia, FonteMicro.MBO, CONFIANCA_OBSERVADO)
+    assert coletadas[-1].confianca_efetiva == CONFIANCA_OBSERVADO
+    assert not coletadas[-1].inferida
+
+
+def test_a_confianca_publicada_e_a_do_detector_quando_a_cadeia_esta_viva():
+    """Fecha o ciclo: com a fiação certa, a fronteira não altera mais o número
+    do detector — a cadeia dele já contém o gatilho."""
+    _, coletor = rodar()
+    de_livro = [d for d in coletor.deteccoes if d.deteccao.tipo in TIPOS_DE_LIVRO]
+    assert de_livro
+    for d in de_livro:
+        assert d.confianca_efetiva == d.deteccao.confianca
+
+
+def _ordem_dos_ouvintes(sessao: SessaoFluxo) -> tuple[int, list[int]]:
+    """Posição de `_ao_ordem_evento` e dos `observar` dos 3 detectores."""
+    ouvintes = sessao.livro._ouvintes
+    pos_verificar = -1
+    pos_observar = []
+    for i, cb in enumerate(ouvintes):
+        dono = getattr(cb, "__self__", None)
+        nome = getattr(cb, "__name__", "")
+        if dono is sessao and nome == "_ao_ordem_evento":
+            pos_verificar = i
+        elif nome == "observar" and dono in (
+            sessao.det_escora, sessao.det_iceberg, sessao.det_liquidez_fantasma
+        ):
+            pos_observar.append(i)
+    return pos_verificar, pos_observar
+
+
+def test_os_detectores_assinam_o_livro_antes_do_verificar():
+    """A ordem de assinatura é contrato, não acaso — ver `_ligar_livro`.
+
+    `LivroMBO._emitir` percorre `_ouvintes` na ordem de registro. Se
+    `_ao_ordem_evento` for registrado antes dos detectores, cada `verificar`
+    roda sobre a cadeia SEM o evento gatilho: a procedência fica sempre um
+    evento atrasada.
+
+    Este teste é ESTRUTURAL de propósito, e a honestidade sobre o porquê
+    importa: a auto-mutação mostrou que inverter a ordem não quebra nenhuma
+    asserção de valor, porque a fronteira (`min(detector, gatilho)` em
+    `_emitir_deteccao`) resgata o número — o gatilho continua capando por fora.
+    Ou seja, o dano é invisível no resultado e real na evidência
+    (`n_eventos_procedencia`, e a confiança de uma ordem cujo primeiro evento
+    JÁ é o gatilho). Defeito que só aparece na evidência precisa de um teste
+    que olhe a estrutura.
+    """
+    montagem, _ = rodar()
+    sessao = montagem.sessao
+    pos_verificar, pos_observar = _ordem_dos_ouvintes(sessao)
+    assert len(pos_observar) == 3, f"os 3 detectores de livro tem de assinar: {pos_observar}"
+    assert pos_verificar > max(pos_observar), (
+        f"_ao_ordem_evento (pos {pos_verificar}) assinou antes de um detector "
+        f"(pos {pos_observar}): a cadeia fica um evento atrasada"
+    )
+
+
+def test_a_virada_de_sessao_religa_o_livro_na_mesma_ordem():
+    """A virada usa a MESMA função de fiação — senão os dois caminhos divergem
+    e o dia 2 roda com uma ordem de assinatura que ninguém testou."""
+    montagem, _ = rodar()
+    montagem.sessao.iniciar_nova_sessao(timestamp_ns=10**18)
+    pos_verificar, pos_observar = _ordem_dos_ouvintes(montagem.sessao)
+    assert len(pos_observar) == 3
+    assert pos_verificar > max(pos_observar)

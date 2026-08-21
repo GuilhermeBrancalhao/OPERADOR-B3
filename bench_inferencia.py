@@ -1,0 +1,263 @@
+"""Custo do `InferidorMBP` NO EIXO QUE DOMINA: a TAXA DO TAPE com preço cravado.
+
+Por que este arquivo existe
+===========================
+O mesmo defeito quadrático já mudou de casa três vezes (`detectores.py`,
+`motor/sinais.py`, `inferencia_mbp.py`). Na terceira, a correção anterior
+otimizou e MEDIU o eixo errado: variou a LARGURA do book (quantos níveis
+distintos existem pendurados) e publicou uma curva plana. A largura é
+justamente o eixo que um índice por preço já resolvia.
+
+O eixo que dói no WDO é o oposto da largura. O WDO negocia rotineiramente em
+2-3 preços com spread de 1 tick: tudo — quedas pendentes e negócios em buffer —
+cai no MESMO bucket. O que enche esse bucket é a TAXA DO TAPE, porque o bucket
+guarda o que couber em `janela_reconciliacao_ns` (300 ms de fábrica): a 10.000
+negócios/s são 3.000 itens vivos por bucket.
+
+Logo: mede-se a taxa, com preço concentrado, e olha-se o custo POR PASSO. Se o
+custo por passo sobe quando a taxa sobe, o custo total é O(n × taxa) — é o
+defeito quadrático, onde quer que ele esteja morando.
+
+A métrica principal é CONTAGEM, não relógio
+===========================================
+`visitas/passo` = quantos candidatos a reconciliação o módulo percorre para
+processar um passo. É determinística, não depende de máquina nem de carga, e é
+exatamente a grandeza que o defeito faz crescer. O tempo de parede entra junto
+(melhor de N repetições), mas como coadjuvante: numa máquina compartilhada ele
+varia 4x entre execuções idênticas, e foi confiando nele que a rodada anterior
+publicou uma curva plana no eixo errado.
+
+Uso:
+    python bench_inferencia.py                 # os 4 regimes + o eixo antigo
+    python bench_inferencia.py taxa            # só o eixo que dói
+    python bench_inferencia.py taxa OUTRO.py   # A/B contra outra implementação
+                                               # (ex.: a versão de `git show HEAD:`)
+"""
+
+from __future__ import annotations
+
+import gc
+import importlib.util
+import random
+import sys
+import time
+from collections import deque
+
+from fluxopro.core.eventos import AgressorSide, BookLevel, BookSnapshot, Trade
+from fluxopro.microestrutura.livro_mbo import LivroMBO
+
+SYMBOL = "WDOFUT"
+BASE = 1_700_000_000_000_000_000
+BID = 10_000
+ASK = 10_001  # spread de 1 tick — o regime real do WDO
+BARRA = 10_000  # eventos/s que o produto precisa sustentar
+REPETICOES = 3
+
+TAXAS = (500, 1_000, 2_000, 5_000, 10_000)
+
+
+# ----------------------------------------------------------------------
+# instrumentação — conta os candidatos percorridos, sem tocar em produção
+# ----------------------------------------------------------------------
+class _DequeContada(deque):
+    """Bucket do índice que conta cada item percorrido."""
+
+    def __init__(self, contador: list[int]) -> None:
+        super().__init__()
+        self._contador = contador
+
+    def __iter__(self):
+        contador = self._contador
+        for item in super().__iter__():
+            contador[0] += 1
+            yield item
+
+
+class _IndiceContado(dict):
+    """Índice que cria buckets contados. `setdefault` é o único ponto de criação."""
+
+    def __init__(self, contador: list[int]) -> None:
+        super().__init__()
+        self._contador = contador
+
+    def setdefault(self, chave, _padrao):  # noqa: D102 - contrato de dict
+        bucket = dict.get(self, chave)
+        if bucket is None:
+            bucket = _DequeContada(self._contador)
+            self[chave] = bucket
+        return bucket
+
+
+def _nomes_dos_indices(inf) -> tuple[str, str]:
+    """Aceita a nomenclatura nova (`_por_nivel`) e a antiga (`_por_preco`)."""
+    if hasattr(inf, "_trades_por_nivel"):
+        return "_trades_por_nivel", "_pendentes_por_nivel"
+    return "_trades_por_preco", "_pendentes_por_preco"
+
+
+def _instrumentar(inf) -> list[int]:
+    contador = [0]
+    for nome in _nomes_dos_indices(inf):
+        assert not getattr(inf, nome), "instrumentar só faz sentido no índice vazio"
+        setattr(inf, nome, _IndiceContado(contador))
+    return contador
+
+
+def _carregar_inferidor(caminho: str | None):
+    """Classe `InferidorMBP` — a do pacote, ou a de um arquivo alternativo."""
+    if caminho is None:
+        from fluxopro.microestrutura.inferencia_mbp import InferidorMBP
+
+        return InferidorMBP
+    spec = importlib.util.spec_from_file_location("_inferencia_alternativa", caminho)
+    assert spec is not None and spec.loader is not None, caminho
+    modulo = importlib.util.module_from_spec(spec)
+    # `@dataclass(slots=True)` recria a classe e procura o módulo dela em
+    # `sys.modules`; sem registrar antes, o exec_module estoura.
+    sys.modules[spec.name] = modulo
+    spec.loader.exec_module(modulo)
+    return modulo.InferidorMBP
+
+
+# ----------------------------------------------------------------------
+# O EIXO QUE DOMINA — taxa do tape, preço cravado, spread de 1 tick
+# ----------------------------------------------------------------------
+def _uma_passada(Inferidor, taxa: int, n_passos: int, escolher_agressor, contar: bool):
+    """Um passo = uma leitura de book (bid caindo) + um negócio no MESMO preço."""
+    livro = LivroMBO(SYMBOL)
+    inf = Inferidor(SYMBOL, livro)
+    contador = _instrumentar(inf) if contar else [0]
+    ts = BASE
+    intervalo = max(1, int(1e9 / taxa))
+    rng = random.Random(4)
+    qty = 10**9
+    inf.ao_snapshot(
+        BookSnapshot(ts, SYMBOL, (BookLevel(BID, qty, 1),), (BookLevel(ASK, qty, 1),))
+    )
+    gc.collect()
+    t0 = time.perf_counter()
+    for i in range(n_passos):
+        ts += intervalo
+        qty -= 2
+        inf.ao_snapshot(
+            BookSnapshot(ts, SYMBOL, (BookLevel(BID, qty, 1),), (BookLevel(ASK, 10**9, 1),))
+        )
+        inf.ao_trade(Trade(ts, SYMBOL, BID, 1, escolher_agressor(rng), f"t{i}"))
+    dt = time.perf_counter() - t0
+    return dt, contador[0], len(inf._pendentes), len(inf._trades)
+
+
+def _regime(Inferidor, rotulo: str, sub: str, n_passos: int, escolher_agressor) -> None:
+    print(f"\n{rotulo}")
+    print(f"  {sub}")
+    print(
+        f"\n{'tape/s':>9} {'visitas/passo':>14} {'fator':>7} "
+        f"{'us/passo':>10} {'passos/s':>11} {'pend':>7} {'buf':>7}  veredito"
+    )
+    base: float | None = None
+    for taxa in TAXAS:
+        _, visitas, pend, buf = _uma_passada(Inferidor, taxa, n_passos, escolher_agressor, True)
+        melhor = min(
+            _uma_passada(Inferidor, taxa, n_passos, escolher_agressor, False)[0]
+            for _ in range(REPETICOES)
+        )
+        por_passo = visitas / n_passos
+        fator = "" if base is None else f"{por_passo / base:.2f}x"
+        if base is None:
+            base = max(por_passo, 1e-9)
+        passos_s = n_passos / melhor
+        ok = "PASSA" if passos_s >= BARRA else "*** NAO PASSA ***"
+        print(
+            f"{taxa:>9,} {por_passo:>14.1f} {fator:>7} {1e6 / passos_s:>10.2f} "
+            f"{passos_s:>11,.0f} {pend:>7,} {buf:>7,}  {ok}"
+        )
+
+
+def eixo_taxa(Inferidor, n_passos: int = 8_000) -> None:
+    _regime(
+        Inferidor,
+        "1. TAPE 50/50 NO MESMO PREÇO (metade casa, metade vira buffer)",
+        "regime real do WDO: bid caindo no topo, spread de 1 tick, preço cravado",
+        n_passos,
+        lambda rng: AgressorSide.SELL if rng.random() < 0.5 else AgressorSide.BUY,
+    )
+    _regime(
+        Inferidor,
+        "2. TAPE INTEIRO DO LADO QUE NÃO CASA (agressor de COMPRA, queda no BID)",
+        "pior caso do casamento: nenhum negócio pode explicar nenhuma queda",
+        n_passos,
+        lambda rng: AgressorSide.BUY,
+    )
+    _regime(
+        Inferidor,
+        "3. TAPE INTEIRO DO LADO QUE CASA (agressor de VENDA, queda no BID)",
+        "todo negócio casa, mas a queda é maior que o negócio: sobra pendência",
+        n_passos,
+        lambda rng: AgressorSide.SELL,
+    )
+    _regime(
+        Inferidor,
+        "4. AGRESSOR DESCONHECIDO (leilão / RLP) — candidato dos DOIS lados",
+        "o caso em que a perna do lado não pode ser resolvida pela chave do índice",
+        n_passos,
+        lambda rng: AgressorSide.UNKNOWN,
+    )
+
+
+# ----------------------------------------------------------------------
+# O EIXO ANTIGO — largura do book, para contraste
+# ----------------------------------------------------------------------
+def eixo_largura(Inferidor, n_negocios: int = 20_000) -> None:
+    """A curva que a docstring antiga publicava. Plana — e é o eixo errado.
+
+    Mantida aqui para que a comparação seja explícita: a largura do book NÃO é
+    o que faz o custo explodir, e medi-la não prova nada sobre a barra.
+    """
+    print("\n5. EIXO ANTIGO — LARGURA DO BOOK (níveis distintos pendurados)")
+    print("  negócios que não casam com nada, variando só quantos preços existem")
+    print(f"\n{'niveis':>9} {'visitas/neg':>12} {'us/neg':>10} {'neg/s':>12}  veredito")
+    for n_niveis in (50, 200, 800, 3_000):
+        livro = LivroMBO(SYMBOL)
+        inf = Inferidor(SYMBOL, livro)
+        contador = _instrumentar(inf)
+        ts = BASE
+        for i in range(n_niveis):
+            inf.ao_snapshot(BookSnapshot(ts, SYMBOL, (), (BookLevel(ASK + i, 100, 1),)))
+            ts += 1
+        for i in range(n_niveis):
+            inf.ao_snapshot(BookSnapshot(ts, SYMBOL, (), (BookLevel(ASK + i, 40, 1),)))
+            ts += 1
+        contador[0] = 0
+        gc.collect()
+        t0 = time.perf_counter()
+        for i in range(n_negocios):
+            ts += 1
+            inf.ao_trade(Trade(ts, SYMBOL, ASK - 500, 1, AgressorSide.BUY, f"n{i}"))
+        dt = time.perf_counter() - t0
+        eps = n_negocios / dt
+        ok = "PASSA" if eps >= BARRA else "*** NAO PASSA ***"
+        print(
+            f"{n_niveis:>9,} {contador[0] / n_negocios:>12.1f} "
+            f"{1e6 / eps:>10.2f} {eps:>12,.0f}  {ok}"
+        )
+
+
+def main() -> None:
+    alvo = sys.argv[1] if len(sys.argv) > 1 else "tudo"
+    alternativa = sys.argv[2] if len(sys.argv) > 2 else None
+    Inferidor = _carregar_inferidor(alternativa)
+    print("=" * 92)
+    print("InferidorMBP — custo por passo. Barra do produto: 10.000 eventos/s.")
+    print("Um passo = 1 leitura de book + 1 negócio (2 eventos).")
+    print(f"implementacao: {alternativa or 'fluxopro.microestrutura.inferencia_mbp'}")
+    print("visitas/passo = candidatos percorridos na reconciliacao (deterministico).")
+    print("=" * 92)
+    if alvo in ("tudo", "taxa"):
+        eixo_taxa(Inferidor)
+    if alvo in ("tudo", "largura"):
+        eixo_largura(Inferidor)
+    print()
+
+
+if __name__ == "__main__":
+    main()
