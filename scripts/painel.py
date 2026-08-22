@@ -67,7 +67,7 @@ _logger = logging.getLogger("scripts.painel")
 
 _DENSIDADES = {d.nome.lower(): d for d in tokens.DENSIDADES}
 
-GIL_SWITCH_PADRAO = 0.001
+GIL_SWITCH_PADRAO = 0.0005
 """Intervalo de troca de GIL, em segundos, SO neste processo.
 
 Achado que so apareceu rodando o painel sob carga de verdade — nenhum
@@ -83,20 +83,32 @@ espera pura. (Com `time.process_time()` a conta some, porque ele soma a CPU
 de TODAS as threads e o produtor entra na medida — cheguei a ler o numero
 errado assim antes de trocar o relogio.)
 
-Medido, 6 s de simulador inundando, janela de 1280x800:
+Medido por `bench_ui_carga.py`, 2 s de simulador inundando, 1280x800, com o
+pipeline COMPLETO (inclusive `metodologia` ligada):
 
-| troca  | ingestao   | quadros/6s | DOM p95 |
-|--------|------------|-----------|---------|
-| 5 ms (padrao CPython) | 2.462 ev/s | 90 (15 fps) | 34,5 ms |
-| **1 ms**              | **1.320 ev/s** | **230 (38 fps)** | **15,7 ms** |
-| 0,5 ms                | 938 ev/s   | 360 (60 fps) | 9,3 ms |
+| troca  | ingestao   | quadros/2s | 
+|--------|------------|-----------|
+| 5 ms (padrao CPython) | 2.318 ev/s | 16 |
+| 1 ms                  | 2.375 ev/s | 17 |
+| **0,5 ms**            | **898 ev/s** | **121** |
+
+**Este numero JA envelheceu uma vez, e por isso o benchmark existe.** A
+tabela anterior media 1 ms comprando 230 quadros contra 90 do padrao, e a
+escolha de 1 ms saiu dali. Depois que `fluxopro/metodologia/` entrou no
+caminho quente, o pipeline ficou mais caro por evento, o produtor
+desacelerou sozinho, e **1 ms deixou de comprar coisa alguma** — 17 contra
+16. So 0,5 ms ainda separa.
 
 E um dial, nao uma correcao: fluidez de tela e vazao de ingestao disputam a
-mesma CPU. 1 ms fica no meio porque 1.320 ev/s continua acima do pico de um
-instrumento no WDO, e porque com feed REAL o produtor e I/O-bound (o MT5
-dorme entre consultas) e devolve o GIL sozinho — a disputa so e severa com
-produtor sintetico ou replay acelerado, que e justamente quando o operador
-esta olhando a tela.
+mesma CPU, e o ponto de equilibrio se move quando o pipeline muda de peso.
+Com feed REAL o produtor e I/O-bound (o MT5 dorme entre consultas) e devolve
+o GIL sozinho — a disputa so e severa com produtor sintetico ou replay
+acelerado, que e justamente quando o operador esta olhando a tela. 898 ev/s
+de INUNDACAO sintetica nao e o teto de ingestao de um feed real.
+
+Rode `python bench_ui_carga.py` depois de mexer no caminho quente. Nao ha
+teste vigiando isto: duas tentativas de transformar a medicao em portao de
+CI sairam instaveis, e o motivo esta escrito no benchmark.
 
 Fica aqui e nao no nucleo de proposito: `scripts/operar.py` e headless e
 existe para vazao, entao mexer no relogio do interpretador dele seria

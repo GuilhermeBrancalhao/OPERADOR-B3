@@ -14,6 +14,7 @@ Não basta afirmar "está tudo ligado". Cada teste positivo aqui tem um
 | elo | invariante | controle que o rompe |
 |---|---|---|
 | tape -> todas as peças | contadores por elo iguais | `test_severar_qualquer_elo_derruba_a_verificacao` |
+| trades -> `LeitorMetodo` | `n_trades_metodo` igual aos demais | idem (e `tests/test_app_metodologia.py`) |
 | InferidorMBP -> LivroMBO | `n_ordem_eventos > 0` | `test_sem_microestrutura_nao_nasce_ordem_alguma` |
 | LivroMBO -> detectores | detecções ESCORA existem | idem |
 | trades -> MotorSinais | `n_sinais_emitidos > 0` | `test_sem_motor_nenhum_sinal_e_emitido` |
@@ -122,6 +123,7 @@ def verificar_cadeia_ligada(sessao: SessaoFluxo, coletor: Coletor) -> None:
     assert c.n_trades_perfil_sessao == c.n_trades_bus
     assert c.n_trades_micro == c.n_trades_bus
     assert c.n_trades_motor == c.n_trades_bus
+    assert c.n_trades_metodo == c.n_trades_bus
     assert c.n_snapshots_micro == c.n_snapshots_bus
     assert c.n_deltas_micro == c.n_deltas_bus
     # a ponte MBP->MBO produziu ordens, e elas estao marcadas como inferidas
@@ -177,6 +179,7 @@ def test_contadores_de_cada_elo_batem_com_o_barramento():
         c.n_trades_perfil_sessao
         == c.n_trades_micro
         == c.n_trades_motor
+        == c.n_trades_metodo
         == c.n_trades_bus
     )
 
@@ -202,6 +205,7 @@ def _severar(barramento, tipo, nome_metodo: str) -> None:
         (Trade, "_ao_trade_motor"),
         (Trade, "_ao_trade_perfil_sessao"),
         (Trade, "_ao_trade_detectores_tape"),
+        (Trade, "_ao_trade_metodo"),
     ],
 )
 def test_severar_qualquer_elo_derruba_a_verificacao(tipo, metodo):

@@ -34,6 +34,7 @@ from fluxopro.metodologia import regras as mod_regras
 from fluxopro.metodologia.confianca import (
     CitacaoInvalidaError,
     Confianca,
+    LimiarNaoRegistrado,
     ParametroCalibravel,
     RegraDocumentada,
 )
@@ -44,6 +45,13 @@ from fluxopro.metodologia.estrutura import (
     RegimeEstrutural,
 )
 from fluxopro.metodologia.janela import JanelaMovel
+from fluxopro.metodologia.leitura import (
+    FONTES_PADRAO,
+    ConfigMetodologia,
+    FontePlacar,
+    LeitorMetodo,
+    LeiturasInconsistentesError,
+)
 from fluxopro.metodologia.linha_azul import (
     ConfigLinhaAzul,
     ConvencaoLinhaAzul,
@@ -72,6 +80,7 @@ from fluxopro.metodologia.velocimetro import (
     EstadoVelocimetro,
     Velocimetro,
 )
+from fluxopro.motor.sinais import ConfigMotorSinais
 
 S = 1_000_000_000  # um segundo em ns
 SIMBOLO = "WINV26"
@@ -993,3 +1002,368 @@ def test_dataclasses_de_leitura_sao_imutaveis():
     leitura = RegimeDoDia().registrar_preco(100, 0)
     with pytest.raises(dataclasses.FrozenInstanceError):
         leitura.regime = RegimeEstrutural.VENDEDOR  # type: ignore[misc]
+
+
+# ===========================================================================
+# Cobertura do registro — o que `_validar()` estruturalmente não podia cobrar
+# ===========================================================================
+
+_DONOS_DE_LIMIAR = (
+    ConfigEstrutura,
+    ConfigVelocimetro,
+    ConfigLinhaAzul,
+    ConfigMacroMicro,
+    ConfigPlacar,
+    ConfigRisco,
+    ConfigMotorSinais,
+)
+"""As dataclasses de configuração que hospedam limiares do método.
+
+Universo derivado do código, não uma lista de nomes escrita à mão em prosa —
+é isso que permite ao teste abaixo cobrar algo que o registro não declarou.
+"""
+
+
+def _homonimos_sem_declaracao(parametros, fora):
+    """Nomes de campo que o registro declara para UM dono e ignora noutro.
+
+    A classe de defeito que a auditoria encontrou:
+    `ConfigVelocimetro.magnitude_relativa_minima` está em `PARAMETROS`, e
+    `ConfigMotorSinais.magnitude_relativa_minima` — outro componente, outro
+    corte, mesmo nome — não estava em lugar nenhum. Quem lesse o registro
+    pelo nome curto acharia que o segundo tem aval; quem lesse o código não
+    acharia nada. É o "tomar emprestado aval alheio" visto do lado do
+    registro, e não do lado da tela.
+    """
+    declarados = {p.nome for p in parametros} | {f.nome for f in fora}
+    campos_registrados = {p.alvo[1] for p in parametros}
+    faltando = set()
+    for classe in _DONOS_DE_LIMIAR:
+        for campo in (f.name for f in dataclasses.fields(classe)):
+            if campo not in campos_registrados:
+                continue
+            nome = f"{classe.__name__}.{campo}"
+            if nome not in declarados:
+                faltando.add(nome)
+    return faltando
+
+
+class TestCoberturaDoRegistro:
+    """`_validar()` só sabe cobrar o que foi declarado. Aqui o conjunto do que
+    PRECISA ser declarado vem do código, e é por isso que um limiar vivo e
+    esquecido deixa de poder passar em silêncio."""
+
+    def test_todo_homonimo_de_limiar_registrado_tem_declaracao(self):
+        faltando = _homonimos_sem_declaracao(
+            mod_regras.PARAMETROS, mod_regras.FORA_DO_REGISTRO
+        )
+        assert faltando == set(), (
+            "limiar vivo com homonimo registrado e sem declaracao nenhuma: "
+            f"{sorted(faltando)}. Ou entra em PARAMETROS (o registro responde "
+            "por ele) ou em FORA_DO_REGISTRO (nao responde, e o motivo fica "
+            "escrito)."
+        )
+
+    def test_esquecer_uma_declaracao_reprova(self):
+        """MUTAÇÃO: sem uma das declarações, a checagem acima tem de acusar.
+
+        Sem este controle o teste anterior passaria igualmente sobre um
+        registro que não declara nada — foi exatamente assim que o 0,60
+        atravessou cinco auditorias.
+        """
+        mutado = tuple(
+            f
+            for f in mod_regras.FORA_DO_REGISTRO
+            if f.nome != "ConfigMotorSinais.magnitude_relativa_minima"
+        )
+        assert len(mutado) == len(mod_regras.FORA_DO_REGISTRO) - 1
+        faltando = _homonimos_sem_declaracao(mod_regras.PARAMETROS, mutado)
+        assert faltando == {"ConfigMotorSinais.magnitude_relativa_minima"}
+
+    def test_o_mesmo_limiar_nao_pode_estar_nos_dois_lugares(self):
+        """`PARAMETROS` e `FORA_DO_REGISTRO` afirmam coisas opostas."""
+        registrados = {p.nome for p in mod_regras.PARAMETROS}
+        fora = {f.nome for f in mod_regras.FORA_DO_REGISTRO}
+        assert registrados & fora == set()
+
+    def test_declarar_fora_do_registro_exige_motivo_e_nome_qualificado(self):
+        with pytest.raises(CitacaoInvalidaError):
+            LimiarNaoRegistrado(nome="ConfigX.y", valor_padrao=1, motivo="")
+        with pytest.raises(CitacaoInvalidaError):
+            LimiarNaoRegistrado(nome="y", valor_padrao=1, motivo="qualquer")
+
+    def test_o_valor_declarado_bate_com_o_default_real(self):
+        """Mesma trava de `test_defaults_declarados_batem_com_os_defaults_reais`:
+        um valor copiado que envelhece faria a declaração mentir sobre o
+        limiar que ela diz não cobrir."""
+        classes = {c.__name__: c for c in _DONOS_DE_LIMIAR}
+        for limiar in mod_regras.FORA_DO_REGISTRO:
+            nome_classe, campo = limiar.alvo
+            assert nome_classe in classes, f"{limiar.nome}: dono desconhecido"
+            real = getattr(classes[nome_classe](), campo)
+            assert real == limiar.valor_padrao, (
+                f"{limiar.nome}: declarado {limiar.valor_padrao}, real {real}"
+            )
+
+    def test_o_registro_nao_reivindica_o_corte_do_motor(self):
+        """A recusa, dita como asserção.
+
+        `velocimetro.normalizacao_winfut` é CONFIRMADO e trata do mesmo eixo,
+        mas o que a fonte confirma é o MECANISMO ("normalizar por magnitude
+        histórica e por persistência"), não um número. Pendurar o 0,60 ali
+        faria o registro afirmar dois cortes diferentes sob um rótulo
+        CONFIRMADO.
+        """
+        winfut = mod_regras.REGRAS["velocimetro.normalizacao_winfut"]
+        assert winfut.confianca is Confianca.CONFIRMADO
+        pendurados = {
+            p.nome
+            for p in mod_regras.PARAMETROS
+            if p.regra_id == "velocimetro.normalizacao_winfut"
+        }
+        assert "ConfigMotorSinais.magnitude_relativa_minima" not in pendurados
+        limiar = mod_regras.limiar_fora_do_registro(
+            "ConfigMotorSinais.magnitude_relativa_minima"
+        )
+        assert limiar is not None and limiar.valor_padrao == 0.60
+
+
+# ===========================================================================
+# `LeitorMetodo` — a fiação, e o retrato consistente que a interface lê
+# ===========================================================================
+
+
+def _tape_compra(n=60, ts0=S):
+    """Tape que faz os quatro votantes convergirem para COMPRA.
+
+    Começa vendedor (para a fração comprador/vendedor nascer abaixo de 50% e
+    o cruzamento da linha azul poder acontecer para cima) e depois compra,
+    subindo o preço — que é o que rompe a máxima do dia e vira o regime.
+    """
+    trades = []
+    for i in range(6):
+        trades.append(_trade(ts0 + i * S, 100_000 - i, 30, AgressorSide.SELL))
+    for i in range(6, n):
+        trades.append(_trade(ts0 + i * S, 100_000 + i, 30, AgressorSide.BUY))
+    return trades
+
+
+def _rodar_leitor(trades, config=None):
+    leitor = LeitorMetodo(SIMBOLO, config)
+    ultima = None
+    for t in trades:
+        ultima = leitor.ao_trade(t)
+    return leitor, ultima
+
+
+def test_o_retrato_traz_as_cinco_leituras_do_mesmo_instante():
+    """A garantia que `sessao.agressao` — três escalares soltos — não dá."""
+    leitor, leitura = _rodar_leitor(_tape_compra())
+    assert leitura is not None
+    for parte in (
+        leitura.estrutura,
+        leitura.velocimetro,
+        leitura.linha_azul,
+        leitura.macro_micro,
+        leitura.placar,
+    ):
+        assert parte.timestamp_ns == leitura.timestamp_ns
+    assert leitura.sequencia == len(_tape_compra())
+    assert leitor.ler() is leitura
+
+
+def test_retrato_costurado_de_dois_instantes_e_recusado():
+    """MUTAÇÃO: o invariante é exceção em runtime, não promessa de docstring.
+
+    Um placar apurado com o voto do velocímetro de antes não é uma tela
+    imprecisa — é uma tela que mente sobre a confluência.
+    """
+    _, leitura = _rodar_leitor(_tape_compra())
+    assert leitura is not None
+    velho = RegimeDoDia().registrar_preco(100_000, leitura.timestamp_ns - S)
+    with pytest.raises(LeiturasInconsistentesError):
+        dataclasses.replace(leitura, estrutura=velho)
+
+
+def test_o_placar_soma_os_votos_dos_outros_componentes():
+    """Confluência real vira goleada; tirar um votante muda o placar.
+
+    O controle é o que prova que os quatro votos existem de fato — sem ele,
+    um placar "4 a 0" produzido por qualquer outro caminho passaria igual.
+    """
+    _, leitura = _rodar_leitor(_tape_compra())
+    assert leitura is not None
+    assert leitura.placar.placar == "4 a 0"
+    assert leitura.placar.lado is Side.BUY
+    assert leitura.placar.goleada
+    assert dict(leitura.votos) == {
+        "estrutura": VotoPlacar.COMPRA,
+        "velocimetro": VotoPlacar.COMPRA,
+        "linha_azul": VotoPlacar.COMPRA,
+        "macro_micro": VotoPlacar.COMPRA,
+    }
+
+    tres = ConfigMetodologia(
+        fontes_placar=(
+            FontePlacar.ESTRUTURA,
+            FontePlacar.VELOCIMETRO,
+            FontePlacar.MACRO_MICRO,
+        )
+    )
+    _, sem_linha = _rodar_leitor(_tape_compra(), tres)
+    assert sem_linha is not None
+    assert sem_linha.placar.placar == "3 a 0"
+    assert not sem_linha.placar.goleada
+    assert "linha_azul" not in dict(sem_linha.votos)
+
+
+def test_o_velocimetro_mede_o_delta_que_a_macro_acumulou():
+    """Um contador só, lido por dois componentes — não dois contadores que
+    poderiam divergir sem ninguém perceber."""
+    _, leitura = _rodar_leitor(_tape_compra())
+    assert leitura is not None
+    assert leitura.velocimetro.valor == leitura.macro_micro.macro.valor
+
+
+def test_fontes_placar_vazia_ou_repetida_e_recusada():
+    with pytest.raises(ValueError):
+        ConfigMetodologia(fontes_placar=())
+    with pytest.raises(ValueError):
+        ConfigMetodologia(
+            fontes_placar=(FontePlacar.ESTRUTURA, FontePlacar.ESTRUTURA)
+        )
+
+
+def test_o_gestor_de_risco_nao_e_alimentado_por_evento_nenhum():
+    """`risco.gatilho_de_tamanho` é AUSENTE NA FONTE, e a recusa é estrutural.
+
+    Não há caminho pelo qual uma decisão de risco saia deste módulo sem que
+    alguém informe a `QualidadeRegiao`: o retrato não tem campo de risco, e
+    60 trades não criam região nenhuma.
+    """
+    leitor, leitura = _rodar_leitor(_tape_compra())
+    assert leitura is not None
+    assert leitor.risco.regioes_rastreadas == 0
+    assert not hasattr(leitura, "risco")
+    assert not any(r.id.startswith("risco.") for r in leitura.regras)
+    with pytest.raises(TypeError):
+        leitor.risco.avaliar(100_000)  # type: ignore[call-arg]
+    # com o julgamento do operador, responde normalmente
+    decisao = leitor.risco.avaliar(100_000, QualidadeRegiao.TURBULENTA)
+    assert decisao.permitida and decisao.modo is ModoTamanho.MAO_MINIMA
+
+
+def test_ler_nao_drena_o_retrato():
+    """Ao contrário de `PonteFluxo.ler`, aqui não há dono único: é estado de
+    nível, e todo painel vê o mesmo objeto."""
+    leitor, _ = _rodar_leitor(_tape_compra())
+    primeiro = leitor.ler()
+    assert primeiro is not None
+    assert leitor.ler() is primeiro
+    assert leitor.ler() is primeiro
+
+
+def test_virada_de_sessao_apaga_o_retrato_e_a_memoria_do_dia():
+    """Um painel mostrando o placar de ontem num pregão que ainda não teve
+    trade nenhum é o defeito que a virada existe para fechar."""
+    leitor, antes = _rodar_leitor(_tape_compra())
+    assert antes is not None and antes.estrutura.maxima is not None
+
+    leitor.iniciar_nova_sessao(timestamp_ns=antes.timestamp_ns + 10**15)
+    assert leitor.ler() is None
+    assert leitor.leituras_publicadas == 0
+    assert leitor.risco.regioes_rastreadas == 0
+
+    depois = leitor.ao_trade(_trade(10**15, 50_000, 10, AgressorSide.BUY))
+    assert depois is not None
+    assert depois.sequencia == 1
+    assert depois.estrutura.maxima == 50_000  # nada do dia anterior sobrou
+    assert depois.macro_micro.macro.valor == 10
+    assert depois.linha_azul.nivel is None
+
+
+def test_trade_de_outro_simbolo_nao_publica_retrato():
+    leitor = LeitorMetodo(SIMBOLO)
+    assert leitor.ao_trade(_trade(S, 100_000, 10, AgressorSide.BUY, "OUTRO")) is None
+    assert leitor.ler() is None
+
+
+def test_as_regras_do_retrato_cobrem_os_cinco_componentes():
+    """O rótulo viaja: um painel pode listar, com citação e vídeo, de onde vem
+    cada coisa que está na tela."""
+    _, leitura = _rodar_leitor(_tape_compra())
+    assert leitura is not None
+    familias = {r.id.split(".")[0] for r in leitura.regras}
+    assert familias == {
+        "estrutura",
+        "velocimetro",
+        "linha_azul",
+        "macro_micro",
+        "placar",
+    }
+    assert all(isinstance(r.confianca, Confianca) for r in leitura.regras)
+    # os ids sao unicos — a uniao nao repete regra que dois componentes citam
+    ids = [r.id for r in leitura.regras]
+    assert len(ids) == len(set(ids))
+
+
+@pytest.mark.parametrize("n_pequeno,n_grande", [(1_000, 20_000)])
+def test_o_leitor_do_metodo_nao_cresce_com_o_numero_de_eventos(n_pequeno, n_grande):
+    """Mesmo critério do gravador, aplicado à fiação inteira de uma vez.
+
+    Desce nos objetos aninhados: o `LeitorMetodo` carrega seis componentes, e
+    o retrato publicado é ele próprio um objeto deste pacote — se o retrato
+    virasse fila, ou se `_votos` ganhasse chave por trade, o `len` mudaria
+    entre as duas medições.
+    """
+
+    def medir(n):
+        leitor = LeitorMetodo(
+            SIMBOLO,
+            ConfigMetodologia(
+                velocimetro=ConfigVelocimetro(janela_ns=16 * S, n_baldes=4),
+                macro_micro=ConfigMacroMicro(janela_micro_ns=8 * S),
+                placar=ConfigPlacar(janela_oscilacao_ns=60 * S),
+            ),
+        )
+        for i in range(1, n + 1):
+            preco = 100_000 + (i % 977) - 488
+            lado = AgressorSide.BUY if i % 3 else AgressorSide.SELL
+            leitor.ao_trade(_trade(i * S, preco, 10, lado))
+        return _colecoes_de(leitor)
+
+    pequeno, grande = medir(n_pequeno), medir(n_grande)
+    assert pequeno == grande, (
+        "alguma colecao do LeitorMetodo cresceu com o numero de eventos:\n"
+        f"  {n_pequeno} eventos: {pequeno}\n"
+        f"  {n_grande} eventos: {grande}"
+    )
+    assert grande["_votos"] == len(FONTES_PADRAO)
+    assert grande, "nenhuma colecao foi medida — o teste passaria trivialmente"
+
+
+def test_toda_regra_implementada_tem_uma_superficie_publicada():
+    """A fidelidade, como partição exata — e é o número que o painel exibe.
+
+    O pacote deixou de ser um registro de intenções: cada uma das 33 regras
+    implementadas sai por uma de três superfícies, e as três não se
+    sobrepõem. Uma regra que ganhasse código sem entrar em nenhuma delas
+    seria "implementada" sem ninguém nunca poder vê-la — o estado exato de
+    que este ciclo tirou o pacote.
+    """
+    from fluxopro.metodologia.leitura import REGRAS_DO_METODO_VIVO
+
+    implementadas = {i for i, r in mod_regras.REGRAS.items() if r.implementada}
+
+    # (1) o retrato publicado a cada trade
+    no_retrato = {r.id for r in REGRAS_DO_METODO_VIVO}
+    # (2) o gestor de risco, que so responde a comando do operador
+    no_risco = {i for i in implementadas if i.startswith("risco.")}
+    # (3) o motor de confluencia, que ja vivia fora deste pacote
+    no_motor = {i for i in implementadas if i.startswith("dominancia.")}
+
+    assert no_retrato | no_risco | no_motor == implementadas
+    assert no_retrato & no_risco == set()
+    assert no_retrato & no_motor == set()
+    assert (len(no_retrato), len(no_risco), len(no_motor)) == (24, 6, 3)
+    assert all(mod_regras.REGRAS[i].implementada for i in no_retrato)

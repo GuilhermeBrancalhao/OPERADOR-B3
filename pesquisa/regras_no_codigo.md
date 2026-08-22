@@ -5,7 +5,8 @@ Mapa de auditoria entre `pesquisa/metodologia_regras.md` +
 Serve para responder uma pergunta só: **o produto é fiel à fonte?**
 
 A fonte da verdade deste documento é o registro executável
-`fluxopro/metodologia/regras.py` (`REGRAS`, 42 entradas; `PARAMETROS`, 16).
+`fluxopro/metodologia/regras.py` (`REGRAS`, 42 entradas; `PARAMETROS`, 17;
+`FORA_DO_REGISTRO`, 3).
 Ele é validado no import e conferido pela suíte
 (`tests/test_metodologia.py`): citação com no máximo 15 palavras,
 `AUSENTE_NA_FONTE` sem citação, parâmetro com dois valores de fonte exige
@@ -57,7 +58,7 @@ separadas, e é esse o precedente que o pacote inteiro segue.
 | `linha_azul.funcao_risco` | CONFIRMADO | Implementada **por omissão deliberada**: `LeituraLinhaAzul` não tem campo de gatilho, entrada ou direção sugerida. Publica nível, lado e distância. |
 | `linha_azul.stop` | CONFIRMADO | Implementada: `distancia_ticks` (assinada). |
 | `linha_azul.plotagem` | IMPRECISO | **Parâmetro.** O comportamento mudou entre versões da ferramenta original. Ver "Convenção declarada" abaixo. |
-| `linha_azul.lado` | INFERIDO | Implementada **e rotulada**: `LadoDaLinha.leitura_inferida` devolve `Side`, e `LeituraLinhaAzul.confianca_lado` é `Confianca.INFERIDO` em toda leitura. |
+| `linha_azul.lado` | INFERIDO | Implementada **e rotulada**: `LadoDaLinha.leitura_inferida` devolve `Side`, e `LeituraLinhaAzul.confianca_lado` é `Confianca.INFERIDO` em toda leitura. **Parâmetro** `ConfigLinhaAzul.margem_ticks` (default 0): é o corte que decide ACIMA / ABAIXO / NA_LINHA, ou seja, o limiar da própria leitura inferida. |
 | `linha_azul.janela_reset` | AUSENTE NA FONTE | Não há fórmula de acumulado nem regra de recálculo intradiário. Escolha declarada: acumula por agressor desde a abertura, reseta só na virada **explícita** de sessão (política de `EstadoMercado`). |
 
 **Convenção declarada** (o que esta implementação escolheu, já que a fonte tem
@@ -196,6 +197,151 @@ nossa e entraria como componente genérico.
 
 ---
 
+## A fiação — onde as regras passaram a ser alimentadas
+
+Até esta rodada este documento descrevia um pacote **isolado**: 33 regras
+implementadas, nove componentes testados, e **nenhum evento de produção
+chegando a eles**. Um mapa de auditoria de código que nunca roda audita pouco.
+
+Agora `fluxopro/metodologia/leitura.py::LeitorMetodo` recebe cada `Trade` do
+pipeline — por `fluxopro/app/sessao_fluxo.py`, prioridade
+`app/config.py::PRIORIDADE_METODO` (45, entre o motor e a contagem) — e
+publica um `LeituraMetodo` imutável com as cinco leituras **do mesmo
+instante**.
+
+| componente | de onde vem o dado | regra que autoriza |
+|---|---|---|
+| `RegimeDoDia` | `trade.price` (ticks, `int`) | `estrutura.regime` |
+| `MacroMicro` | `trade` (agressor + qty) | `macro_micro.macro` / `.micro` |
+| `Velocimetro` | `MacroMicro.delta_macro` | `velocimetro.dois_eixos` |
+| `LinhaAzul` | `trade` (agressor + preço) | `linha_azul.definicao` |
+| `Placar` | os quatro votos acima | `placar.meta_leitura` |
+| `GestorRisco` | **nada** — ver abaixo | `risco.gatilho_de_tamanho` |
+
+Três consequências que valem estar escritas:
+
+1. **Tick, não OHLC.** `RegimeDoDia.registrar_candle` existe para quem só tem
+   candle, e o próprio módulo declara a limitação (a ordem em que máxima e
+   mínima aconteceram DENTRO do candle não existe no dado; ele aplica
+   O→H→L→C). No pipeline há tape, então a fiação usa `registrar_preco` — *"com
+   tick disponível, use `registrar_preco`... o caso WINFUT é justamente sobre
+   não confundir a ordem dos eventos com o resultado agregado"*.
+2. **Um contador, não três.** O velocímetro mede o delta de agressão que o
+   `MacroMicro` acumulou, e `tests/test_app_metodologia.py` confere esse
+   número contra `CumulativeDelta.delta_sessao` — o mesmo delta calculado por
+   outro caminho, na camada de analytics. Os extremos do regime são conferidos
+   contra `EstadoMercado.sessao.high/low` pela mesma razão.
+3. **O `Placar` continua sem assinar o barramento** (`placar.meta_leitura`,
+   CONFIRMADO). Quem assina é a `SessaoFluxo`; ela monta os votos e os
+   entrega. Quem vota é `ConfigMetodologia.fontes_placar` — escolha declarada
+   de quem monta, não fatalidade embutida. O default são as quatro fontes que
+   este pacote sustenta com regra registrada; as duas que a ferramenta
+   original tem e o produto recusa (`sinal_ultra.gatilho`, `placar.fonte_llm`)
+   continuam fora.
+
+### O que a UI chama
+
+```python
+leitura = sessao.leitura_do_metodo()   # LeituraMetodo | None
+```
+
+`None` significa "método desligado (`ligar_metodologia=False`) ou nenhum trade
+ainda"; os dois casos se distinguem por `sessao.metodo is None`. A chamada
+**não drena** (ao contrário de `PonteFluxo.ler`, que esvazia um buffer e por
+isso tem dono único): é estado de nível, e todo painel vê o mesmo objeto.
+
+O retrato é **imutável e consistente entre campos por construção**: as cinco
+leituras são montadas de uma vez sob o lock, e o construtor **recusa**
+(`LeiturasInconsistentesError`) um retrato cujas leituras não tenham o mesmo
+`timestamp_ns`. Um placar 4×0 comprador ao lado de um velocímetro que já virou
+não seria uma tela imprecisa — seria uma tela que mente sobre a confluência,
+porque o placar exibido foi apurado com o voto do velocímetro de antes.
+`sessao.agressao`, hoje lido como três escalares soltos sem invariante
+declarado entre eles, é o precedente que a fiação não repete.
+
+Cada leitura carrega o próprio `regras: tuple[RegraDocumentada, ...]`, e
+`leitura.regras` devolve a união das cinco (`REGRAS_DO_METODO_VIVO`, 24
+regras) — é com ela que um painel pode exibir citação, vídeo, seção e rótulo
+ao lado de cada número que desenha, em vez de o placar de fidelidade ler
+`0 MÉTODO`.
+
+### O risco continua fora do caminho automático
+
+`risco.gatilho_de_tamanho` é AUSENTE NA FONTE, e a recusa agora é
+**estrutural**, não só documentada:
+
+- `GestorRisco` é instanciado e exposto (`sessao.metodo.risco`), mas **não é
+  alimentado por evento nenhum** — 2.000 eventos de pregão deixam
+  `regioes_rastreadas == 0`;
+- `LeituraMetodo` **não tem campo de risco**, então não existe caminho pelo
+  qual uma decisão de tamanho saia deste pacote sem que uma pessoa tenha
+  passado a `QualidadeRegiao` e registrado o desfecho de uma operação.
+
+A UI chama `sessao.metodo.risco.avaliar(preco, QualidadeRegiao.X)` e
+`registrar_resultado(preco, ResultadoOperacao.X)` — as duas com entrada do
+operador, sempre.
+
+---
+
+## `FORA_DO_REGISTRO` — os limiares que o registro **não** avaliza
+
+`_validar()` confere a coerência do que foi **declarado**. O que ele
+estruturalmente não podia cobrar é o que ninguém declarou: um limiar que mora
+numa `Config*`, muda o veredito do produto e nunca foi registrado não viola
+regra nenhuma, porque não existe para o validador. Foi assim que
+`ConfigMotorSinais.magnitude_relativa_minima` (0,60) atravessou cinco
+auditorias.
+
+O conserto inverte a direção da cobrança: o conjunto do que **precisa** ser
+declarado passa a vir do código, e `tests/test_metodologia.py::TestCoberturaDoRegistro`
+faz a derivação. O critério é estreito e verificável:
+
+> todo **nome de campo** que `PARAMETROS` declara para algum dono tem de estar
+> declarado — em `PARAMETROS` ou em `FORA_DO_REGISTRO` — em **todo outro dono
+> conhecido** que tenha um campo com esse nome.
+
+É exatamente a classe de defeito da auditoria: um limiar que *parece* coberto
+porque um homônimo de outro componente está coberto. O teste tem controle por
+mutação — retirar uma declaração faz a checagem acusar aquele nome.
+
+| limiar | valor | por que não está em `PARAMETROS` |
+|---|---|---|
+| `ConfigMotorSinais.magnitude_relativa_minima` | 0,60 | ver abaixo |
+| `ConfigMotorSinais.tamanho_topo_magnitude` | 32 | homônimo do K do velocímetro (16); mesma ideia, referências diferentes (sessão inteira × janela móvel em amostras aceitas) |
+| `ConfigMotorSinais.janela_micro_ns` | 15 s | homônimo de `ConfigMacroMicro.janela_micro_ns`; o aval de `macro_micro.janela_micro` é **daquele** componente |
+
+**Isto não é um segundo registro de procedência — é o inverso dele.** Nenhum
+consumidor deve lê-lo como cobertura, e nenhum lê:
+`fluxopro/ui/paineis/matriz.py::regras_do_campo` continua respondendo tupla
+vazia para estes três botões, que é a verdade sobre eles.
+
+### O 0,60, e por que ele não foi pendurado em `velocimetro.normalizacao_winfut`
+
+Aquela regra é **CONFIRMADO** e já hospeda
+`ConfigVelocimetro.magnitude_relativa_minima` (0,25). O que a fonte confirma
+ali é o **mecanismo** — *"normalizar por magnitude histórica e por
+persistência"*, o caso WINFUT — e **não um número**: `velocimetro.escala_fixa`
+registra, em AUSENTE NA FONTE, que não existe corte absoluto na fonte.
+
+Pendurar o 0,60 na mesma regra faria o registro afirmar **dois cortes
+diferentes sob um rótulo CONFIRMADO**, e do lado da tela `regras_do_campo`
+passaria a exibir `CONFIRMADO` para um limiar que a fonte nunca deu. Os dois
+números não são contraditórios entre si — são componentes com trabalhos
+diferentes (o velocímetro é leitura de curto prazo e erra para o lado de
+calar; o motor é porta de entrada) — mas nenhum dos dois tem aval numérico
+da fonte.
+
+O landing correto é uma regra AUSENTE NA FONTE própria, hospedando os dois
+cortes com seus donos separados. Ele **não foi feito nesta rodada** porque
+muda o que `regras_do_campo` responde para o botão `magnitude_relativa_minima`
+do painel do motor, e com isso três expectativas literais de
+`tests/test_ui_matriz.py` — arquivo de outro construtor, em edição
+concorrente. Enquanto não entra, o painel diz `S/ REGISTRO`, que é a verdade,
+e a ausência deixou de ser silêncio: está declarada, com dono, valor e motivo,
+e um teste a cobra.
+
+---
+
 ## Divergência declarada: cor
 
 A fonte codifica direção em **verde/vermelho/amarelo**. Este projeto **não a
@@ -232,10 +378,19 @@ com o motivo escrito: `linha_azul.janela_reset`, `macro_micro.janela_micro`,
 `estrutura.amplitude_do_ruido`, `velocimetro.escala_fixa`. Nenhum deles é
 apresentado como regra do autor.
 
-São 16 parâmetros pendurados em 11 regras. As 9 recusas: `exaustao.conceito`,
+São 17 parâmetros pendurados em 12 regras, mais 3 limiares declarados em
+`FORA_DO_REGISTRO` — vivos, calibráveis, e que o registro **não** avaliza. As
+9 recusas: `exaustao.conceito`,
 `escora.formula`, `sinal_ultra.gatilho`, `horarios.tabela`, `alvo.formula`,
 `maker.formula`, `risco.limite_diario_agregado`, `risco.gatilho_de_tamanho`,
 `placar.fonte_llm` — cada uma com `nota` explicando o porquê.
 
-Contagens conferíveis a qualquer momento: `len(REGRAS)`, `len(PARAMETROS)` e
-`len(nao_implementadas())` em `fluxopro/metodologia/regras.py`.
+Contagens conferíveis a qualquer momento: `len(REGRAS)`, `len(PARAMETROS)`,
+`len(FORA_DO_REGISTRO)` e `len(nao_implementadas())` em
+`fluxopro/metodologia/regras.py`.
+
+As 33 regras implementadas deixaram de viver num pacote isolado, e a soma
+fecha: **24** respondem por um `LeituraMetodo` publicado a cada trade do
+pipeline (ver "A fiação", acima, e `REGRAS_DO_METODO_VIVO`), **6** pelo
+`GestorRisco`, que só responde a comando do operador, e as **3** de
+`dominancia.*` já viviam fora deste pacote, em `fluxopro/motor/sinais.py`.

@@ -32,9 +32,18 @@ e `pesquisa/ferramenta_componentes.md`, e o mapa de auditoria
 | `linha_azul` | nível do cruzamento de 50% desde a abertura | `metodologia_regras.md` §3 |
 | `macro_micro` | dia inteiro × movimento imediato, em escalas que não se comparam | §6 |
 | `risco` | 3 stops por região; mão cheia × mão mínima | §§8-9 |
+| `leitura` | os cinco acima **ligados ao tape**, e o retrato que a UI lê | — |
 
-`confianca` e `regras` são a infraestrutura: o tipo do rótulo e o registro de
-todas as regras, inclusive as recusadas.
+`confianca` e `regras` são a infraestrutura: o tipo do rótulo, o registro de
+todas as regras (inclusive as recusadas) e `FORA_DO_REGISTRO`, a lista dos
+limiares vivos que o registro **não** avaliza.
+
+`leitura` é a fiação: `LeitorMetodo` recebe `Trade` (por meio de
+`fluxopro/app/sessao_fluxo.py`, com prioridade `PRIORIDADE_METODO`), alimenta
+os cinco componentes e publica um `LeituraMetodo` imutável — as cinco leituras
+do **mesmo instante**, num objeto só. `GestorRisco` fica fora desse caminho de
+propósito: a API dele exige a `QualidadeRegiao` do operador, porque o gatilho
+que separa região boa de turbulenta é AUSENTE NA FONTE.
 
 ## Divergência declarada: cor
 
@@ -63,6 +72,7 @@ from __future__ import annotations
 from fluxopro.metodologia.confianca import (
     CitacaoInvalidaError,
     Confianca,
+    LimiarNaoRegistrado,
     ParametroCalibravel,
     RegraDocumentada,
 )
@@ -74,6 +84,15 @@ from fluxopro.metodologia.estrutura import (
     RegimeEstrutural,
 )
 from fluxopro.metodologia.janela import JanelaMovel
+from fluxopro.metodologia.leitura import (
+    FONTES_PADRAO,
+    REGRAS_DO_METODO_VIVO,
+    ConfigMetodologia,
+    FontePlacar,
+    LeiturasInconsistentesError,
+    LeitorMetodo,
+    LeituraMetodo,
+)
 from fluxopro.metodologia.linha_azul import (
     ConfigLinhaAzul,
     ConvencaoLinhaAzul,
@@ -97,8 +116,10 @@ from fluxopro.metodologia.placar import (
     VotoPlacar,
 )
 from fluxopro.metodologia.regras import (
+    FORA_DO_REGISTRO,
     PARAMETROS,
     REGRAS,
+    limiar_fora_do_registro,
     nao_implementadas,
     parametros_de,
     regra,
@@ -122,31 +143,40 @@ from fluxopro.metodologia.velocimetro import (
 )
 
 __all__ = [
+    "FONTES_PADRAO",
+    "FORA_DO_REGISTRO",
     "PARAMETROS",
     "REGRAS",
+    "REGRAS_DO_METODO_VIVO",
     "CitacaoInvalidaError",
+    "Confianca",
     "ConfigEstrutura",
     "ConfigLinhaAzul",
     "ConfigMacroMicro",
+    "ConfigMetodologia",
     "ConfigPlacar",
     "ConfigRisco",
     "ConfigVelocimetro",
-    "Confianca",
     "ConvencaoLinhaAzul",
     "Decisao",
     "Escala",
     "EscalasIncomparaveisError",
     "EstadoRegiao",
     "EstadoVelocimetro",
+    "FontePlacar",
     "GatilhoEstrutural",
     "GestorRisco",
     "JanelaMovel",
     "LadoDaLinha",
+    "LeitorMetodo",
     "LeituraEstrutural",
     "LeituraLinhaAzul",
     "LeituraMacroMicro",
+    "LeituraMetodo",
     "LeituraPlacar",
     "LeituraVelocimetro",
+    "LeiturasInconsistentesError",
+    "LimiarNaoRegistrado",
     "LinhaAzul",
     "MacroMicro",
     "MedidaContexto",
@@ -162,6 +192,7 @@ __all__ = [
     "Velocimetro",
     "VotoPlacar",
     "comparar_magnitudes",
+    "limiar_fora_do_registro",
     "nao_implementadas",
     "parametros_de",
     "regra",

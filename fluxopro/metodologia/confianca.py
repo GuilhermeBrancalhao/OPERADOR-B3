@@ -164,3 +164,58 @@ class ParametroCalibravel:
         """`("ConfigVelocimetro", "janela_ns")`."""
         classe, _, campo = self.nome.rpartition(".")
         return classe, campo
+
+
+@dataclass(frozen=True, slots=True)
+class LimiarNaoRegistrado:
+    """Um limiar vivo e calibrável que **não** está em `PARAMETROS`, declarado.
+
+    ## O defeito que este tipo fecha
+
+    `regras._validar()` confere a coerência do que foi **declarado**: que o
+    `regra_id` existe, que a regra não está recusada, que fonte divergente
+    exige `IMPRECISO`. O que ele estruturalmente **não pode** cobrar é o que
+    ninguém declarou — um limiar que mora numa `Config*`, muda o veredito do
+    produto e simplesmente nunca foi registrado não viola regra nenhuma,
+    porque não existe para o validador.
+
+    Foi assim que `ConfigMotorSinais.magnitude_relativa_minima` (0,60) ficou
+    de fora: limiar vivo, calibrável, e ausente do registro sem que uma linha
+    sequer ficasse vermelha.
+
+    O conserto é inverter a direção da cobrança: o conjunto do que precisa ser
+    declarado passa a ser derivado do **código** (os campos reais das
+    dataclasses de configuração), e cada campo tem de estar num de dois
+    lugares — `PARAMETROS`, se o registro responde por ele, ou aqui, se não
+    responde. `tests/test_metodologia.py::TestCoberturaDoRegistro` faz essa
+    derivação e é a asserção que transforma "buraco silencioso" em "decisão
+    escrita, com dono e motivo".
+
+    **Isto não é um segundo registro de procedência.** É o contrário: é a
+    lista dos limiares que o registro **não** avaliza. Nenhum consumidor deve
+    lê-la como cobertura — `fluxopro/ui/paineis/matriz.py::regras_do_campo`
+    continua respondendo tupla vazia para estes campos, que é a verdade.
+    """
+
+    nome: str
+    """Endereço no código, qualificado: `"ConfigMotorSinais.campo"`."""
+
+    valor_padrao: object
+    motivo: str
+    """Por que ainda não está em `PARAMETROS`, e o que falta para entrar."""
+
+    def __post_init__(self) -> None:
+        if "." not in self.nome:
+            raise CitacaoInvalidaError(
+                f"{self.nome}: nome deve ser 'ConfigX.campo'"
+            )
+        if not self.motivo:
+            raise CitacaoInvalidaError(
+                f"{self.nome}: limiar fora do registro sem motivo — a ausencia "
+                "so vale como decisao se estiver escrito por que"
+            )
+
+    @property
+    def alvo(self) -> tuple[str, str]:
+        classe, _, campo = self.nome.rpartition(".")
+        return classe, campo

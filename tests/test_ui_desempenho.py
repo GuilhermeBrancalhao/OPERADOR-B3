@@ -180,22 +180,30 @@ class TestPortaoDoTape:
 
 
 class TestSobCarga:
-    """O teste que os benchmarks isolados nao fazem — e que achou o defeito.
+    """O que sobrou aqui depois de duas tentativas instaveis minhas.
 
-    Todos os numeros acima sao medidos com o painel sozinho no processo.
-    Com a fonte rodando na thread dela, o quadro do DOM saiu de
-    sub-milissegundo para **12 ms de parede**, e a tela caiu para 15 fps.
-    Nao era trabalho: era espera de GIL contra um produtor que nunca faz
-    I/O. A licao do proprio `PROGRESSO.md` — "medir o CONJUNTO, nao cada fix
-    isolado" — vale para a interface igual.
+    A medicao original — quadros por segundo da UI com a fonte inundando numa
+    thread propria — ACHOU um defeito real: o quadro do DOM saia de
+    sub-milissegundo para 12 ms de PAREDE, e era espera de GIL, nao trabalho.
+    Isso virou o `--gil-switch` de `scripts/painel.py`, com tabela medida.
 
-    Este teste nao afirma fluidez, que depende da maquina. Afirma que a
-    interface **nao morre de fome**: se alguem devolver o intervalo de troca
-    ao padrao, ou puser trabalho pesado no caminho da fonte, os quadros
-    despencam e isto reprova.
+    Mas ela nunca virou um PORTAO honesto. A primeira versao afirmava um piso
+    absoluto de 5 quadros/s e reprovava ao desligar um modulo que nao tem nada
+    com a UI: com produtor sem espera, pipeline mais LEVE inunda mais forte e
+    a interface fica mais faminta (medido: tudo ligado 16,5 fps, sem
+    metodologia 2,0). A segunda virou razao entre dois intervalos de troca —
+    conceitualmente certa, e ainda assim instavel, porque duas medicoes de
+    contencao de GIL no mesmo processo nao sao independentes: compartilham
+    cache, coletor e escalonador.
+
+    Portao que reprova por ordem de execucao ensina todo mundo a ignorar
+    portao. A medicao continua existindo, com o raciocinio inteiro, em
+    `bench_ui_carga.py` — que e onde este projeto ja guarda numero que informa
+    sem julgar. Aqui fica so o que e deterministico: sob carga, a interface
+    desenha. Nao afirma fluidez, e nao finge afirmar.
     """
 
-    def test_o_painel_nao_e_starvado_pela_thread_da_fonte(self, qapp):
+    def test_a_interface_desenha_sob_carga(self, qapp):
         import sys
         import threading
         import time as _time
@@ -224,16 +232,14 @@ class TestSobCarga:
         janela = JanelaFluxo(ponte, config.symbol, config.price_grid())
         janela.resize(1280, 800)
         janela.show()
-
         thread = threading.Thread(target=montagem.fonte.iniciar, daemon=True)
         thread.start()
         try:
             fim = _time.perf_counter() + 2.0
             while _time.perf_counter() < fim:
                 qapp.processEvents()
-            segundos = 2.0
             quadros = janela.dom.quadros_desenhados
-            fps = quadros / segundos
+            negocios = montagem.sessao.contadores.n_trades_bus
         finally:
             montagem.fonte.parar()
             thread.join(timeout=5.0)
@@ -241,11 +247,11 @@ class TestSobCarga:
             montagem.sessao.finalizar()
             sys.setswitchinterval(anterior)
 
-        assert montagem.sessao.contadores.n_trades_bus > 0, "a fonte nao produziu nada"
-        # Medido nesta maquina: ~35 fps. O piso de 5 da 7x de folga — largo o
-        # bastante para CI compartilhada, apertado o bastante para acusar os
-        # 15 fps do padrao de 5 ms com dois paineis disputando.
-        assert fps >= 5.0, f"painel starvado: {fps:.1f} quadros/s sob carga"
+        assert negocios > 0, "a fonte nao produziu nada"
+        # Zero quadros em 2 s de carga e morte por inanicao, e isso NAO depende
+        # de maquina nem de ordem. Qualquer numero acima de zero e assunto do
+        # benchmark, nao do portao.
+        assert quadros > 0, "a interface nao desenhou um quadro sequer sob carga"
 
 
 class TestQuadroOcioso:

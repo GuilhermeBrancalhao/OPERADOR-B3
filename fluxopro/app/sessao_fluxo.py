@@ -6,7 +6,8 @@ existiam, testadas, e o pipeline nunca tinha rodado inteiro. Este arquivo é o
 lugar onde a cadeia existe de verdade:
 
     fonte -> Barramento -> EstadoMercado -> analytics -> InferidorMBP
-          -> LivroMBO -> detectores -> PerfilPlayer -> MotorSinais -> saída
+          -> LivroMBO -> detectores -> PerfilPlayer -> MotorSinais
+          -> LeitorMetodo -> saída
 
 Ver `fluxopro/app/config.py` para a ordem de entrega e por quê.
 
@@ -58,6 +59,7 @@ from fluxopro.analytics.footprint import FootprintPorTimeframe
 from fluxopro.analytics.volume_profile import VolumeProfile, VolumeProfilePorPeriodo
 from fluxopro.analytics.vwap import VWAP
 from fluxopro.app.config import (
+    PRIORIDADE_METODO,
     PRIORIDADE_MICRO,
     PRIORIDADE_MOTOR,
     PRIORIDADE_PERFIL_SESSAO,
@@ -67,6 +69,7 @@ from fluxopro.app.config import (
 from fluxopro.core.barramento import Barramento
 from fluxopro.core.estado_mercado import EstadoMercado
 from fluxopro.core.eventos import BookDelta, BookSnapshot, Trade
+from fluxopro.metodologia.leitura import LeitorMetodo, LeituraMetodo
 from fluxopro.microestrutura.detectores import (
     Deteccao,
     DetectorAbsorcao,
@@ -137,6 +140,7 @@ class Contadores:
     n_snapshots_micro: int = 0
     n_deltas_micro: int = 0
     n_trades_motor: int = 0
+    n_trades_metodo: int = 0
 
     n_ordem_eventos: int = 0
     n_ordem_eventos_inferidos: int = 0
@@ -281,6 +285,23 @@ class SessaoFluxo:
         self._ultimo_estagio: tuple[EstagioSinal, object] | None = None
 
         # ------------------------------------------------------------------
+        # Método — os componentes de `fluxopro/metodologia/`, o último
+        # PRODUTOR da cadeia (ver "a quarta seta" em `app/config.py`).
+        #
+        # `LeitorMetodo` não assina o barramento por conta própria — quem
+        # assina é esta classe, com prioridade explícita. É a mesma política
+        # de `MotorSinais` e do perfil de sessão, e é o que permite à virada
+        # de sessão zerá-lo pelo método dele, sem desassinar e reassinar
+        # nada (grupo (a) de `iniciar_nova_sessao`).
+        # ------------------------------------------------------------------
+        self.metodo: LeitorMetodo | None = None
+        if cfg.ligar_metodologia:
+            self.metodo = LeitorMetodo(symbol, cfg.metodologia)
+            barramento.assinar(
+                Trade, self._ao_trade_metodo, prioridade=PRIORIDADE_METODO
+            )
+
+        # ------------------------------------------------------------------
         # Contagem — por último, para "processado" querer dizer processado.
         # ------------------------------------------------------------------
         barramento.assinar(Trade, self._contar_trade, prioridade=PRIORIDADE_SAIDA)
@@ -353,6 +374,33 @@ class SessaoFluxo:
         )
         if self._ao_sinal is not None:
             self._ao_sinal(sinal)
+
+    def _ao_trade_metodo(self, trade: Trade) -> None:
+        """Alimenta os cinco componentes do método com o trade corrente.
+
+        Um assinante só para os cinco, de propósito: eles têm de ler o MESMO
+        trade e o retrato publicado carimba os cinco com o mesmo
+        `timestamp_ns` (`LeituraMetodo` recusa o contrário). Cinco assinaturas
+        independentes tornariam possível severar uma e publicar um retrato
+        onde o placar foi apurado com o voto do velocímetro de antes.
+        """
+        assert self.metodo is not None
+        if trade.symbol != self.config.symbol:
+            return
+        self.contadores.n_trades_metodo += 1
+        self.metodo.ao_trade(trade)
+
+    def leitura_do_metodo(self) -> LeituraMetodo | None:
+        """O retrato consistente do método, ou `None`.
+
+        É o que a interface chama — uma vez por quadro, na thread dela. Não
+        drena, então qualquer painel pode chamar. `None` significa "método
+        desligado (`ligar_metodologia=False`) ou nenhum trade ainda", e os
+        dois casos se distinguem por `SessaoFluxo.metodo is None`.
+        """
+        if self.metodo is None:
+            return None
+        return self.metodo.ler()
 
     def _ligar_livro(self, livro: LivroMBO) -> None:
         """Assina o livro — na ORDEM que faz a procedência chegar a tempo.
@@ -539,9 +587,20 @@ class SessaoFluxo:
         ## Três grupos, três tratamentos
 
         **(a) Tem `iniciar_nova_sessao`/`nova_sessao`** — `EstadoMercado`,
-        `CumulativeDelta`, `VWAP`, `MedidorAgressao`, `VolumeProfilePorPeriodo`.
-        Chamado. Convenção do núcleo: acumulador corrente zera, histórico
-        fechado sobrevive.
+        `CumulativeDelta`, `VWAP`, `MedidorAgressao`, `VolumeProfilePorPeriodo`,
+        `RankingCorretoras` e `LeitorMetodo`. Chamado. Convenção do núcleo:
+        acumulador corrente zera, histórico fechado sobrevive.
+
+        `LeitorMetodo` entra neste grupo — e não no (b), onde estão as peças
+        recriadas — porque ele tem API de reset **e** não assina o barramento
+        sozinho: recriá-lo exigiria desassinar e reassinar para nada, e o
+        preço seria mudar a posição dele dentro da faixa 45. Cada um dos seis
+        componentes que ele carrega sabe o que "do dia" significa para si
+        (máxima/mínima do dia, referência de magnitude do dia, linha desde a
+        abertura, aquecimento do pregão, região abandonada no dia), e o
+        retrato publicado volta a `None` — um painel que continuasse mostrando
+        o placar de ontem enquanto o pregão de hoje não teve trade nenhum
+        seria exatamente o defeito que a virada existe para fechar.
 
         **(b) Não tem API, mas quem chama é esta classe** — `MotorSinais`, o
         perfil de sessão, `PerfilPlayer`, os seis detectores, `LivroMBO` e
@@ -610,6 +669,12 @@ class SessaoFluxo:
             self.volume_profile.nova_sessao()
         if self.brokers is not None:
             self.brokers.iniciar_nova_sessao()
+        if self.metodo is not None:
+            # Grupo (a): tem API propria E nao assina o barramento sozinho,
+            # entao zera no lugar em vez de ser recriado. Recriar exigiria
+            # desassinar/reassinar e mudaria a posicao na faixa 45 sem
+            # necessidade nenhuma.
+            self.metodo.iniciar_nova_sessao(timestamp_ns)
 
         # (b) quem esta classe chama — recriado com a mesma config
         if self.footprint is not None:

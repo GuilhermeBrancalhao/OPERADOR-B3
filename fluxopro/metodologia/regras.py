@@ -37,6 +37,7 @@ from __future__ import annotations
 from fluxopro.metodologia.confianca import (
     Confianca,
     CitacaoInvalidaError,
+    LimiarNaoRegistrado,
     ParametroCalibravel,
     RegraDocumentada,
 )
@@ -536,6 +537,18 @@ PARAMETROS: tuple[ParametroCalibravel, ...] = (
         unidade="contratos",
     ),
     ParametroCalibravel(
+        nome="ConfigLinhaAzul.margem_ticks",
+        padrao=0,
+        valores_na_fonte=(),
+        motivo="Tolerancia em ticks para o preco ser lido como 'na linha'. E o "
+        "limiar que decide ACIMA / ABAIXO / NA_LINHA, ou seja, e o corte da "
+        "propria leitura INFERIDA de lado — por isso mora nesta regra, e nao "
+        "na definicao do nivel, que a fonte confirma sem tolerancia nenhuma. "
+        "0 e a leitura literal.",
+        regra_id="linha_azul.lado",
+        unidade="ticks",
+    ),
+    ParametroCalibravel(
         nome="ConfigEstrutura.ruido_minimo_ticks",
         padrao=0,
         valores_na_fonte=(1000,),
@@ -661,6 +674,58 @@ PARAMETROS: tuple[ParametroCalibravel, ...] = (
 )
 
 
+FORA_DO_REGISTRO: tuple[LimiarNaoRegistrado, ...] = (
+    LimiarNaoRegistrado(
+        nome="ConfigMotorSinais.magnitude_relativa_minima",
+        valor_padrao=0.60,
+        motivo="Limiar VIVO e calibravel, e o registro nao responde por ele. "
+        "Trata do mesmo eixo que ConfigVelocimetro.magnitude_relativa_minima "
+        "(0,25), que ESTA em PARAMETROS — mas e outro componente, com outro "
+        "trabalho: o velocimetro e leitura de curto prazo e erra para o lado "
+        "de calar, o motor e porta de entrada. Dois cortes diferentes para "
+        "trabalhos diferentes nao sao contraditorios; o que seria "
+        "contraditorio e pendurar os dois na MESMA regra CONFIRMADO "
+        "(velocimetro.normalizacao_winfut), fazendo o registro afirmar dois "
+        "numeros sob um rotulo que a fonte so deu ao MECANISMO. A fonte "
+        "manda normalizar por magnitude e nao da corte nenhum. Landing "
+        "coordenado: entrar em PARAMETROS sob uma regra AUSENTE_NA_FONTE "
+        "propria muda o que fluxopro/ui/paineis/matriz.py::regras_do_campo "
+        "responde para este botao, e com isso tres expectativas literais de "
+        "tests/test_ui_matriz.py. Enquanto nao entra, o painel diz "
+        "'S/ REGISTRO', que e a verdade.",
+    ),
+    LimiarNaoRegistrado(
+        nome="ConfigMotorSinais.tamanho_topo_magnitude",
+        valor_padrao=32,
+        motivo="Homonimo de ConfigVelocimetro.tamanho_topo_magnitude (16), que "
+        "esta em PARAMETROS. Mesmo K conceitual, referencias diferentes: la a "
+        "cauda e da sessao inteira, aqui e uma janela movel em amostras "
+        "aceitas. Mesmo landing coordenado do item acima.",
+    ),
+    LimiarNaoRegistrado(
+        nome="ConfigMotorSinais.janela_micro_ns",
+        valor_padrao=15_000_000_000,
+        motivo="Homonimo de ConfigMacroMicro.janela_micro_ns, que esta em "
+        "PARAMETROS sob macro_micro.janela_micro. O aval e daquele componente; "
+        "reivindica-lo aqui e o que a UI ja recusa fazer ao casar pelo nome "
+        "QUALIFICADO. Mesmo landing coordenado.",
+    ),
+)
+"""Limiares vivos e calibráveis que o registro **não** avaliza, declarados.
+
+Não é cobertura — é o inverso dela. Ver `LimiarNaoRegistrado` para o defeito
+que este tuple fecha: `_validar()` só sabe cobrar o que foi declarado, então
+o conjunto do que PRECISA ser declarado passa a ser derivado do código, e
+`tests/test_metodologia.py::TestCoberturaDoRegistro` faz a derivação.
+
+O critério de cobrança, deliberadamente estreito e verificável: **todo nome de
+campo que `PARAMETROS` declara para algum dono tem de estar declarado — aqui
+ou lá — em todo OUTRO dono conhecido que tenha um campo com esse nome.** É a
+classe de defeito que a auditoria encontrou: um limiar que *parece* coberto
+porque um homônimo de outro componente está coberto.
+"""
+
+
 def _validar() -> None:
     """Roda no import. Impede o registro de afirmar o que não sustenta."""
     if len(REGRAS) != len(_LISTA):
@@ -690,6 +755,19 @@ def _validar() -> None:
                 "Fonte que diverge exige rotulo IMPRECISO."
             )
 
+    fora = set()
+    for limiar in FORA_DO_REGISTRO:
+        if limiar.nome in fora:
+            raise CitacaoInvalidaError(f"limiar duplicado: {limiar.nome}")
+        fora.add(limiar.nome)
+        if limiar.nome in nomes:
+            raise CitacaoInvalidaError(
+                f"{limiar.nome}: declarado em PARAMETROS E em FORA_DO_REGISTRO. "
+                "Os dois significam coisas opostas — 'o registro responde por "
+                "isto' e 'o registro nao responde por isto' — e afirmar as "
+                "duas deixa quem le escolher a que preferir."
+            )
+
 
 _validar()
 
@@ -712,3 +790,11 @@ def parametros_de(classe: str) -> tuple[ParametroCalibravel, ...]:
 def nao_implementadas() -> tuple[RegraDocumentada, ...]:
     """As regras que o produto recusa sustentar, com o motivo em `nota`."""
     return tuple(r for r in _LISTA if not r.implementada)
+
+
+def limiar_fora_do_registro(nome: str) -> LimiarNaoRegistrado | None:
+    """`None` se o limiar não foi declarado como fora do registro."""
+    for limiar in FORA_DO_REGISTRO:
+        if limiar.nome == nome:
+            return limiar
+    return None

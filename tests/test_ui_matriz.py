@@ -200,6 +200,21 @@ class Pintado:
         return self.x + self.largura // 2
 
 
+@dataclass(frozen=True)
+class Marca:
+    """Um `drawText` com o PORTADOR inteiro: texto, corpo e caneta.
+
+    Adicionada na rodada 3, quando a promocao da sonda
+    `test_sonda_regua_da_dominancia` (de `tests/test_ui_composicao.py`) exigiu
+    comparar CORPO alem de cor — `pares` guarda cor+texto desde a rodada 2,
+    mas nao o tamanho da fonte, que e a outra metade do que o canal degradado
+    come primeiro."""
+
+    texto: str
+    px: int
+    cor: str
+
+
 class PainterEspiao:
     """Encaminha tudo para um `QPainter` real e guarda o que foi desenhado.
 
@@ -214,9 +229,11 @@ class PainterEspiao:
         self._painter = painter
         self.textos: list[str] = []
         self.pares: list[tuple[str, str]] = []
+        self.marcas: list[Marca] = []
         self.retangulos: list[Pintado] = []
         self.linhas: list[tuple[int, int, int, int, str]] = []
         self._caneta = ""
+        self._px = 0
 
     def __getattr__(self, nome):
         return getattr(self._painter, nome)
@@ -224,6 +241,10 @@ class PainterEspiao:
     def setPen(self, cor):  # noqa: N802
         self._caneta = cor.name() if hasattr(cor, "name") else str(cor)
         return self._painter.setPen(cor)
+
+    def setFont(self, fonte):  # noqa: N802
+        self._px = fonte.pixelSize()
+        return self._painter.setFont(fonte)
 
     def fillRect(self, *args):  # noqa: N802
         if len(args) == 2 and hasattr(args[0], "width"):
@@ -248,6 +269,7 @@ class PainterEspiao:
         if args and isinstance(args[-1], str):
             self.textos.append(args[-1])
             self.pares.append((self._caneta, args[-1]))
+            self.marcas.append(Marca(args[-1], self._px, self._caneta))
         return self._painter.drawText(*args)
 
 
@@ -876,6 +898,71 @@ class TestRessalvaNoMesmoPortador:
         for t in textos:
             if t.startswith("DIRECIONAL"):
                 assert "≥70%" in t
+
+
+# --------------------------------------------------------------------------
+# A regua nao pode ser mais fraca que o veredito que ela ancora (rodada 3)
+# --------------------------------------------------------------------------
+def _luminancia(hexa: str) -> float:
+    """Luminancia relativa WCAG, recalculada do token e nunca tabelada."""
+    canais = []
+    for i in (1, 3, 5):
+        c = int(hexa[i : i + 2], 16) / 255.0
+        canais.append(c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4)
+    return 0.2126 * canais[0] + 0.7152 * canais[1] + 0.0722 * canais[2]
+
+
+def _contraste(frente: str, fundo: str) -> float:
+    a, b = _luminancia(frente), _luminancia(fundo)
+    claro, escuro = max(a, b), min(a, b)
+    return (claro + 0.05) / (escuro + 0.05)
+
+
+def _marca_com(marcas: list[Marca], *trechos: str) -> Marca:
+    for marca in marcas:
+        if all(trecho in marca.texto for trecho in trechos):
+            return marca
+    raise AssertionError(f"nenhuma marca desenhada contem {trechos!r}")
+
+
+class TestReguaDeDominanciaNaoEMaisFracaQueOVeredito:
+    """Promovido de `tests/test_ui_composicao.py::TestEscalaNoMesmoPortador::
+    test_sonda_regua_da_dominancia` (rodada 3).
+
+    A sonda ficava naquele arquivo porque quem a escreveu achou o defeito
+    aqui dentro (`ui/paineis/matriz.py`) mas o escopo era de outro
+    construtor: os cortes 50/65/70/80 da regua desenhavam em 10px/
+    `TEXT_MUTED` (3,94:1) enquanto o percentual de dominancia que eles
+    ancoram (`_leitura_de_dominancia`, uma banda acima, no mesmo eixo)
+    desenhava em 14px/cor direcional (5,37 a 6,92:1) — a escala menor E mais
+    apagada que o veredito, as duas coisas que o canal degradado come
+    primeiro (`scripts/retencao.py`).
+
+    Agora que `_desenhar_regua_dominancia` usa `FONTE_REGUA_PX` (14px, igual
+    ao veredito) e `TEXT_SECONDARY` (8,10:1, maior que qualquer cor
+    direcional possivel), a sonda passa a XPASS e vira teste normal aqui —
+    ao lado do resto da matriz, e nao mais em `test_ui_composicao.py`, que so
+    hospeda sondas de escopo alheio."""
+
+    def test_a_regua_nao_e_mais_fraca_que_o_veredito(self, qapp):
+        painel = _pronto(PainelMatriz(WDO_GRID), 460, 620)
+        painel.aplicar(derivar(None))
+        marcas = _pintura_de(painel).marcas
+        fundo = tokens.BG_SURFACE.name()
+
+        marca_escala = _marca_com(marcas, "65")
+        marca_veredito = _marca_com(marcas, "%")
+
+        assert marca_escala.px >= marca_veredito.px, (
+            f"escala {marca_escala.texto!r} em {marca_escala.px}px contra "
+            f"veredito {marca_veredito.texto!r} em {marca_veredito.px}px"
+        )
+        ct_escala = _contraste(marca_escala.cor, fundo)
+        ct_veredito = _contraste(marca_veredito.cor, fundo)
+        assert ct_escala >= ct_veredito, (
+            f"escala {marca_escala.texto!r} a {ct_escala:.2f}:1 contra "
+            f"veredito {marca_veredito.texto!r} a {ct_veredito:.2f}:1"
+        )
 
 
 # --------------------------------------------------------------------------

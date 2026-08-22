@@ -14,7 +14,8 @@ neste arquivo.
 para a maior; empate resolve pela ordem de inscrição. A cadeia de dependência
 real do pipeline é:
 
-    fonte -> EstadoMercado -> analytics -> microestrutura -> motor -> saída
+    fonte -> EstadoMercado -> analytics -> microestrutura -> motor
+          -> metodologia -> saída
 
 e as faixas abaixo a materializam. Duas dessas setas são **load-bearing** (se
 inverterem, o resultado muda):
@@ -37,6 +38,23 @@ load-bearing** e vale dizer em vez de fingir: nenhum módulo de analytics lê
 assim porque a saída e qualquer UI futura leem `EstadoMercado` como "o estado
 do mercado neste instante", e um consumidor que rodasse antes dele leria
 estado defasado.
+
+A quarta seta — **metodologia (`PRIORIDADE_METODO`) depois do motor e antes da
+contagem** — merece a mesma honestidade. `LeitorMetodo` acumula direto do
+`Trade`: não lê `EstadoMercado`, não lê analytics e não lê o motor, então
+**hoje ela também não é load-bearing para o cálculo**. Ela está fixada por dois
+motivos que valem dizer:
+
+1. o retrato do método é o que a interface desenha ao lado do estágio do motor
+   e do último preço; qualquer consumidor que entre entre o motor e a contagem
+   precisa ver os três já atualizados pelo MESMO trade, e é isso que a faixa
+   45 garante — a faixa 50 (contagem/saída) fica sozinha depois de tudo;
+2. se o `MotorSinais` um dia virar um quinto votante do `Placar` (a "setinha"
+   da ferramenta original), a seta passa a ser load-bearing sem precisar mudar
+   de lugar — e o teste que prende a posição relativa já estará escrito.
+
+O que **não** pode mudar é a posição relativa às faixas vizinhas, e
+`tests/test_app_montagem.py` e `tests/test_app_metodologia.py` prendem isso.
 
 ## LIMITAÇÃO REAL do barramento, encontrada nesta montagem
 
@@ -78,6 +96,7 @@ from fluxopro.analytics.footprint import ConfigFootprint
 from fluxopro.analytics.volume_profile import ConfigVolumeProfile
 from fluxopro.analytics.vwap import ConfigVWAP
 from fluxopro.core.eventos import WDO_GRID, WIN_GRID, PriceGrid
+from fluxopro.metodologia.leitura import ConfigMetodologia
 from fluxopro.microestrutura.detectores import (
     ConfigAbsorcao,
     ConfigClipInstitucional,
@@ -115,6 +134,13 @@ PRIORIDADE_MICRO = 30
 
 PRIORIDADE_MOTOR = 40
 """`MotorSinais` — depois de todo estado de que ele depende."""
+
+PRIORIDADE_METODO = 45
+"""`LeitorMetodo` — os componentes de `fluxopro/metodologia/`.
+
+Entre o motor e a contagem: é o último PRODUTOR da cadeia, de modo que quem
+consome (saída, gravador, ponte da UI) veja motor e método atualizados pelo
+mesmo trade. Ver "a quarta seta" na docstring do módulo."""
 
 PRIORIDADE_SAIDA = 50
 """Contadores e consumidor de saída — leem o mundo já atualizado."""
@@ -202,6 +228,7 @@ class ConfigOperacao:
     )
 
     motor: ConfigMotorSinais = field(default_factory=ConfigMotorSinais)
+    metodologia: ConfigMetodologia = field(default_factory=ConfigMetodologia)
     simulador: ConfigSimulador = field(default_factory=ConfigSimulador)
 
     # --- estágios ligáveis ---
@@ -209,6 +236,13 @@ class ConfigOperacao:
     ligar_microestrutura: bool = True
     ligar_detectores_tape: bool = True
     ligar_motor: bool = True
+    ligar_metodologia: bool = True
+    """Os cinco componentes de `fluxopro/metodologia/` (`LeitorMetodo`).
+
+    Default `True` pela mesma razão dos outros quatro: é estágio do produto,
+    não hook de teste. Desligar tem efeito medível — cinco leituras a menos
+    por trade — e é a chave para quem quer só o motor e o footprint.
+    `SessaoFluxo.metodo` fica `None`, e nenhum retrato é publicado."""
 
     emitir_apenas_mudanca_de_estagio: bool = True
     """Se `True`, um `Sinal` só sai quando (estágio, direção) MUDA. `False`

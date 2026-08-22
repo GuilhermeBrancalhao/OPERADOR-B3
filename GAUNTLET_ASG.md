@@ -367,7 +367,34 @@ O argumento de r2/r3 — *"perder o rótulo custa a unidade do eixo, não uma le
 
 ---
 
-# ENCERRAMENTO
+# CONTINUAÇÃO — terminar todas as fases (pedido do dono, 22/08)
+
+Publicado o ciclo anterior em `94788fb`. O dono pediu o **projeto inteiro, todas as fases, sem interrupção**. O plano de `design/direcao_visual.md` §6 tem as fases 2, 3 e 5 abertas, e há uma lacuna estrutural maior que qualquer uma delas.
+
+## Onda A — quatro construtores em paralelo, arquivos disjuntos
+
+| Peça | Escopo | Arquivos |
+|---|---|---|
+| **F2 — a peça que diferencia** | Footprint com leitura diagonal, Volume Profile lateral com POC/VAH/VAL no mesmo eixo de preço, Delta acumulado no mesmo eixo de tempo | `ui/paineis/footprint.py`, `perfil.py`, `delta_acumulado.py` |
+| **MET — a lacuna estrutural** | Ligar `fluxopro/metodologia/` no pipeline vivo | `app/sessao_fluxo.py`, `app/config.py`, `metodologia/*` |
+| **F5 — bookmap e replay** | Heatmap de liquidez e replay com tarja de janela | `ui/paineis/bookmap.py`, `replay.py` |
+| **XF — fechar a sonda** | A régua de dominância em 10px contra veredito em 14px | `ui/paineis/matriz.py` |
+
+**MET é a mais importante das quatro**, e não é uma fase do plano de UI. O pacote de metodologia foi entregue **isolado**: 42 regras, 33 implementadas, 9 componentes — e **nada alimentado por evento nenhum**. Foi o crítico que diagnosticou: *"a peça deu 60% da sua superfície ao único fluxo que o registro não avaliza, e 0% às 33 regras que ele avaliza."* O placar lê `0 MÉTODO` e **não pode ler outra coisa** enquanto os componentes não receberem trades. Fechar isso é o que torna as regras que o dono mandou trazer para dentro visíveis de fato, e não uma listagem de registro.
+
+Cada construtor recebeu as quatro leis medidas no ciclo anterior como restrição dura, não como sugestão — a lei do canal, a distinção entre escala que some e escala que mente, a regra de tirar a grandeza da geometria, e a proibição de teste que mede contra marco que o desenho não usa.
+
+**A armadilha específica do bookmap** foi nomeada no briefing dele: um heatmap de liquidez é, por definição, uma estrutura que cresce com o tempo do pregão — a nona casa do defeito que este projeto encontrou em oito arquivos. O teste de retenção foi pedido junto com o código, não depois.
+
+## Onda B — depois de A
+Fase 3 (docking, `saveState`, os 4 workspaces de fábrica, `Ctrl+1..9`, regra da janela órfã, Sala de Controle, densidades a quente) **mais a montagem de tudo em `janela.py`** — um dono só para o arquivo, porque quatro peças novas entrando na composição ao mesmo tempo é colisão garantida.
+
+## Onda C
+Críticos adversariais em A/B cego sobre o que sair de A e B, no mesmo protocolo: barra em `bar/`, canal medido, mutação obrigatória, veredito binário.
+
+---
+
+# ENCERRAMENTO DO PRIMEIRO CICLO
 
 **Suíte final:** `python -m pytest tests/ -q` → **1.044 passed, 2 xfailed**. Partida em 796.
 

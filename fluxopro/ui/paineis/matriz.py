@@ -500,7 +500,10 @@ N_BANDAS = 7
 
 ALTURA_ESTAGIO = 40
 ALTURA_DOMINANCIA = 40
-ALTURA_REGUA = 16
+ALTURA_REGUA = 20
+"""16 ate a rodada 3. Subiu 4px (ainda multiplo de §3.4) para caber
+`FONTE_REGUA_PX` sem cortar a descendente do algarismo — ver a docstring de
+`FONTE_REGUA_PX` para a razao do corpo maior."""
 ALTURA_MAGNITUDE = 36
 ALTURA_ROTULO = 16
 ALTURA_COLUNAS = 14
@@ -519,6 +522,30 @@ por omissao em vez de por truncamento."""
 #: quase metade do custo do quadro incremental (a razao cheio/incremental
 #: media 4,9x; separada, passa de 8x). A regra geral que isto instancia: o
 #: que nao muda nao pode compartilhar retangulo sujo com o que muda.
+
+FONTE_REGUA_PX = 14
+"""Corpo dos cortes 50/65/70/80 da regua de dominancia (rodada 3).
+
+Media a `escala_nao_e_mais_fraca` que `tests/test_ui_composicao.py` mediu:
+os cortes desenhavam em 10px/`TEXT_MUTED` (3,94:1) enquanto o percentual que
+eles ancoram (`_leitura_de_dominancia`, no MESMO eixo, uma banda acima)
+desenha em 14px/`--buy`ou`--sell`ou`--neutral` (6,92 / 6,44 / 5,37:1). O
+canal apagava exatamente o numero contra o qual o veredito e lido — a mesma
+lei que ja tinha movido o limiar para dentro do rotulo da faixa
+(`_rotulo_faixa`) e para dentro do veredito da magnitude (`PASSA SEM
+MEDIR`), so que esta banda ainda nao tinha recebido a correcao.
+
+14px iguala o PIOR caso (nao o melhor): a regua nao sabe, no momento em que
+desenha, qual sera o lado da proxima leitura, entao nao pode escolher o
+corpo por direcao. Igualar ao tamanho do veredito e a unica escolha que nao
+aposta.
+
+`TEXT_SECONDARY` (8,10:1) substitui `TEXT_MUTED` pela mesma razao do lado do
+contraste: 8,10:1 e maior que os tres contrastes possiveis do veredito
+(6,92 / 6,44 / 5,37), entao a regua nunca fica mais fraca independente do
+lado dominante — inclusive quando `PALETA_SEM_COR` colapsa o veredito para
+`TEXT_PRIMARY` (16,43:1), caso em que a regua continua legivel (8,10:1 e
+AAA) ainda que nao seja a mais forte da tela, o que a lei nao exige."""
 
 CAMPOS_DA_BANDA: dict[int, tuple[str, ...]] = {
     # O FAROL depende de TODA a configuracao do motor, e por isso a sua lista
@@ -684,6 +711,13 @@ class PainelMatriz(PainelDenso):
         self._bandas: list[QRect] = [QRect() for _ in range(N_BANDAS)]
         self._fm_grade = QFontMetrics(tokens.fonte_numero(densidade.fonte_grade))
         self._fm_rotulo = QFontMetrics(tokens.fonte_rotulo())
+        # Metrica PROPRIA da regua, e nao `_fm_grade`: o corpo dos cortes
+        # segue `FONTE_REGUA_PX` (igualado ao veredito, rodada 3), que nao e
+        # o mesmo numero que `densidade.fonte_grade` usa para a grade de
+        # deteccoes. Medir a largura com a fonte errada faria a colisao entre
+        # cortes vizinhos ser calculada pequena demais e dois rotulos
+        # colidirem na tela mesmo quando o codigo achou que nao colidiam.
+        self._fm_regua = QFontMetrics(tokens.fonte_numero(FONTE_REGUA_PX))
 
         self.setMinimumSize(360, 260)
 
@@ -1326,8 +1360,12 @@ class PainelMatriz(PainelDenso):
             (regua.right() - largura_compra, regua.right()),
         ]
 
-        painter.setFont(tokens.fonte_numero(10))
-        painter.setPen(tokens.TEXT_MUTED)
+        # `FONTE_REGUA_PX`/`TEXT_SECONDARY` e nao 10px/`TEXT_MUTED`: os cortes
+        # ancoram o percentual da banda de cima (14px, cor direcional) e um
+        # numero-ancora mais fraco que o numero que ele mede e exatamente o
+        # defeito que `FONTE_REGUA_PX` documenta.
+        painter.setFont(tokens.fonte_numero(FONTE_REGUA_PX))
+        painter.setPen(tokens.TEXT_SECONDARY)
         for sentido in (-1, 1):
             for corte in self._cortes_dominancia():
                 if corte >= 1.0:
@@ -1336,7 +1374,7 @@ class PainelMatriz(PainelDenso):
                     continue  # o centro e um so
                 x = self._x_de(eixo, corte, sentido)
                 texto = str(int(round(corte * 100)))
-                meia = self._fm_grade.horizontalAdvance(texto) // 2 + 3
+                meia = self._fm_regua.horizontalAdvance(texto) // 2 + 3
                 if any(x - meia <= fim and x + meia >= ini for ini, fim in ocupado):
                     continue
                 ocupado.append((x - meia, x + meia))

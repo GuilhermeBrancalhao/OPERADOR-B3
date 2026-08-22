@@ -758,29 +758,12 @@ class TestEscalaNoMesmoPortador:
             fundo=tokens.BG_SURFACE.name(),
         )
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "ESCOPO DE OUTRO CONSTRUTOR (ui/paineis/matriz.py, rodada 2): os "
-            "cortes da regua de dominancia desenham em 10px enquanto o "
-            "percentual que eles ancoram desenha em 14px. A sonda relata "
-            "`escala '65' em 10px contra veredito '50,0%' em 14px`, que e o "
-            "endereco exato do conserto."
-        ),
-    )
-    def test_sonda_regua_da_dominancia(self, qapp):
-        from fluxopro.ui.paineis.matriz import PainelMatriz, derivar
-
-        painel = PainelMatriz(WDO_GRID)
-        painel.resize(460, 620)
-        painel.ao_redimensionar(460, 620)
-        painel.aplicar(derivar(None))
-        escala_nao_e_mais_fraca(
-            _espiar(painel).marcas,
-            escala=("65",),
-            veredito=("%",),
-            fundo=tokens.BG_SURFACE.name(),
-        )
+    # A sonda da regua de dominancia (ui/paineis/matriz.py) foi promovida
+    # para tests/test_ui_matriz.py::TestReguaDeDominanciaNaoEMaisFracaQueOVeredito
+    # depois que a regua passou a desenhar em FONTE_REGUA_PX/TEXT_SECONDARY
+    # (>= corpo e contraste do veredito). Este arquivo so hospeda sondas de
+    # ESCOPO ALHEIO enquanto o defeito nao e corrigido; corrigido, o teste
+    # normal mora junto do painel que ele cobre.
 
 
 # --------------------------------------------------------------------------

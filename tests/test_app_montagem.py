@@ -41,6 +41,7 @@ from fluxopro.dados.leitor_gravacao import AdaptadorLeitorGravacao
 from fluxopro.dados.replay import AdaptadorReplay
 from fluxopro.dados.simulador import SimuladorWDO
 from fluxopro.gravacao.catalogo import Catalogo
+from fluxopro.metodologia.leitura import ConfigMetodologia
 from fluxopro.microestrutura.detectores import (
     ConfigAbsorcao,
     ConfigClipInstitucional,
@@ -82,7 +83,7 @@ def donos(barramento, tipo) -> list[tuple[str, str]]:
 
 def test_ordem_de_entrega_no_barramento_para_trade():
     """Prende a cadeia inteira: núcleo -> analytics -> perfil de sessão ->
-    microestrutura -> motor -> contagem.
+    microestrutura -> motor -> método -> contagem.
 
     Este teste existe porque a ordem das quatro primeiras peças NÃO pode ser
     declarada por prioridade: `EstadoMercado` e os analytics assinam a si
@@ -105,6 +106,7 @@ def test_ordem_de_entrega_no_barramento_para_trade():
         ("SessaoFluxo", "_ao_trade_detectores_tape"),
         ("SessaoFluxo", "_ao_trade_perfil_player"),
         ("SessaoFluxo", "_ao_trade_motor"),
+        ("SessaoFluxo", "_ao_trade_metodo"),
         ("SessaoFluxo", "_contar_trade"),
     ]
 
@@ -167,6 +169,7 @@ def test_o_livro_ja_foi_alimentado_quando_o_motor_roda():
         ("exaustao", ConfigExaustao),
         ("clip_institucional", ConfigClipInstitucional),
         ("motor", ConfigMotorSinais),
+        ("metodologia", ConfigMetodologia),
     ],
 )
 def test_config_operacao_nao_redigita_nenhum_default(campo, classe):
@@ -220,6 +223,7 @@ def test_estagios_desligados_nao_instanciam_a_peca():
             ligar_microestrutura=False,
             ligar_detectores_tape=False,
             ligar_motor=False,
+            ligar_metodologia=False,
         )
     ).sessao
     assert sessao.volume_profile is None
@@ -228,6 +232,7 @@ def test_estagios_desligados_nao_instanciam_a_peca():
     assert sessao.inferidor is None
     assert sessao.det_absorcao is None
     assert sessao.motor is None
+    assert sessao.metodo is None
     # o que NÃO é opcional continua de pé
     assert sessao.estado is not None
     assert sessao.perfil_sessao is not None
