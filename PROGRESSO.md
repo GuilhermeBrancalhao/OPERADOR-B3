@@ -204,6 +204,46 @@ O efeito colateral é pior que a perda: `git diff -- fluxopro/` era **estrutural
 
 Nota de método do crítico: a prova "byte a byte contra o blob de HEAD" da R3 **não reproduz** com `core.autocrlf=true` — a conclusão estava certa, o método não. A R4 normaliza CRLF: 66 arquivos, 0 divergências reais.
 
+## RODADA 5 DA CRÍTICA: **NÃO PASSA** (`criticas/nucleo_r5.md`)
+
+### A 6ª casa — e desta vez com prova formal
+`gravacao/gravador.py:149` acumula um `int` por evento do pregão inteiro **para produzir dois escalares** (`min`/`max`). Medido no objeto de produção: **44,9 B/evento → 4,85 GB** num pregão de 6 h a 5.000 ev/s. Gêmeo em `dados/leitor_gravacao.py`: **37 GB** para reler. Cerca de 13 linhas de conserto em cada.
+
+O agravante: o `meta.json` com os hashes só é escrito em `_fechar_dia`, sem chamador periódico — **um OOM perde a gravação do dia inteiro**, e o gravador é a única fonte de histórico de book que este projeto terá.
+
+**A prova formal (G01)**: o crítico **aplicou a correção** e os 574 testes continuaram verdes. **Nenhum teste distingue O(eventos) de O(1).** O critério que o builder da 5ª casa deixou no docstring funcionou — e revelou que a suíte inteira é cega a essa classe inteira de defeito.
+
+O crítico escolheu esse gap contra dois concorrentes (vazão indefinida do pipeline, gate de magnitude) com uma justificativa que aceito: **gravar-e-reler é o instrumento de medição** que fecharia o buraco de dado real aberto desde a R2. As ondas 7-8 consertaram a captura (zero perda a 50.000 ticks/s, confirmado) e nunca olharam o armazenamento.
+
+### Mutação: 125 aplicações, 0 ressurreições
+| lote | aplicadas | mortas | vivas |
+|---|---|---|---|
+| vivas + novas da R4 | 31 | 16 | 13 |
+| **novas desta rodada** | 27 | 13 | **14 (52%)** |
+| tabelas dos 5 builders da onda 8 | 67 | **66** | 1 (já declarada mal formada pelo autor) |
+
+**12 das 13 sobreviventes de cinco rodadas e 11 das 14 novas estão em `gravacao/` + `dados/` + `app/montagem`** — duas medições independentes apontando o mesmo subsistema, que é exatamente onde o critério de crescimento também condena.
+
+### Achado novo: o espelho do WINFUT
+Um **pico genuíno no fim do dia** (10× o normal — leilão de fechamento) eleva a referência de magnitude e o motor fica **mudo pelo resto do pregão** (`mag_rel` 0,100). Não é o fat finger, que o filtro de negócio único já pega: é movimento real. Os dois defeitos são o mesmo erro espelhado — a onda 8 trocou "esquece o pico" por "nunca esquece", **ambos ancorados no dia inteiro**. A R3 já pedia janela móvel.
+
+### Os números da onda 8 conferem, vários com folga
+Heap em 2 entradas até 4,8 M eventos (o dobro do testado), rompimento 27,9-90,2 µs, dedup 802 chaves plana em 6 h e degrau de 22,9 pp exatos, WINFUT `mag_rel` plana em 0,450, relógio dentro do +0,017%, motor 151.504 ev/s.
+
+### Parte D — o buraco de dado real, quantificado
+Zero bytes de mercado em disco, `MetaTrader5` não instalado. Das 536 funções `test_`: **53** usam o simulador, **35** o mock do MT5, **448** eventos escritos à mão, **0** tape real. Mas a concentração é o que importa: **24 das 29 do pipeline montado são simulador**, e **33 das 44 da borda ao vivo são mock** — o mesmo mock que já mentiu na R3 (ignorava `de` e `count`, escondendo o feed travado).
+
+### O crítico registrou contra si mesmo
+Que um dos seus ataques falhou (virou evidência **a favor** do desenho); que corrigiu uma afirmação absoluta própria após contra-leitura; e que **o próprio harness dele restaurou conteúdo certo com bytes errados** (LF vs CRLF), precisando de `git checkout` — com a lição de que sha256 normalizado e `git status` são complementares, não alternativos. Repassei esse aviso aos 3 builders da onda 9.
+
+## Onda 9 — correções da R5
+
+| Peça | Modelo | Estado |
+|---|---|---|
+| 6ª casa: gravador e leitor O(eventos) + durabilidade do meta | opus | 🔄 em voo |
+| Motor: referência de magnitude deixa o motor mudo após pico legítimo | opus | 🔄 em voo |
+| 27 mutações vivas em `core/`, `app/`, `scripts/`, `replay` | opus | 🔄 em voo |
+
 ## Onda 8 — correções da R4
 
 > **Nota de método — o registro em voo virou infraestrutura crítica.** Criei o `.mut/*_em_voo.json` depois que o crítico da R4 morreu por limite no meio de uma mutação. Nesta onda ele **pagou duas vezes**: (1) um timeout matou o harness do motor no meio da mutação M10 e deixou um `while False:` em disco — o registro + sha256 identificou e desfez, e a suíte teria ficado **verde com o defeito**, porque só um teste o pegava; (2) dois builders colidiram no mesmo nome de arquivo e adotaram nomes próprios por conta, sem que eu precisasse intervir. Numa execução com 5 builders mutando código em paralelo, `git diff` não basta — já foi provado cego neste repo (o `.gitignore`) e não distingue mutação de trabalho legítimo.

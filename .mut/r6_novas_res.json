@@ -1,0 +1,245 @@
+[
+  {
+    "id": "G01",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "6a CASA: troca a lista de horarios pelo min/max incremental (a CORRECAO). Verde = nenhum teste distingue O(eventos) de O(1)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 37.8,
+    "log": ""
+  },
+  {
+    "id": "G02",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "rotacao de dia aceita voltar no tempo: evento atrasado fecha o dia corrente e reabre o anterior",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 39.1,
+    "log": ""
+  },
+  {
+    "id": "G03",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "n_eventos_total do meta.json deixa de somar tudo (conta so o tipo mais frequente)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 41.1,
+    "log": ""
+  },
+  {
+    "id": "C01",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "INDEXACAO POR INTERVALO: --de/--ate passam a ser lidos no fuso de Sao Paulo (-03) em vez de UTC",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 23.1,
+    "log": "00000 = _ts_utc(datetime.date(2026, 8, 20), 9, 0)\n\ntests\\test_gravacao_integridade.py:217: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_integridade.py::test_consultar_intervalo_nao_troca_hora_inicio_com_hora_fim\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 239 passed in 22.02s\n"
+  },
+  {
+    "id": "C02",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "integridade: arquivo AUSENTE passa a contar como valido",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 36.6,
+    "log": ""
+  },
+  {
+    "id": "C03",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "hash do catalogo passa a incluir o cabecalho (divergencia sistematica contra o Gravador)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 4.1,
+    "log": " = <fluxopro.gravacao.catalogo.Catalogo object at 0x0000024495F397F0>.verificar_integridade\n\ntests\\test_app_cli.py:201: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_gravar_liga_o_gravador_no_mesmo_pipeline\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 61 passed in 2.94s\n"
+  },
+  {
+    "id": "C04",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "escanear le so o primeiro simbolo (gravacao multi-simbolo perde os demais em silencio)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 36.9,
+    "log": ""
+  },
+  {
+    "id": "F01",
+    "arquivo": "fluxopro/gravacao/formato.py",
+    "desc": "formato: decodificar_niveis perde n_orders (usa qty no lugar)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 24.0,
+    "log": "999, qty=10, n_orders=1)\nE         Use -v to get more diff\n\ntests\\test_gravacao_gravador.py:198: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_gravador.py::test_formato_decodificar_niveis_preserva_ordem_e_valores\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 232 passed in 22.65s\n"
+  },
+  {
+    "id": "F02",
+    "arquivo": "fluxopro/gravacao/formato.py",
+    "desc": "formato: linha_para_trade troca comprador e vendedor na volta do disco",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 39.8,
+    "log": ""
+  },
+  {
+    "id": "B01",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "barramento: publicar itera uma COPIA (a CORRECAO de reentrancia). Verde = reentrancia nao e prendida em direcao nenhuma",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 43.1,
+    "log": ""
+  },
+  {
+    "id": "B02",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "barramento: excecao de assinante engolida (o resto da cadeia continua como se nada tivesse acontecido)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 45.4,
+    "log": ""
+  },
+  {
+    "id": "B03",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "barramento: ordenacao por prioridade deixa de acontecer em assinar (ordem passa a ser a de inscricao pura)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 24.4,
+    "log": " \nE         At index 0 diff: 'baixa_1' != 'alta'\nE         Use -v to get more diff\n\ntests\\test_barramento.py:28: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_barramento.py::test_ordem_por_prioridade_e_inscricao - Asse...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 145 passed in 23.20s\n"
+  },
+  {
+    "id": "RL1",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "relogio: RelogioReal troca monotonic_ns por time_ns (volta no tempo em ajuste de NTP)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 39.0,
+    "log": ""
+  },
+  {
+    "id": "RL2",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "relogio: replay recusa timestamp IGUAL (a docstring diz que empate e comum e aceito de proposito)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 23.3,
+    "log": "lueError: relogio de replay nao pode retroceder: atual=3000 proposto=3000\n\nfluxopro\\core\\relogio.py:63: ValueError\n=========================== short test summary info ===========================\nFAILED tests/test_core_relogio.py::test_relogio_replay_aceita_ficar_parado_no_mesmo_timestamp\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 176 passed in 22.16s\n"
+  },
+  {
+    "id": "L01",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "leitor: borda superior do recorte vira exclusiva (evento no ts_fim exato some do replay)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 23.1,
+    "log": "RO_BORDA'\nE         Use -v to get more diff\n\ntests\\test_gravacao_integridade.py:250: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_integridade.py::test_leitor_filtra_por_intervalo_de_horario_exclui_fora_da_janela\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 240 passed in 22.03s\n"
+  },
+  {
+    "id": "L02",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "leitor: desempate troca tipo<->indice (deterministico ainda, contrato de ordem por tipo quebrado)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 37.8,
+    "log": ""
+  },
+  {
+    "id": "L03",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "leitor: base do catalogo de verificacao sobe um nivel so (catalogo vazio => integridade nunca reprova)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 40.1,
+    "log": ""
+  },
+  {
+    "id": "P01",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "replay: trade e delta trocam a prioridade no empate de timestamp (constantes de origem invertidas)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 38.7,
+    "log": " 'ADD'>, price=9999, qty=10, position=0), Trade)\n\ntests\\test_replay_determinismo.py:57: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_replay_determinismo.py::test_replay_ordena_por_timestamp_trade_antes_de_delta_em_empate\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 560 passed in 37.59s\n"
+  },
+  {
+    "id": "O01",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "ONDA8 dedup: o cursor da varredura AVANCA ao remover (quebra a invariante que permite esvaziar em O(n) escritas)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 38.2,
+    "log": ""
+  },
+  {
+    "id": "O02",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "ONDA8 dedup: _remover deixa de tratar \"a chave e a ultima\" (indice corrompido ao remover a cauda)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 2.9,
+    "log": "ctores.py\", line 374, in _remover\n    self._chaves[i] = ultima\n    ~~~~~~~~~~~~^^^\nIndexError: list assignment index out of range\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_seed_diferente_muda_a_saida_do_cli - Index...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 60 passed in 1.88s\n"
+  },
+  {
+    "id": "O03",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "ONDA8 dedup: RNG de despejo vira o modulo global random (nao mais o Random proprio semeado)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 34.8,
+    "log": ""
+  },
+  {
+    "id": "O04",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "ONDA8 relogio: janela deixa de ser estritamente monotonica (<= vira <): amostras iguais empilham",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 22.4,
+    "log": "t5._RelogioServidor object at 0x0000021DDCF0FC30>.amostras_na_janela\n\ntests\\test_dados_mt5.py:1064: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_dados_mt5.py::test_tape_parado_por_10_minutos_nao_prende_o_relogio_derivado\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 218 passed in 21.30s\n"
+  },
+  {
+    "id": "O05",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "ONDA8 relogio: _resetar nao limpa a janela (amostras do referencial ANTIGO sobrevivem ao reset)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 22.1,
+    "log": "la de reconciliacao de 300 ms do InferidorMBP\nE       assert (0.4 * 1000) < 300\n\ntests\\test_dados_mt5.py:998: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_dados_mt5.py::test_relogio_esquece_regressao_de_400ms_do_servidor\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 216 passed in 21.09s\n"
+  },
+  {
+    "id": "O06",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "ONDA8 relogio: poda por IDADE deixa de rodar (a janela so encolhe pelo teto duro: a catraca volta parcialmente)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 22.2,
+    "log": "ho: erro de 125 ms depois de 120 s\nE       assert (0.125 * 1000) < 50\n\ntests\\test_dados_mt5.py:1154: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_dados_mt5.py::test_regressao_sub_limiar_e_absorvida_pela_janela_deslizante\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 221 passed in 21.20s\n"
+  },
+  {
+    "id": "O07",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "ONDA8 magnitude: _n_visto conta ANTES do filtro de negocio unico (piso de amostras satisfeito por amostra descartada)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 35.2,
+    "log": "motor.sinais.MotorSinais object at 0x00000139FFE80050>._n_visto\n\ntests\\test_motor_sinais.py:422: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_referencia_ignora_magnitude_que_um_unico_negocio_explica\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 529 passed in 34.12s\n"
+  },
+  {
+    "id": "O08",
+    "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+    "desc": "ONDA8 heap: teto de compactacao vira 1x len(vivos) (compacta quase a cada insercao: O(n) por evento volta)",
+    "_tabela": "r6_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 34.7,
+    "log": ""
+  },
+  {
+    "id": "S01",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "saida: marca [OBS]/[INF] usa > em vez de >= (confianca exatamente 1.0 passa a imprimir como INFERIDA)",
+    "_tabela": "r6_novas.json",
+    "veredito": "MORTA",
+    "segundos": 2.2,
+    "log": "5 VAH=5011.5\\n  motor (final)       : estagio=NENHUM direcao=- faixa=PRE_DIRECIONAL\\n'\n\ntests\\test_app_cli.py:134: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_rodar_com_simulador_imprime_resumo_e_sai_zero\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 58 passed in 1.10s\n"
+  }
+]

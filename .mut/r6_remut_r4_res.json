@@ -1,0 +1,277 @@
+[
+  {
+    "id": "N01",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "replay: sort perde o desempate (ordem nao-deterministica no empate de ts)",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 104.0,
+    "log": ""
+  },
+  {
+    "id": "N03",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "replay: buyer_broker e seller_broker trocados na leitura do CSV",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 51.5,
+    "log": ""
+  },
+  {
+    "id": "N04",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "simulador: agressao de COMPRA empurra o preco para BAIXO",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 36.9,
+    "log": "UY: 'BUY'> = AgressorSide.BUY\n\ntests\\test_simulador_propriedades_mercado.py:59: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_simulador_propriedades_mercado.py::test_preco_desloca_na_direcao_do_agressor_nunca_ao_contrario\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 567 passed in 35.82s\n"
+  },
+  {
+    "id": "N05",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "simulador: regime de absorcao desligado (preco sempre desloca)",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 43.5,
+    "log": "3, 9994, ...})\n\ntests\\test_simulador_propriedades_mercado.py:89: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_simulador_propriedades_mercado.py::test_absorcao_forcada_a_100_por_cento_impede_qualquer_deslocamento_de_preco\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 568 passed in 42.42s\n"
+  },
+  {
+    "id": "N06",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "mt5: bids ordenados do PIOR para o melhor (topo de livro invertido)",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 39.2,
+    "log": ""
+  },
+  {
+    "id": "N10",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "leitor: sort perde o desempate por tipo/indice",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 39.0,
+    "log": ""
+  },
+  {
+    "id": "N12",
+    "arquivo": "fluxopro/gravacao/formato.py",
+    "desc": "formato: SCHEMA_VERSAO congelado errado (1 -> 99)",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 38.3,
+    "log": ""
+  },
+  {
+    "id": "X01",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "brokers: janela expira com >= (trade exatamente na borda some)",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 1.7,
+    "log": "ompra=500, soma_preco_qty_venda=0).volume_compra\n\ntests\\test_analytics_brokers.py:140: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_analytics_brokers.py::test_janela_expira_estritamente_maior_trade_na_borda_exata_sobrevive\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 13 passed in 0.62s\n"
+  },
+  {
+    "id": "X04",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "brokers: aceita trade de OUTRO simbolo (filtro desligado)",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 1.6,
+    "log": "o.analytics.brokers.RankingCorretoras object at 0x000001D9AA2B2140>.estatistica\n\ntests\\test_analytics_brokers.py:152: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_analytics_brokers.py::test_trade_de_outro_symbol_e_ignorado\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 14 passed in 0.60s\n"
+  },
+  {
+    "id": "X06",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "perfil_player: quem agrediu invertido (comprador<->vendedor)",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 36.0,
+    "log": "_clip=10.0, persistencia=1).agressividade\n\ntests\\test_micro_perfil_player.py:62: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_micro_perfil_player.py::test_comprador_agride_conta_como_agressor_do_comprador_nao_do_vendedor\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 495 passed in 34.84s\n"
+  },
+  {
+    "id": "X08",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "perfil_player: perna vendedora nao conta clip (tamanho_medio_clip inflado)",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 36.9,
+    "log": "amanho_medio_clip=0.0, persistencia=1).tamanho_medio_clip\n\ntests\\test_micro_perfil_player.py:128: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_micro_perfil_player.py::test_perna_vendedora_tambem_conta_no_clip_e_no_volume\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 499 passed in 35.75s\n"
+  },
+  {
+    "id": "X10",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "perfil_player: agressividade mede o lado PASSIVO",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 35.2,
+    "log": "_clip=10.0, persistencia=1).agressividade\n\ntests\\test_micro_perfil_player.py:62: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_micro_perfil_player.py::test_comprador_agride_conta_como_agressor_do_comprador_nao_do_vendedor\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 495 passed in 34.11s\n"
+  },
+  {
+    "id": "X14",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "mt5: dedup de tick vira < (reprocessa o ultimo tick a cada poll)",
+    "_tabela": "r4_remut.json",
+    "veredito": "ANCORA_EXTINTA"
+  },
+  {
+    "id": "X15",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "mt5: profundidade_maxima ignorada (book inteiro publicado)",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 38.6,
+    "log": ""
+  },
+  {
+    "id": "X16",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "mt5: BookDelta de ADD sempre com position=0 (posicao no book perdida)",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 41.3,
+    "log": ""
+  },
+  {
+    "id": "X18",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "catalogo: escanear nao limpa o indice (entrada apagada do disco sobrevive ao re-escaneamento)",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 36.7,
+    "log": ""
+  },
+  {
+    "id": "X19",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "catalogo: arquivo() prefere o PLANO ao .gz (le a versao velha se as duas existirem)",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 40.1,
+    "log": ""
+  },
+  {
+    "id": "X20",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "catalogo: consultar_intervalo devolve a entrada mesmo com hora_fim ANTES de hora_inicio (intervalo vazio nao e recusado)",
+    "_tabela": "r4_remut.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 37.6,
+    "log": ""
+  },
+  {
+    "id": "X26",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "footprint: vizinho diagonal zerado deixa de marcar imbalance (politica invertida)",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 1.7,
+    "log": "re item: 100\nE         Use -v to get more diff\n\ntests\\test_analytics_footprint.py:154: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_analytics_footprint.py::test_imbalance_sem_vizinho_diagonal_marca_por_falta_de_contraparte\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 31 passed in 0.62s\n"
+  },
+  {
+    "id": "X27",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "footprint: media de volume por nivel divide pelo n de niveis + 1",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 1.6,
+    "log": " object at 0x000001BBA052E340>.absorcao_topo\n\ntests\\test_analytics_footprint.py:207: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_analytics_footprint.py::test_media_volume_por_nivel_divide_pelo_numero_de_niveis_nao_mais_um\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 33 passed in 0.59s\n"
+  },
+  {
+    "id": "X28",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "footprint: delta_divergente so olha alta (queda com delta positivo deixa de divergir)",
+    "_tabela": "r4_remut.json",
+    "veredito": "MORTA",
+    "segundos": 1.9,
+    "log": "int object at 0x0000012D3AE64140>.delta_divergente\n\ntests\\test_analytics_footprint.py:171: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_analytics_footprint.py::test_delta_divergente_cobre_os_quatro_quadrantes_preco_x_delta\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 32 passed in 0.64s\n"
+  },
+  {
+    "id": "Y01",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "prioridade: perfil de sessao passa a entregar DEPOIS do motor (a seta que 'nao pode inverter')",
+    "_tabela": "r4_novas.json",
+    "veredito": "MORTA",
+    "segundos": 3.7,
+    "log": ") != ('SessaoFluxo', '_ao_trade_perfil_sessao')\nE         Use -v to get more diff\n\ntests\\test_app_montagem.py:93: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_ordem_de_entrega_no_barramento_para_trade\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 65 passed in 2.67s\n"
+  },
+  {
+    "id": "Y02",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "prioridade: micro (InferidorMBP) passa a entregar DEPOIS do motor",
+    "_tabela": "r4_novas.json",
+    "veredito": "MORTA",
+    "segundos": 3.8,
+    "log": "e_motor') != ('SessaoFluxo', '_ao_trade_micro')\nE         Use -v to get more diff\n\ntests\\test_app_montagem.py:93: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_ordem_de_entrega_no_barramento_para_trade\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 65 passed in 2.77s\n"
+  },
+  {
+    "id": "Y03",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "prioridade: saida entrega ANTES de tudo (le o mundo de um evento atras)",
+    "_tabela": "r4_novas.json",
+    "veredito": "MORTA",
+    "segundos": 3.9,
+    "log": ") != ('SessaoFluxo', '_ao_trade_perfil_sessao')\nE         Use -v to get more diff\n\ntests\\test_app_montagem.py:93: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_ordem_de_entrega_no_barramento_para_trade\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 65 passed in 2.77s\n"
+  },
+  {
+    "id": "Y04",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "montagem: fonte construida ANTES da sessao (a corrida que a docstring diz nao ser invariante)",
+    "_tabela": "r4_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 38.3,
+    "log": ""
+  },
+  {
+    "id": "Y05",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "montagem: recorte --de/--ate no CSV do nucleo passa a ser IGNORADO em silencio (falha ABERTA)",
+    "_tabela": "r4_novas.json",
+    "veredito": "MORTA",
+    "segundos": 3.7,
+    "log": "^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE FonteIndisponivelError\n\ntests\\test_app_montagem.py:292: Failed\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_recorte_de_horario_em_csv_falha_fechado\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 90 passed in 2.69s\n"
+  },
+  {
+    "id": "Y06",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "montagem: escolhe o dia MAIS ANTIGO da gravacao em vez do mais recente",
+    "_tabela": "r4_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 44.9,
+    "log": ""
+  },
+  {
+    "id": "Y07",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "montagem: verificacao de hash da gravacao desligada em silencio",
+    "_tabela": "r4_novas.json",
+    "veredito": "SOBREVIVEU",
+    "segundos": 46.9,
+    "log": ""
+  },
+  {
+    "id": "Y08",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "saida: toda deteccao inferida e' impressa como OBSERVADA (a marca de procedencia mente)",
+    "_tabela": "r4_novas.json",
+    "veredito": "MORTA",
+    "segundos": 2.2,
+    "log": "5 VAH=5011.5\\n  motor (final)       : estagio=NENHUM direcao=- faixa=PRE_DIRECIONAL\\n'\n\ntests\\test_app_cli.py:135: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_rodar_com_simulador_imprime_resumo_e_sai_zero\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 58 passed in 1.04s\n"
+  },
+  {
+    "id": "Y09",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "saida: direcao do sinal sempre impressa como '-' (o lado do sinal some da tela)",
+    "_tabela": "r4_novas.json",
+    "veredito": "MORTA",
+    "segundos": 25.6,
+    "log": "micro_1a=-100 micro_2a=40 bruto=CONFIRMADO persist=7 vol_nao_atrib=17'\n\ntests\\test_app_saida.py:133: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_saida.py::test_a_linha_do_sinal_carrega_a_evidencia_das_tres_condicoes\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 134 passed in 24.48s\n"
+  },
+  {
+    "id": "Y10",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "footprint: piso de qty do imbalance passa a 10 (muda o default de fabrica condenado ha 4 rodadas)",
+    "_tabela": "r4_novas.json",
+    "veredito": "ANCORA_EXTINTA"
+  }
+]

@@ -1,0 +1,538 @@
+[
+  {
+    "id": "D01",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "volta a chave por order_id nos detectores de livro",
+    "de": "        return (evento.side, evento.price)",
+    "para": "        return evento.order_id",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D02",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "remove o TTL: chave nunca expira (volta a memoria infinita por chave)",
+    "de": "        return self._agora_ns - item.ts_ultimo_ns > self._janela_ns",
+    "para": "        return False",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D03",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "volta o despejo determinstico (FIFO) no excedente: o penhasco",
+    "de": "        self._remover(self._chaves[_SORTEIO_DESPEJO.randrange(len(self._chaves))])",
+    "para": "        self._remover(self._chaves[0])",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D04",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "volta o teto de fabrica da onda 7 (4.096 chaves)",
+    "de": "LIMITE_CHAVES_RASTREADAS = 65536",
+    "para": "LIMITE_CHAVES_RASTREADAS = 4096",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D05",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "janela de episodio de fabrica vira 0 (dedup sem memoria)",
+    "de": "JANELA_EPISODIO_NS = 30_000_000_000",
+    "para": "JANELA_EPISODIO_NS = 0",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D06",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "Fantasma le o dedup com o relogio do evento ANTERIOR",
+    "de": "        self._procedencia.avancar(ordem.timestamp_saida_ns)\n        chave = (ordem.side, ordem.price)",
+    "para": "        chave = (ordem.side, ordem.price)",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D07",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "Iceberg le o dedup com o relogio do evento ANTERIOR",
+    "de": "        self._procedencia.avancar(timestamp_ns)\n        chave = (ordem.side, ordem.price)",
+    "para": "        chave = (ordem.side, ordem.price)",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D08",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "episodio novo herda a mordaca do anterior (reiniciar nao solta sinalizado)",
+    "de": "        self.n_eventos = 0\n        self.sinalizado = False",
+    "para": "        self.n_eventos = 0",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D10",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "relogio do mapa passa a andar para tras com evento atrasado",
+    "de": "        if agora_ns is not None and agora_ns > agora:\n            agora = self._agora_ns = agora_ns",
+    "para": "        if agora_ns is not None:\n            agora = self._agora_ns = agora_ns",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D11",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "obter devolve chave expirada como se fosse viva",
+    "de": "        if item is None or self._expirado(item):\n            return None\n        return item",
+    "para": "        return item",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D12",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "_remover nao conserta o indice da chave movida: vetor de despejo corrompe",
+    "de": "        if ultima != chave:\n            self._chaves[i] = ultima\n            self._itens[ultima].pos = i",
+    "para": "        if ultima != chave:\n            self._chaves[i] = ultima",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D13",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "teto deixa de valer no excedente (backstop de memoria some)",
+    "de": "        if len(self._chaves) >= self._limite:\n            self._despejar_sorteado()",
+    "para": "        if False:\n            self._despejar_sorteado()",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D14",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "consulta passa a RENOVAR a chave (verificar em laco segura chave morta)",
+    "de": "    def obter(self, chave: Hashable) -> _Procedencia | None:",
+    "para": "    def obter(self, chave: Hashable) -> _Procedencia | None:\n        item_ = self._itens.get(chave)\n        if item_ is not None:\n            item_.ts_ultimo_ns = self._agora_ns",
+    "origem": "r5_dedup.json"
+  },
+  {
+    "id": "D03b",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "despejo volta a ser LRU estrito (menos recentemente alimentada): o penhasco de volta",
+    "de": "        self._remover(self._chaves[_SORTEIO_DESPEJO.randrange(len(self._chaves))])",
+    "para": "        self._remover(min(self._itens, key=lambda k: self._itens[k].ts_ultimo_ns))",
+    "origem": "r5_dedup2.json"
+  },
+  {
+    "id": "D07b",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "Iceberg le o dedup com o relogio do evento ANTERIOR",
+    "de": "        self._procedencia.avancar(timestamp_ns)\n        chave = (ordem.side, ordem.price)",
+    "para": "        chave = (ordem.side, ordem.price)",
+    "origem": "r5_dedup2.json"
+  },
+  {
+    "id": "D08b",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "episodio novo herda a mordaca do anterior (reiniciar nao solta sinalizado)",
+    "de": "        self.n_eventos = 0\n        self.sinalizado = False",
+    "para": "        self.n_eventos = 0",
+    "origem": "r5_dedup2.json"
+  },
+  {
+    "id": "D08c",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "episodio novo herda a CADEIA do anterior (reiniciar nao zera n_eventos)",
+    "de": "        self.fonte = FonteMicro.MBO\n        self.n_eventos = 0",
+    "para": "        self.fonte = FonteMicro.MBO",
+    "origem": "r5_dedup2.json"
+  },
+  {
+    "id": "D09b",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "sem varredura amortizada: cadaveres ficam ate o teto (vazamento)",
+    "de": "            n = self._desde_varredura + 1\n            if n >= self._ESCRITAS_POR_VARREDURA:\n                self._desde_varredura = 0\n                self._varrer(self._ESCRITAS_POR_VARREDURA)\n            else:\n                self._desde_varredura = n\n            return item",
+    "para": "            return item",
+    "origem": "r5_dedup2.json"
+  },
+  {
+    "id": "D15",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "chave de episodio ignora o LADO (bid e ask no mesmo preco viram um episodio so)",
+    "de": "        return (evento.side, evento.price)",
+    "para": "        return evento.price",
+    "origem": "r5_dedup2.json"
+  },
+  {
+    "id": "D16",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "fronteira da janela vira >=: no limiar exato a chave ja expira",
+    "de": "        return self._agora_ns - item.ts_ultimo_ns > self._janela_ns",
+    "para": "        return self._agora_ns - item.ts_ultimo_ns >= self._janela_ns",
+    "origem": "r5_dedup2.json"
+  },
+  {
+    "id": "D17",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "fronteira da janela no caminho quente vira >= (o par do D16, inline em `de`)",
+    "de": "            if agora - item.ts_ultimo_ns > self._janela_ns:",
+    "para": "            if agora - item.ts_ultimo_ns >= self._janela_ns:",
+    "origem": "r5_dedup2.json"
+  },
+  {
+    "id": "D18",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "de() deixa de renovar o relogio da chave (chave viva envelhece e expira)",
+    "de": "            item.ts_ultimo_ns = agora\n            # Varredura amortizada",
+    "para": "            # Varredura amortizada",
+    "origem": "r5_dedup2.json"
+  },
+  {
+    "id": "D17b",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "fronteira da janela no caminho quente vira >= (par do D16, inline em `de`)",
+    "de": "            if agora - item.ts_ultimo_ns > self._janela_ns:",
+    "para": "            if agora - item.ts_ultimo_ns >= self._janela_ns:",
+    "origem": "r5_dedup3.json"
+  },
+  {
+    "id": "D19b",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "varredura na insercao some (reclamacao so pela amortizada)",
+    "de": "        self._varrer(self._VARREDURA_POR_INSERCAO)\n        if len(self._chaves) >= self._limite:",
+    "para": "        if len(self._chaves) >= self._limite:",
+    "origem": "r5_dedup3.json"
+  },
+  {
+    "id": "D20b",
+    "arquivo": "fluxopro/microestrutura/detectores.py",
+    "desc": "limpar() nao zera o relogio: dia 2 nasce com o relogio do dia 1",
+    "de": "        self._agora_ns = 0\n        self._cursor = 0\n        self._desde_varredura = 0\n\n\nclass _DetectorDeLivro:",
+    "para": "        self._cursor = 0\n        self._desde_varredura = 0\n\n\nclass _DetectorDeLivro:",
+    "origem": "r5_dedup3.json"
+  },
+  {
+    "id": "M01",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "volta ao reservoir que ESQUECE o pico: o topo vira buffer circular das ultimas K magnitudes",
+    "de": "        topo = self._reservatorio\n        if len(topo) < capacidade:\n            heapq.heappush(topo, magnitude)\n        elif capacidade > 0 and magnitude > topo[0]:\n            heapq.heapreplace(topo, magnitude)",
+    "para": "        topo = self._reservatorio\n        if len(topo) < capacidade:\n            topo.append(magnitude)\n        elif capacidade > 0:\n            topo[self._n_visto % capacidade] = magnitude",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "M02",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "desliga o filtro de negocio unico (o fat finger volta a poder virar a referencia do dia)",
+    "de": "        maior_negocio = self._maiores_qty[0][1] if self._maiores_qty else 0\n        if magnitude <= cfg.fator_dominio_trade_unico * maior_negocio:\n            return",
+    "para": "        maior_negocio = self._maiores_qty[0][1] if self._maiores_qty else 0\n        if False:\n            return",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "M03",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "desliga o piso de amostras: com amostra curta a referencia passa a ser a K-esima maior (a MENOR das poucas)",
+    "de": "        if self._n_visto < cfg.minimo_amostras_referencia or not self._reservatorio:",
+    "para": "        if not self._reservatorio:",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "M04",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "inverte a comparacao do gate (bloqueia magnitude GRANDE, libera a pequena)",
+    "de": "        if magnitude_relativa < cfg.magnitude_relativa_minima:",
+    "para": "        if magnitude_relativa > cfg.magnitude_relativa_minima:",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "M05",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "inverte o criterio do topo: o heap passa a guardar as MENORES magnitudes do dia",
+    "de": "        elif capacidade > 0 and magnitude > topo[0]:",
+    "para": "        elif capacidade > 0 and magnitude < topo[0]:",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "M06",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "o maior negocio da janela nunca expira: o fat finger da abertura fica 'na janela' o dia inteiro",
+    "de": "        while mono and mono[0][0] < limite:\n            mono.popleft()",
+    "para": "        while False:\n            mono.popleft()",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "M07",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "virada de sessao NAO zera a cauda de magnitude (o dia 2 herda a calibracao do dia 1)",
+    "de": "        self._reservatorio = []\n        self._n_visto = 0\n        self._max_sessao = 0\n        self._cache_regiao = None",
+    "para": "        self._cache_regiao = None",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "M08",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "piso de amostras de fabrica vai a zero (o gate nasce calibrado por 1 amostra)",
+    "de": "    minimo_amostras_referencia: int = 32",
+    "para": "    minimo_amostras_referencia: int = 0",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "M09",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "referencia deixa de ser a K-esima maior e vira o MAXIMO puro da sessao",
+    "de": "        return float(self._reservatorio[0])",
+    "para": "        return float(self._max_sessao)",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "M10",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "deque de qty deixa de ser monotonico: mono[0] vira o negocio mais ANTIGO da janela, nao o maior",
+    "de": "        while mono and mono[-1][1] <= reg.qty:\n            mono.pop()",
+    "para": "        while False:\n            mono.pop()",
+    "origem": "r5_motor.json"
+  },
+  {
+    "id": "R01",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "volta ao MAXIMO PURO da onda 7: a janela nunca esquece (catraca do A.4)",
+    "de": "        limite = agora_mono - self._janela_ns\n        while len(janela) > 1 and janela[0][0] < limite:\n            janela.popleft()",
+    "para": "        limite = agora_mono - self._janela_ns\n        while False and len(janela) > 1 and janela[0][0] < limite:\n            janela.popleft()",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R02",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "volta a ULTIMA AMOSTRA vence: a janela guarda so o ultimo",
+    "de": "        while janela and janela[-1][1] <= estimativa:\n            janela.pop()\n        janela.append((agora_mono, estimativa))",
+    "para": "        janela.clear()\n        janela.append((agora_mono, estimativa))",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R03",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "desliga a DETECCAO de regressao (so a janela sobra)",
+    "de": "        if self._armado:\n            regressao = self._avaliar_regressao(estimativa)",
+    "para": "        if False:\n            regressao = self._avaliar_regressao(estimativa)",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R04",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "inverte o sinal do limiar: deficit PEQUENO passa a contar como regressao",
+    "de": "        if deficit <= self._limiar_regressao_ns:\n            self._armado = False",
+    "para": "        if deficit >= self._limiar_regressao_ns:\n            self._armado = False",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R05",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "regressao detectada mas ENGOLIDA (sem FalhaCaptura, correcao em silencio)",
+    "de": "                self._resetar(servidor_ns, estimativa)\n                return regressao",
+    "para": "                self._resetar(servidor_ns, estimativa)\n                return None",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R06",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "reset NAO baixa o piso monotonico: relogio preso no referencial antigo",
+    "de": "        self._ultimo_observado_ns = servidor_ns\n        self._ultimo_ns = servidor_ns\n        self._admitir(estimativa)",
+    "para": "        self._ultimo_observado_ns = servidor_ns\n        self._ultimo_ns = max(self._ultimo_ns, servidor_ns)\n        self._admitir(estimativa)",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R07",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "remove o gate de ADMISSAO: tick re-observado (tape parado) entra na janela",
+    "de": "        if servidor_ns == anterior:",
+    "para": "        if False and servidor_ns == anterior:",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R08",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "remove o ARMAR: deficit sozinho decide (adaptador atrasado vira 'regressao')",
+    "de": "        if self._armado:\n            regressao",
+    "para": "        if True:\n            regressao",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R09",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "K=1: uma amostra so ja declara regressao (pico isolado vira reset)",
+    "de": "        self._amostras_para_regressao = max(1, int(amostras_para_regressao))",
+    "para": "        self._amostras_para_regressao = 1",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R10",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "limiar zero: qualquer deficit apos um tick fora de ordem reseta o relogio",
+    "de": "        self._limiar_regressao_ns = max(0, int(limiar_regressao_ns))",
+    "para": "        self._limiar_regressao_ns = 0",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R11",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "remove o teto DURO de memoria da janela (vazamento em sessao longa)",
+    "de": "        while len(janela) > self._max_amostras:",
+    "para": "        while False and len(janela) > self._max_amostras:",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "R12",
+    "arquivo": "fluxopro/dados/mt5.py",
+    "desc": "deficit medido contra a amostra corrente em vez do maximo vigente",
+    "de": "        deficit = self.offset_ns - estimativa",
+    "para": "        deficit = estimativa - estimativa",
+    "origem": "mutacoes_r5_relogio.json"
+  },
+  {
+    "id": "Y10-R5",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "qty_minima_imbalance volta ao default antigo condenado (0) em vez do novo (5)",
+    "de": "    qty_minima_imbalance: int = 5",
+    "para": "    qty_minima_imbalance: int = 0",
+    "origem": "mutacoes_r5.json"
+  },
+  {
+    "id": "P-own-1",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "sinal do saldo liquido invertido (vendido - comprado)",
+    "de": "    def saldo_liquido(self) -> int:\n        return self.volume_comprado - self.volume_vendido",
+    "para": "    def saldo_liquido(self) -> int:\n        return self.volume_vendido - self.volume_comprado",
+    "origem": "mutacoes_r5.json"
+  },
+  {
+    "id": "P-own-2",
+    "arquivo": "fluxopro/microestrutura/perfil_player.py",
+    "desc": "persistencia conta trades (n_clips) em vez de periodos distintos",
+    "de": "    def persistencia(self) -> int:\n        return len(self.periodos)",
+    "para": "    def persistencia(self) -> int:\n        return self.n_clips",
+    "origem": "mutacoes_r5.json"
+  },
+  {
+    "id": "B-own-1",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "sinal do saldo liquido de EstatisticaCorretora invertido",
+    "de": "    def saldo_liquido(self) -> int:\n        return self.volume_compra - self.volume_venda",
+    "para": "    def saldo_liquido(self) -> int:\n        return self.volume_venda - self.volume_compra",
+    "origem": "mutacoes_r5.json"
+  },
+  {
+    "id": "B-own-2",
+    "arquivo": "fluxopro/analytics/brokers.py",
+    "desc": "iniciar_nova_sessao vira no-op (nao zera estatisticas nem janela)",
+    "de": "        self._estatisticas = {}\n        self._janela.clear()",
+    "para": "        pass",
+    "origem": "mutacoes_r5.json"
+  },
+  {
+    "id": "F-own-1",
+    "arquivo": "fluxopro/analytics/footprint.py",
+    "desc": "absorcao_topo usa OR em vez de AND (volume alto OU reversao ja confirma)",
+    "de": "        volume_alto = nivel_topo.volume_total >= self.config.multiplo_absorcao * media\n        reversao = (\n            self.preco_maximo - self.preco_fechamento\n        ) >= self.config.reversao_ticks_absorcao\n        return volume_alto and reversao",
+    "para": "        volume_alto = nivel_topo.volume_total >= self.config.multiplo_absorcao * media\n        reversao = (\n            self.preco_maximo - self.preco_fechamento\n        ) >= self.config.reversao_ticks_absorcao\n        return volume_alto or reversao",
+    "origem": "mutacoes_r5.json"
+  },
+  {
+    "id": "S-own-1",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "multiplicador de clip grande desativado (player_grande nao aumenta qty)",
+    "de": "        qty = self._rng.randint(1, 10)\n        if player_grande:\n            qty *= _CLIP_GRANDE_MULTIPLICADOR",
+    "para": "        qty = self._rng.randint(1, 10)",
+    "origem": "mutacoes_r5.json"
+  },
+  {
+    "id": "S-own-2",
+    "arquivo": "fluxopro/dados/simulador.py",
+    "desc": "agressao de COMPRA consome o topo do BID em vez do ASK (lado trocado)",
+    "de": "        if agressor is AgressorSide.BUY:\n            self._qty_topo_ask -= qty\n        else:\n            self._qty_topo_bid -= qty",
+    "para": "        if agressor is AgressorSide.BUY:\n            self._qty_topo_bid -= qty\n        else:\n            self._qty_topo_ask -= qty",
+    "origem": "mutacoes_r5.json"
+  },
+  {
+    "id": "H-M1",
+    "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+    "desc": "remove a dedup do heap de BIDS (volta o push incondicional)",
+    "de": "            if price in self._precos_no_heap_bid:\n                return\n            heapq.heappush(self._heap_bids, -price)",
+    "para": "            heapq.heappush(self._heap_bids, -price)",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M2",
+    "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+    "desc": "remove a dedup do heap de ASKS",
+    "de": "            if price in self._precos_no_heap_ask:\n                return\n            heapq.heappush(self._heap_asks, price)",
+    "para": "            heapq.heappush(self._heap_asks, price)",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M3",
+    "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+    "desc": "remove o TETO (nunca compacta o lado da compra)",
+    "de": "            if len(self._heap_bids) > self._limiar_heap_bid:\n                self._compactar_heap(Side.BUY)",
+    "para": "            pass  # MUTACAO: sem teto",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M4",
+    "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+    "desc": "volta a poda SO pela cabeca (espelho nunca solta o preco)",
+    "de": "            heapq.heappop(self._heap_bids)\n            # Sai do espelho junto: sem isto o nível que RESSUSCITA nunca mais\n            # seria republicado e o topo do livro ficaria errado em silêncio —\n            # o mesmo bug que a marca `no_heap` do `LivroMBO` já pagou uma vez.\n            self._precos_no_heap_bid.discard(price)",
+    "para": "            heapq.heappop(self._heap_bids)",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M5",
+    "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+    "desc": "espelho do ASK nunca solta o preco no heappop",
+    "de": "            heapq.heappop(self._heap_asks)\n            self._precos_no_heap_ask.discard(price)",
+    "para": "            heapq.heappop(self._heap_asks)",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M6",
+    "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+    "desc": "compactacao mantem os niveis MORTOS (filtro invertido p/ >= 0)",
+    "de": "                if self._qty_por_nivel.get((Side.BUY, p), 0) > 0\n            ]\n            heapq.heapify(vivos)\n            self._heap_bids = vivos",
+    "para": "                if self._qty_por_nivel.get((Side.BUY, p), 0) >= 0\n            ]\n            heapq.heapify(vivos)\n            self._heap_bids = vivos",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M7",
+    "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+    "desc": "compactacao DESCARTA os niveis vivos (mantem so os mortos)",
+    "de": "                if self._qty_por_nivel.get((Side.BUY, p), 0) > 0\n            ]",
+    "para": "                if self._qty_por_nivel.get((Side.BUY, p), 0) <= 0\n            ]",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M8",
+    "arquivo": "fluxopro/microestrutura/inferencia_mbp.py",
+    "desc": "piso do teto sobe a 10**9: compactacao nunca dispara",
+    "de": "_PISO_TETO_HEAP = 64",
+    "para": "_PISO_TETO_HEAP = 10**9",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M9",
+    "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+    "desc": "LivroMBO: remove a compactacao do lado da compra",
+    "de": "                if len(self._heap_bids) > self._limiar_heap_bid:\n                    self._compactar_heap(Side.BUY)",
+    "para": "                pass  # MUTACAO: sem teto",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M10",
+    "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+    "desc": "LivroMBO: compactacao nao desmarca `no_heap` do nivel morto",
+    "de": "            else:\n                nivel.no_heap = False\n        heapq.heapify(vivos)",
+    "para": "        heapq.heapify(vivos)",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M11",
+    "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+    "desc": "LivroMBO: compactacao descarta os niveis VIVOS",
+    "de": "            if nivel.qty_total > 0:\n                vivos.append(entrada)",
+    "para": "            if nivel.qty_total <= 0:\n                vivos.append(entrada)",
+    "origem": "harness_r5_heap.py"
+  },
+  {
+    "id": "H-M12",
+    "arquivo": "fluxopro/microestrutura/livro_mbo.py",
+    "desc": "LivroMBO: remove a compactacao do lado da venda",
+    "de": "                if len(self._heap_asks) > self._limiar_heap_ask:\n                    self._compactar_heap(Side.SELL)",
+    "para": "                pass  # MUTACAO: sem teto",
+    "origem": "harness_r5_heap.py"
+  }
+]
