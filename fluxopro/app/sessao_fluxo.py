@@ -48,17 +48,29 @@ mínimo — ver a docstring daquele módulo). O que esta camada faz é duas cois
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable
 
 from fluxopro.analytics.agressao import MedidorAgressao
 from fluxopro.analytics.brokers import RankingCorretoras
-from fluxopro.analytics.delta import CumulativeDelta
-from fluxopro.analytics.footprint import FootprintPorTimeframe
-from fluxopro.analytics.volume_profile import VolumeProfile, VolumeProfilePorPeriodo
+from fluxopro.analytics.delta import CandleDelta, ConfigDelta, CumulativeDelta
+from fluxopro.analytics.footprint import (
+    Footprint,
+    FootprintPorTimeframe,
+    NivelFootprint,
+    _FootprintFechado,
+)
+from fluxopro.analytics.volume_profile import (
+    ConfigVolumeProfile,
+    NivelVolume,
+    VolumeProfile,
+    VolumeProfilePorPeriodo,
+)
 from fluxopro.analytics.vwap import VWAP
 from fluxopro.app.config import (
+    PRIORIDADE_ANALYTICS,
     PRIORIDADE_METODO,
     PRIORIDADE_MICRO,
     PRIORIDADE_MOTOR,
@@ -166,6 +178,216 @@ class Contadores:
         if self.ts_primeiro_ns is None or self.ts_ultimo_ns is None:
             return 0
         return self.ts_ultimo_ns - self.ts_primeiro_ns
+
+
+PRIORIDADE_MARCA_THREAD = PRIORIDADE_ANALYTICS - 1
+"""Antes de TUDO — inclusive dos analytics.
+
+Este assinante não calcula nada: só carimba qual thread está publicando. Ele
+tem de rodar antes do primeiro acumulador tocar no próprio dicionário, porque
+é justamente esse carimbo que decide se montar o retrato inline é seguro (ver
+`SessaoFluxo.retrato_de_analytics`). Carimbar depois deixaria uma janela em
+que o primeiro trade da sessão já mutou o perfil e a UI ainda acha que
+ninguém publicou."""
+
+
+# ----------------------------------------------------------------------
+# O retrato de analytics — congelado do lado de quem escreve
+# ----------------------------------------------------------------------
+# `derivar_footprint`, `derivar_perfil` e `derivar_delta` (em `ui/paineis/`)
+# ITERAM coleções vivas: `VolumeProfile._niveis`, os níveis do candle do
+# footprint, o histórico do delta. Chamá-los do lado do Qt enquanto a thread
+# da fonte publica levanta `dictionary changed size during iteration` — foi o
+# que derrubou o primeiro retrato da composição com 9.098 negócios.
+#
+# As três classes abaixo são DUBLÊS IMUTÁVEIS: expõem exatamente os nomes que
+# aqueles três `derivar_*` leem, e nada mais. A UI continua chamando as mesmas
+# funções, sobre um objeto que não tem thread nenhuma escrevendo nele.
+#
+# O congelamento acontece **na thread que publica**, nunca na do Qt. Copiar do
+# lado do Qt trocaria a exceção por leitura RASGADA — um perfil com níveis de
+# dois instantes, que não levanta erro e mente em silêncio. A exceção é o
+# comportamento bom comparado a isso.
+
+
+@dataclass(frozen=True, slots=True)
+class FonteFootprintCongelada:
+    """Dublê de `FootprintPorTimeframe` para leitura de um quadro.
+
+    `footprints_fechados` vem **truncado em `n_colunas`**, não completo. Duas
+    razões, e as duas são lei do projeto: a estrutura é limitada pela TELA
+    (`derivar_footprint` só olha `[-(n_colunas-1):]` ou `[-1]`), e a
+    propriedade homônima do acumulador constrói uma tupla da sessão inteira a
+    cada acesso — tocá-la por quadro trocaria uma corrida por um custo
+    O(sessão). O corte é feito por fatia sobre a lista interna, O(colunas).
+    """
+
+    footprint_atual: Footprint | None
+    _inicio_atual_ns: int | None
+    footprints_fechados: tuple[_FootprintFechado, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class FontePerfilCongelada:
+    """Dublê de `VolumeProfile`.
+
+    `poc` e `value_area()` chegam PRÉ-CALCULADOS: no acumulador vivo os dois
+    varrem o dicionário inteiro, e refazer isso do lado do Qt seria pagar duas
+    varreduras por quadro sobre uma coleção que a fonte está mudando.
+
+    `niveis_ordenados()` devolve a sessão inteira, e isso é deliberado:
+    `derivar_perfil` decide `poc_empatado` contando níveis de MESMO volume
+    entre TODOS, não entre os visíveis. Truncar aqui pela faixa da tela faria
+    o painel dizer "POC empatado" com base numa amostra — trocar uma corrida
+    por uma mentira mais barata. A grandeza é o número de PREÇOS negociados no
+    dia (a amplitude), não o número de eventos; é a mesma cardinalidade que o
+    acumulador já mantém, e a cópia é transitória de um quadro.
+    """
+
+    config: ConfigVolumeProfile
+    volume_total: int
+    volume_nao_atribuido: int
+    poc: int | None
+    _ordenados: tuple[tuple[int, NivelVolume], ...]
+    _value_area: tuple[int, int] | None
+
+    def niveis_ordenados(self) -> list[tuple[int, NivelVolume]]:
+        return list(self._ordenados)
+
+    def value_area(self, pct: float | None = None) -> tuple[int, int] | None:
+        return self._value_area
+
+
+@dataclass(frozen=True, slots=True)
+class FonteDeltaCongelada:
+    """Dublê de `CumulativeDelta`.
+
+    `historico` vem truncado em `n_colunas` pela mesma razão do footprint. Por
+    isso `delta_divergente()` NÃO é recalculado sobre o recorte: a janela de
+    divergência é configurável e pode ser maior que a tela, e recalcular sobre
+    o que sobrou responderia outra pergunta. O booleano é apurado na fonte,
+    sobre o histórico inteiro, e viaja pronto.
+    """
+
+    config: ConfigDelta
+    candle_atual: CandleDelta | None
+    historico: tuple[CandleDelta, ...]
+    delta_sessao: int
+    volume_total_sessao: int
+    volume_nao_atribuido_sessao: int
+    _divergente: bool
+
+    def delta_divergente(self) -> bool:
+        return self._divergente
+
+
+@dataclass(frozen=True, slots=True)
+class RetratoAnalytics:
+    """Os três acumuladores num instante só, no molde de `ui/ponte.Instantaneo`.
+
+    Um retrato, e não três leituras: `derivar_perfil` consome a faixa de preço
+    que o footprint definiu e `derivar_delta` consome o número de colunas do
+    mesmo eixo. Ler os três em momentos diferentes daria uma tela costurada de
+    dois instantes — é a mesma razão pela qual `ui/janela.py::_contexto`
+    deriva as parcelas do dia do `Instantaneo` em vez de somar campos soltos.
+    """
+
+    footprint: FonteFootprintCongelada | None
+    perfil_sessao: FontePerfilCongelada | None
+    delta: FonteDeltaCongelada | None
+    n_colunas: int
+
+
+def _congelar_candle(footprint: Footprint) -> Footprint:
+    """Cópia do candle VIVO — o único que a thread da fonte ainda muta.
+
+    Os fechados não se copiam: `FootprintPorTimeframe` nunca mais escreve
+    neles depois do `append`. Copiar o que já é imutável de fato seria custo
+    por quadro sem invariante nenhuma comprada.
+
+    A grandeza aqui é "níveis de preço de UM candle" — limitada pelo
+    timeframe, não pela sessão nem pelo número de eventos.
+    """
+    copia = Footprint(config=footprint.config)
+    copia._niveis = {
+        preco: NivelFootprint(
+            qty_comprador=nivel.qty_comprador,
+            qty_vendedor=nivel.qty_vendedor,
+            qty_nao_atribuida=nivel.qty_nao_atribuida,
+        )
+        for preco, nivel in footprint._niveis.items()
+    }
+    copia._volume_total = footprint._volume_total
+    copia._volume_nao_atribuido = footprint._volume_nao_atribuido
+    copia._delta = footprint._delta
+    copia.preco_abertura = footprint.preco_abertura
+    copia.preco_fechamento = footprint.preco_fechamento
+    copia.preco_maximo = footprint.preco_maximo
+    copia.preco_minimo = footprint.preco_minimo
+    return copia
+
+
+def _congelar_fonte_footprint(
+    fonte: FootprintPorTimeframe | None, n_colunas: int
+) -> FonteFootprintCongelada | None:
+    if fonte is None:
+        return None
+    atual = fonte._atual
+    guardar = max(0, n_colunas - 1) if n_colunas > 1 else 1
+    # Fatia sobre a LISTA, não `fonte.footprints_fechados`: a propriedade
+    # materializa a sessão inteira numa tupla a cada acesso.
+    fechados = tuple(fonte._fechados[-guardar:]) if guardar else ()
+    return FonteFootprintCongelada(
+        footprint_atual=_congelar_candle(atual) if atual is not None else None,
+        _inicio_atual_ns=fonte._inicio_atual_ns,
+        footprints_fechados=fechados,
+    )
+
+
+def _congelar_fonte_perfil(
+    perfil: VolumeProfile | None,
+) -> FontePerfilCongelada | None:
+    if perfil is None:
+        return None
+    ordenados = tuple(
+        (
+            preco,
+            NivelVolume(
+                volume_comprador=nivel.volume_comprador,
+                volume_vendedor=nivel.volume_vendedor,
+                volume_nao_atribuido=nivel.volume_nao_atribuido,
+            ),
+        )
+        for preco, nivel in perfil.niveis_ordenados()
+    )
+    return FontePerfilCongelada(
+        config=perfil.config,
+        volume_total=perfil.volume_total,
+        volume_nao_atribuido=perfil.volume_nao_atribuido,
+        poc=perfil.poc,
+        _ordenados=ordenados,
+        _value_area=perfil.value_area(),
+    )
+
+
+def _congelar_fonte_delta(
+    fonte: CumulativeDelta | None, n_colunas: int
+) -> FonteDeltaCongelada | None:
+    if fonte is None:
+        return None
+    guardar = max(0, n_colunas - 1) if n_colunas > 1 else 1
+    # `CandleDelta` é congelado por construção (`_CandleDeltaEmFormacao.
+    # congelar`), então a fatia da lista basta — não há o que copiar dentro.
+    historico = tuple(fonte._historico[-guardar:]) if guardar else ()
+    return FonteDeltaCongelada(
+        config=fonte.config,
+        candle_atual=fonte.candle_atual,
+        historico=historico,
+        delta_sessao=fonte.delta_sessao,
+        volume_total_sessao=fonte.volume_total_sessao,
+        volume_nao_atribuido_sessao=fonte.volume_nao_atribuido_sessao,
+        _divergente=fonte.delta_divergente(),
+    )
 
 
 class SessaoFluxo:
@@ -302,6 +524,19 @@ class SessaoFluxo:
             )
 
         # ------------------------------------------------------------------
+        # Retrato de analytics — o carimbo de thread ANTES de tudo, a montagem
+        # DEPOIS de tudo. Ver `retrato_de_analytics`.
+        # ------------------------------------------------------------------
+        self._lock_retrato = threading.Lock()
+        self._retrato_analytics: RetratoAnalytics | None = None
+        self._retrato_pedido = False
+        self._retrato_n_colunas = 0
+        self._thread_publicadora: int | None = None
+        barramento.assinar(
+            Trade, self._ao_trade_marca_thread, prioridade=PRIORIDADE_MARCA_THREAD
+        )
+
+        # ------------------------------------------------------------------
         # Contagem — por último, para "processado" querer dizer processado.
         # ------------------------------------------------------------------
         barramento.assinar(Trade, self._contar_trade, prioridade=PRIORIDADE_SAIDA)
@@ -309,6 +544,9 @@ class SessaoFluxo:
             BookSnapshot, self._contar_snapshot, prioridade=PRIORIDADE_SAIDA
         )
         barramento.assinar(BookDelta, self._contar_delta, prioridade=PRIORIDADE_SAIDA)
+        barramento.assinar(
+            Trade, self._ao_trade_montar_retrato, prioridade=PRIORIDADE_SAIDA
+        )
 
         self._perf_inicio: float | None = None
         self._perf_fim: float | None = None
@@ -401,6 +639,86 @@ class SessaoFluxo:
         if self.metodo is None:
             return None
         return self.metodo.ler()
+
+    # ------------------------------------------------------------------
+    # Retrato de analytics
+    # ------------------------------------------------------------------
+    def _ao_trade_marca_thread(self, trade: Trade) -> None:
+        """Só carimba quem está publicando. Roda ANTES de qualquer acumulador.
+
+        Uma atribuição de inteiro por trade. Não há `if` de guarda de
+        propósito: o carimbo tem de valer para a thread publicadora ATUAL, e
+        um `if is None` congelaria a primeira — o que faria uma sessão
+        alimentada primeiro pela thread do Qt (teste, script) e depois por uma
+        thread de fonte de verdade escolher o caminho errado para sempre.
+        """
+        self._thread_publicadora = threading.get_ident()
+
+    def _ao_trade_montar_retrato(self, trade: Trade) -> None:
+        """Monta o retrato quando — e SÓ quando — a UI pediu um.
+
+        Custo por trade fora do quadro: uma leitura de atributo booleano. A UI
+        pede no máximo uma vez por quadro (62/s contra 5.000 ev/s), então o
+        congelamento acontece ~1 vez a cada 80 negócios, e sempre na thread
+        que escreve. Montar por trade seria pagar O(níveis) 5.000 vezes por
+        segundo para desenhar 62.
+        """
+        if not self._retrato_pedido:
+            return
+        retrato = self._montar_retrato(self._retrato_n_colunas)
+        with self._lock_retrato:
+            self._retrato_analytics = retrato
+            self._retrato_pedido = False
+
+    def retrato_de_analytics(self, n_colunas: int = 0) -> RetratoAnalytics | None:
+        """Footprint, perfil e delta num instante só — a UI chama isto.
+
+        `None` quer dizer "ainda não há retrato deste lado do lock", e é
+        resposta legítima do primeiro quadro depois que a fonte passou a
+        publicar de outra thread: o pedido fica registrado e o próximo negócio
+        o atende. Quem chama mantém a leitura anterior; não há quadro em que
+        um painel mostre metade de um instante e metade de outro.
+
+        ## Os dois caminhos, e por que o critério é a THREAD e não um lock
+
+        `core/barramento.py` decidiu que **exceção de assinante PROPAGA** — não
+        há `try/except` em `publicar`. Então o desenho óbvio (um assinante que
+        pega o lock antes dos analytics e outro que solta depois) travaria a
+        aplicação inteira no primeiro assinante que levantasse: o `release`
+        nunca rodaria. Segurar um lock ATRAVÉS de uma cadeia de callbacks de
+        terceiros é fiar-se em que nenhum deles falhe.
+
+        O critério usado é outro e não tem esse buraco: `_thread_publicadora`
+        é carimbado antes do primeiro acumulador tocar no próprio dicionário.
+
+        * **Ninguém publicou ainda, ou quem publica sou EU** — não existe
+          escrita concorrente possível, e o retrato é montado inline, sem
+          lock. É o caso do `scripts/retrato_footprint.py` e da suíte, que
+          alimentam e leem na mesma thread; para eles nada muda e nada fica
+          um quadro atrasado.
+        * **Quem publica é outra thread** — montar aqui seria a corrida. O
+          pedido é registrado e o retrato devolvido é o último que a thread da
+          fonte montou, sob a guarda do lock. O lock protege apenas a troca da
+          referência, nunca uma iteração.
+        """
+        if (
+            self._thread_publicadora is None
+            or self._thread_publicadora == threading.get_ident()
+        ):
+            return self._montar_retrato(n_colunas)
+        with self._lock_retrato:
+            self._retrato_n_colunas = n_colunas
+            self._retrato_pedido = True
+            return self._retrato_analytics
+
+    def _montar_retrato(self, n_colunas: int) -> RetratoAnalytics:
+        """Congela os três acumuladores. **Só a thread que publica chama.**"""
+        return RetratoAnalytics(
+            footprint=_congelar_fonte_footprint(self.footprint, n_colunas),
+            perfil_sessao=_congelar_fonte_perfil(self.perfil_sessao),
+            delta=_congelar_fonte_delta(self.delta, n_colunas),
+            n_colunas=n_colunas,
+        )
 
     def _ligar_livro(self, livro: LivroMBO) -> None:
         """Assina o livro — na ORDEM que faz a procedência chegar a tempo.
@@ -716,6 +1034,13 @@ class SessaoFluxo:
             self._ligar_livro(self.livro)
 
         self._ultimo_estagio = None
+
+        # O retrato guardado é do pregão que acabou. Mantê-lo faria a UI
+        # desenhar o footprint de ontem no primeiro quadro de hoje — a mesma
+        # falha que zerar o retrato do método fecha no grupo (a).
+        with self._lock_retrato:
+            self._retrato_analytics = None
+            self._retrato_pedido = False
 
     def finalizar(self, timestamp_ns: int | None = None) -> None:
         """Fecha a passada: drena o inferidor e congela a medição de taxa.

@@ -67,14 +67,26 @@ from fluxopro.metodologia.regras import REGRAS  # noqa: E402
 from fluxopro.microestrutura.perfil_player import PerfilPlayer  # noqa: E402
 from fluxopro.motor.sinais import ConfigMotorSinais  # noqa: E402
 from fluxopro.ui import tokens  # noqa: E402
+from fluxopro.ui import janela as J  # noqa: E402
 from fluxopro.ui.janela import (  # noqa: E402
+    ALTURA_LINHA_PARAMETRO,
+    ALTURA_LINHA_REGRA,
+    ALTURA_RODAPE_REGRAS,
+    ALTURA_TITULO_LIMIARES,
     CARENCIA_PLAYERS_QUADROS,
     ETAPAS,
     PARAMETROS_EM_VIGOR,
+    RODAPE_MODO,
+    SLOTS_MINIMOS_MATRIZ,
+    VAO_SECAO,
     FaixaRessalva,
     JanelaFluxo,
     PainelRegras,
+    altura_minima_matriz,
+    familias_na_tela,
     formatar_limiar,
+    layout_regras,
+    texto_do_corte,
 )
 from fluxopro.ui.ponte import PonteFluxo  # noqa: E402
 
@@ -169,6 +181,19 @@ def _textos(painel) -> list[str]:
     return _espiar(painel).textos
 
 
+def _altura_inteira(painel) -> int:
+    """A menor altura em que `PainelRegras` cabe sem corte.
+
+    Derivada da MESMA geometria que o desenho usa — um numero escrito a mao
+    aqui viraria um marco que o desenho nao consulta, e o teste passaria a
+    medir a si mesmo (lei n.o 6)."""
+    altura = tokens.PADRAO.altura_cabecalho + 4 + ALTURA_RODAPE_REGRAS
+    altura += len(painel._familias) * ALTURA_LINHA_REGRA
+    altura += VAO_SECAO + ALTURA_TITULO_LIMIARES
+    altura += len(PARAMETROS_EM_VIGOR) * ALTURA_LINHA_PARAMETRO
+    return altura
+
+
 def _publicar(bus, i: int, preco: int = BASE, qty: int | None = None) -> None:
     bus.publicar(
         Trade(
@@ -188,6 +213,43 @@ def _publicar(bus, i: int, preco: int = BASE, qty: int | None = None) -> None:
             tuple(BookLevel(preco + k + 1, 90 + k + i, 1) for k in range(8)),
         )
     )
+
+
+def _chamadas_a_ler(caminho) -> list[str]:
+    """Os `<algo>.ler()` que o arquivo REALMENTE chama, pelo AST.
+
+    Era `".ler()" not in texto`, e a versao por substring reprovou um painel
+    novo por causa de uma DOCSTRING que explicava justamente que ele NAO chama
+    `ponte.ler()`. Um teste que uma frase em portugues derruba nao esta
+    medindo o que diz medir.
+
+    O AST mede a chamada e nao a mencao, e de quebra fica mais rigoroso: pega
+    `self . ponte . ler ( )` quebrado em linhas, que a substring nao pegava.
+    Devolve o nome do objeto lido — a assercao passa a ser sobre QUEM e lido,
+    e nao so sobre quantas vezes.
+    """
+    import ast
+
+    arvore = ast.parse(caminho.read_text(encoding="utf-8"))
+    achados: list[str] = []
+    for no in ast.walk(arvore):
+        if not isinstance(no, ast.Call):
+            continue
+        alvo = no.func
+        if isinstance(alvo, ast.Attribute) and alvo.attr == "ler":
+            dono = alvo.value
+            if isinstance(dono, ast.Attribute):
+                achados.append(dono.attr)  # `self.ponte.ler()` -> `ponte`
+            elif isinstance(dono, ast.Name):
+                achados.append(dono.id)
+            else:
+                achados.append("?")
+    return achados
+
+
+def janela_docas(composicao):
+    _, _, janela = composicao
+    return janela.docas
 
 
 def _montar(qapp, **kwargs) -> tuple[Barramento, PonteFluxo, JanelaFluxo]:
@@ -223,14 +285,20 @@ class TestCadeiaLegivel:
     def test_as_quatro_regioes_estao_na_ordem_da_cadeia(self, composicao):
         """`dados -> processamento -> estado derivado -> decisao`, da esquerda
         para a direita. A ordem e a afirmacao: uma composicao que pusesse a
-        decisao antes do dado leria como um painel de alarmes."""
+        decisao antes do dado leria como um painel de alarmes.
+
+        Com docking, as "regioes" deixaram de ser quatro `QWidget` fixos e
+        passaram a ser as FAIXAS que as docas de cada elo ocupam — que e a
+        unica leitura honesta quando o arranjo e do operador. A assercao
+        continua sendo geometrica, e sobre a geometria REAL."""
         _, _, janela = composicao
-        xs = [
-            widget.mapTo(janela, widget.rect().topLeft()).x()
-            for widget in (janela.area_dados, janela.conduto, janela.matriz, janela.area_decisao)
-        ]
-        assert xs == sorted(xs)
-        assert len(set(xs)) == 4
+        faixas = janela.faixas_dos_elos()
+        assert all(f is not None for f in faixas), faixas
+        esquerdas = [f[0] for f in faixas]
+        assert esquerdas == sorted(esquerdas)
+        assert len(set(esquerdas)) == 4
+        for atual, seguinte in zip(faixas, faixas[1:]):
+            assert atual[1] < seguinte[0], "elos se sobrepondo: %r" % (faixas,)
 
     def test_cada_elo_do_trilho_cobre_a_regiao_que_nomeia(self, composicao):
         """A assercao que transforma rotulo em cadeia APONTAVEL.
@@ -240,13 +308,12 @@ class TestCadeiaLegivel:
         esquecer o trilho, isto reprova."""
         _, _, janela = composicao
         segmentos = janela.trilho.segmentos()
-        regioes = (janela.area_dados, janela.conduto, janela.matriz, janela.area_decisao)
-        assert len(segmentos) == len(ETAPAS) == len(regioes)
-        for segmento, regiao in zip(segmentos, regioes):
-            esquerda = regiao.mapTo(janela, regiao.rect().topLeft()).x()
-            direita = regiao.mapTo(janela, regiao.rect().topRight()).x()
-            assert segmento.left() <= esquerda, "o elo comeca antes da coluna"
-            assert segmento.right() >= direita, "o elo termina depois da coluna"
+        faixas = janela.faixas_dos_elos()
+        assert len(segmentos) == len(ETAPAS) == len(faixas)
+        for segmento, faixa in zip(segmentos, faixas):
+            assert faixa is not None
+            assert segmento.left() <= faixa[0], "o elo comeca antes da coluna"
+            assert segmento.right() >= faixa[1], "o elo termina depois da coluna"
 
     def test_os_elos_cobrem_a_largura_inteira_sem_buraco(self, composicao):
         _, _, janela = composicao
@@ -264,13 +331,10 @@ class TestCadeiaLegivel:
         _, _, janela = composicao
         janela.resize(1240, 720)
         janela.resize(1700, 1000)
-        for segmento, regiao in zip(
-            janela.trilho.segmentos(),
-            (janela.area_dados, janela.conduto, janela.matriz, janela.area_decisao),
-        ):
-            esquerda = regiao.mapTo(janela, regiao.rect().topLeft()).x()
-            direita = regiao.mapTo(janela, regiao.rect().topRight()).x()
-            assert segmento.left() <= esquerda and segmento.right() >= direita
+        janela._sincronizar_trilho()
+        for segmento, faixa in zip(janela.trilho.segmentos(), janela.faixas_dos_elos()):
+            assert faixa is not None
+            assert segmento.left() <= faixa[0] and segmento.right() >= faixa[1]
 
     def test_os_quatro_elos_estao_escritos(self, composicao):
         _, _, janela = composicao
@@ -356,9 +420,9 @@ class TestRelogioUnico:
         fontes = list((RAIZ / "fluxopro" / "ui" / "paineis").glob("*.py"))
         assert fontes, "nao achei os paineis"
         for caminho in fontes:
-            assert ".ler()" not in caminho.read_text(encoding="utf-8"), caminho.name
-        janela = (RAIZ / "fluxopro" / "ui" / "janela.py").read_text(encoding="utf-8")
-        assert janela.count("ponte.ler()") == 1
+            assert _chamadas_a_ler(caminho) == [], caminho.name
+        janela = RAIZ / "fluxopro" / "ui" / "janela.py"
+        assert _chamadas_a_ler(janela) == ["ponte"], "a janela le a ponte UMA vez"
 
 
 # --------------------------------------------------------------------------
@@ -530,11 +594,19 @@ class TestCarimbo:
 class TestColunaDeRegras:
     def test_toda_familia_do_registro_aparece(self, composicao):
         """Derivado, nunca digitado: familia nova no registro entra na tela
-        sem ninguem lembrar do painel."""
+        sem ninguem lembrar do painel.
+
+        Medido na altura em que a coluna cabe INTEIRA — que a composicao nem
+        sempre da. O que acontece quando ela nao da esta em
+        `TestColunaCurta`, e nao aqui: se este teste fosse feito na altura
+        apertada, ele estaria medindo o corte e chamando isso de lista."""
         _, _, janela = composicao
-        escritos = " ".join(_textos(janela.regras))
+        painel = janela.regras
         familias = {i.split(".")[0] for i in REGRAS}
-        assert len(janela.regras._familias) == len(familias)
+        assert len(painel._familias) == len(familias)
+        painel.resize(painel.width(), _altura_inteira(painel))
+        assert painel.layout_corrente().completo
+        escritos = " ".join(_textos(painel))
         assert "DOMINÂNCIA" in escritos and "EXAUSTÃO" in escritos
 
     def test_a_contagem_bate_com_o_registro(self, composicao):
@@ -767,6 +839,211 @@ class TestEscalaNoMesmoPortador:
 
 
 # --------------------------------------------------------------------------
+# 6b. A coluna curta — F8 na altura, e a doca minima da matriz
+# --------------------------------------------------------------------------
+ALTURAS = (0, 20, 40, 62, 80, 140, 200, 240, 300, 400, 434, 462, 600, 900)
+
+
+class TestColunaCurta:
+    """O defeito: `PainelRegras` desenhava as duas ultimas familias POR CIMA
+    de `MODO SINAIS · NÃO ENVIA ORDEM`, e os quatro limiares caiam fora do
+    widget sem nada dizer que existiam.
+
+    A regra da casa e F8 — se nao cabe inteiro, nao entra — e quem cede aqui
+    e a LISTA, nunca o rodape: a frase e a declaracao de escopo do produto, e
+    a ausencia de uma familia e declaravel em uma linha (a ausencia da frase
+    nao e). Estes testes medem contra `layout_regras`, que e a MESMA funcao
+    que `PainelRegras.desenhar` consulta (lei n.o 6), e provam por mutacao
+    que e mesmo ela que o desenho obedece.
+    """
+
+    def test_nada_invade_o_rodape(self):
+        for altura in ALTURAS:
+            plano = layout_regras(altura, 13)
+            if not plano.rodape_visivel:
+                # Altura em que nem o rodape cabe: nada mais e desenhado, e
+                # e o que `test_o_rodape_e_o_ultimo_a_cair` cobra.
+                assert plano.n_familias == 0 and plano.n_limiares == 0, altura
+                continue
+            fim_familias = plano.y_familias + plano.n_familias * ALTURA_LINHA_REGRA
+            assert fim_familias <= plano.rodape.top(), altura
+            if plano.n_limiares:
+                fim = (
+                    plano.y_limiares
+                    + ALTURA_TITULO_LIMIARES
+                    + plano.n_limiares * ALTURA_LINHA_PARAMETRO
+                )
+                assert fim <= plano.rodape.top(), altura
+            if plano.y_corte >= 0:
+                assert plano.y_corte >= fim_familias, altura
+                assert plano.y_corte + ALTURA_LINHA_REGRA <= plano.rodape.top(), altura
+            if plano.rodape_visivel:
+                assert plano.rodape.bottom() < altura, altura
+
+    def test_o_que_nao_cabe_nao_entra_pela_metade(self):
+        """F8 em numero: linha desenhada e linha INTEIRA, e o que sobrou de
+        fora e contado, nunca deixado subentendido."""
+        for altura in ALTURAS:
+            plano = layout_regras(altura, 13)
+            assert 0 <= plano.n_familias <= 13
+            assert plano.n_familias + plano.familias_fora == 13
+            assert plano.n_limiares + plano.limiares_fora == len(PARAMETROS_EM_VIGOR)
+            if plano.rodape_visivel and plano.n_familias:
+                assert plano.completo == (plano.y_corte < 0)
+            if plano.n_familias == 0 and plano.n_limiares == 0:
+                # Altura em que so o cabecalho e o rodape cabem. Nao ha linha
+                # de corte porque nao ha linha nenhuma — e uma lista ausente
+                # nao promete nada, ao contrario de uma lista cortada.
+                assert not plano.completo
+
+    def test_o_rodape_e_o_ultimo_a_cair(self, qapp):
+        """Se ha espaco para UMA linha, ela e do rodape — nao da lista."""
+        painel = PainelRegras()
+        for altura in ALTURAS:
+            painel.resize(340, altura)
+            plano = painel.layout_corrente()
+            escritos = " ".join(_textos(painel))
+            if plano.rodape_visivel:
+                assert RODAPE_MODO in escritos, altura
+            else:
+                # Altura em que nem o rodape cabe abaixo do cabecalho: a
+                # lista tambem nao entra. Rodape fora e lista dentro seria a
+                # troca exata que este teste existe para proibir.
+                assert plano.n_familias == 0 and plano.n_limiares == 0, altura
+
+    def test_a_coluna_curta_declara_o_que_ficou_de_fora(self, qapp):
+        painel = PainelRegras()
+        painel.resize(340, 240)
+        plano = painel.layout_corrente()
+        assert not plano.completo
+        escritos = " ".join(_textos(painel))
+        assert "FORA" in escritos
+        assert str(plano.familias_fora) in escritos
+
+    def test_a_ressalva_sobrevive_ao_aperto(self, composicao):
+        """Lei n.o 1 em geometria: o aperto nao pode preservar o veredito e
+        comer a ressalva. Truncar pela cauda apagaria `EXAUSTÃO 0/1`, que e a
+        linha que desmente a banda de deteccoes."""
+        _, _, janela = composicao
+        familias = janela.regras._familias
+        recusadas = {f[0] for f in familias if f[1] == 0}
+        implementadas = {f[0] for f in familias if f[1] > 0}
+        for n in range(2, len(familias)):
+            visiveis = {f[0] for f in familias_na_tela(familias, n)}
+            assert len(visiveis) == n
+            assert visiveis & recusadas, n
+            assert visiveis & implementadas, n
+
+    def test_a_linha_do_corte_viaja_em_chip_de_luminancia(self, qapp):
+        """Segunda metade da lei do canal: ressalva em CHIP de token de
+        LUMINANCIA alta. `DANGER` (5,45:1) e quase so croma, e o JPEG
+        subamostra croma 2x. Texto colorido sobre o fundo do painel ja
+        reprovou aqui: 37,6% contra 44,2% do rodape que ele qualifica
+        (`scripts/retencao.py`), e o par so passou quando a linha virou
+        bloco preenchido com texto escuro."""
+        painel = PainelRegras()
+        painel.resize(340, 240)
+        espiao = _espiar(painel)
+        marcas = [m for m in espiao.marcas if "FORA" in m.texto]
+        assert marcas
+        # Texto ESCURO sobre bloco `ALERT` — nunca `ALERT` sobre o fundo.
+        assert all(m.cor == tokens.BG_BASE.name() for m in marcas)
+        assert all(m.cor != tokens.DANGER.name() for m in marcas)
+        plano = painel.layout_corrente()
+        chips = [
+            r for r, cor in espiao.retangulos
+            if cor == tokens.ALERT.name() and r.top() >= plano.y_corte
+            and r.bottom() <= plano.rodape.top()
+        ]
+        assert chips, "a linha do corte tem de ser um bloco preenchido"
+        # Corpo igual ao do rodape que ela qualifica — nunca menor.
+        corpo_rodape = next(m.px for m in espiao.marcas if m.texto == RODAPE_MODO)
+        assert all(m.px >= corpo_rodape for m in marcas)
+
+    def test_o_desenho_obedece_a_geometria_medida(self, qapp, monkeypatch):
+        """Prova por mutacao: troco `layout_regras` e exijo que o DESENHO
+        mude. Sem isto, "desenho e teste chamam a mesma funcao" e so uma
+        frase de docstring."""
+        painel = PainelRegras()
+        painel.resize(340, _altura_inteira(painel))
+        antes = _textos(painel)
+        assert "DOMINÂNCIA" in " ".join(antes)
+
+        real = layout_regras
+
+        def mutado(altura, n_familias, *args, **kwargs):
+            return real(altura, 2, *args, **kwargs)
+
+        monkeypatch.setattr(J, "layout_regras", mutado)
+        depois = _textos(painel)
+        assert len(depois) < len(antes)
+        # `ESTRUTURA` so existe como linha de FAMILIA — `DOMINÂNCIA` tambem e
+        # rotulo de limiar, e serviria de marco ambiguo.
+        assert "ESTRUTURA" in " ".join(antes)
+        assert "ESTRUTURA" not in " ".join(depois)
+
+    def test_texto_do_corte_encolhe_o_vocabulario_nunca_o_numero(self):
+        alternativas = texto_do_corte(7, 4)
+        larguras = [len(a) for a in alternativas]
+        assert larguras == sorted(larguras, reverse=True)
+        for a in alternativas:
+            assert "7" in a and "4" in a
+            assert "…" not in a and "..." not in a
+
+
+class TestDocaDaMatriz:
+    """A banda `DETECÇÕES` aparecia VAZIA: cabecalho e linha de colunas
+    desenhados, nenhuma deteccao embaixo.
+
+    A causa e de altura, e nao de alimentacao: `matriz.ao_redimensionar`
+    calcula `util = altura da banda - rotulo - colunas` e abre
+    `util // altura_linha` slots. Nos 260px que o proprio painel pede como
+    minimo (`matriz.py`, `setMinimumSize(360, 260)`), `util` e NEGATIVO — zero
+    slots —, e `matriz.py:_desenhar_deteccoes` desenha o cabecalho e a faixa
+    de colunas ANTES de retornar por `self._n_slots <= 0`. O conserto de
+    dentro e do dono daquele arquivo; o que a composicao garante e nunca
+    entregar aquela altura.
+    """
+
+    def test_a_altura_minima_e_derivada_e_justa(self, qapp):
+        """Justa nos dois sentidos: nela a banda abre os slots, e uma linha
+        abaixo dela nao abre. E o que prova que o numero saiu das constantes
+        da matriz, e nao de um redondo escolhido a olho."""
+        from fluxopro.ui.paineis.matriz import PainelMatriz
+
+        painel = PainelMatriz(WDO_GRID)
+        painel.show()  # `ao_redimensionar` vem do resizeEvent, e ele so
+        try:           # chega em widget mostrado.
+            alvo = altura_minima_matriz(tokens.PADRAO)
+            painel.resize(400, alvo)
+            qapp.processEvents()
+            assert painel._n_slots >= SLOTS_MINIMOS_MATRIZ
+            painel.resize(400, alvo - tokens.PADRAO.altura_linha)
+            qapp.processEvents()
+            assert painel._n_slots < SLOTS_MINIMOS_MATRIZ
+        finally:
+            painel.close()
+
+    def test_o_piso_le_a_matriz_e_nao_uma_copia(self, monkeypatch):
+        """Prova por mutacao da fonte do numero: mexo numa banda DA MATRIZ e
+        exijo que o piso ande junto. Se o piso fosse um `332` digitado aqui,
+        ele continuaria igual e a doca voltaria a espremer a banda no dia em
+        que a matriz crescesse."""
+        from fluxopro.ui.paineis import matriz as matriz_mod
+
+        antes = altura_minima_matriz(tokens.PADRAO)
+        monkeypatch.setattr(
+            matriz_mod, "ALTURA_ESTAGIO", matriz_mod.ALTURA_ESTAGIO + 20
+        )
+        assert altura_minima_matriz(tokens.PADRAO) == antes + 20
+
+    def test_a_composicao_nunca_espreme_a_banda_a_zero(self, composicao):
+        _, _, janela = composicao
+        assert janela.matriz.minimumHeight() >= altura_minima_matriz(janela.densidade)
+        assert janela.matriz.height() >= altura_minima_matriz(janela.densidade)
+
+
+# --------------------------------------------------------------------------
 # 7. Sem cromo, sem cor literal
 # --------------------------------------------------------------------------
 class TestSemCromo:
@@ -792,14 +1069,57 @@ class TestSemCromo:
         assert achados == []
         assert janela.menuBar().isHidden() or janela.menuBar().actions() == []
 
+    def test_toda_doca_troca_a_barra_de_titulo_do_SO_pela_nossa(self, composicao):
+        """A condicao que fez o docking ser aceito depois de o `QSplitter` ter
+        sido recusado. Ver `ui/workspace.py`, "o conflito docking x cadeia".
+
+        `QDockWidget` sem `setTitleBarWidget` desenha titulo e botoes com o
+        estilo do sistema — a MESMA objecao do punho do `QSplitter`, em dose
+        maior porque sao catorze. E `DockWidgetClosable` fica de fora: painel
+        que se perde num clique e painel em que nao se confia no meio do
+        pregao."""
+        from PySide6.QtWidgets import QDockWidget
+
+        from fluxopro.ui.janela import CabecalhoDoca
+
+        docas = janela_docas(composicao)
+        assert docas, "nenhuma doca montada"
+        for chave, doca in docas.items():
+            assert isinstance(doca.titleBarWidget(), CabecalhoDoca), chave
+            fechavel = QDockWidget.DockWidgetFeature.DockWidgetClosable
+            assert not (doca.features() & fechavel), chave
+            assert doca.objectName(), "sem objectName, `restoreState` erra a doca"
+
+    def test_o_separador_do_docking_vem_dos_tokens(self, composicao):
+        """O unico cromo que sobra do `QMainWindow` e o separador, e ele vai
+        DECLARADO a partir de `tokens` — pixel de codigo versionado, que era a
+        objecao real ao `QSplitter`."""
+        from fluxopro.ui.workspace import folha_de_estilo
+
+        _, _, janela = composicao
+        folha = janela._host.styleSheet()
+        assert "QMainWindow::separator" in folha
+        assert tokens.BORDER.name() in folha
+        assert folha == folha_de_estilo()
+
     def test_nenhuma_cor_literal_na_composicao(self):
         """§3.2: painel nenhum escreve cor. Tudo vem de `tokens.py`."""
         import re
 
-        fonte = (RAIZ / "fluxopro" / "ui" / "janela.py").read_text(encoding="utf-8")
-        assert re.search(r"#[0-9a-fA-F]{6}\b", fonte) is None, "hexadecimal na composicao"
-        assert 'QColor("' not in fonte
-        assert "QColor('" not in fonte
+        # A folha de estilo do docking entrou na varredura de proposito: e o
+        # lugar mais facil do projeto para um hexadecimal aparecer, porque CSS
+        # pede cor em texto. Ela deriva de `tokens.BORDER.name()`.
+        for relativo in (
+            ("fluxopro", "ui", "janela.py"),
+            ("fluxopro", "ui", "workspace.py"),
+            ("fluxopro", "ui", "sala.py"),
+            ("fluxopro", "ui", "trilha.py"),
+            ("fluxopro", "ui", "paineis", "metodo.py"),
+        ):
+            fonte = RAIZ.joinpath(*relativo).read_text(encoding="utf-8")
+            assert re.search(r"#[0-9a-fA-F]{6}\b", fonte) is None, relativo[-1]
+            assert 'QColor("' not in fonte, relativo[-1]
+            assert "QColor('" not in fonte, relativo[-1]
 
     def test_o_texto_da_ressalva_cabe_na_largura(self, qapp):
         """A tarja e o unico elemento que pode crescer sem limite (o detalhe

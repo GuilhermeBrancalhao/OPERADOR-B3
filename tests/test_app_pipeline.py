@@ -595,7 +595,7 @@ def test_a_virada_preserva_a_ordem_ENTRE_faixas_de_prioridade():
     assert posicao["_ao_trade_perfil_sessao"] < posicao["_ao_trade_motor"]
     assert posicao["_ao_trade_micro"] < posicao["_ao_trade_motor"]
     assert posicao["_ao_trade_detectores_tape"] < posicao["_ao_trade_motor"]
-    assert posicao["_contar_trade"] == len(nomes) - 1
+    assert posicao["_ao_trade_montar_retrato"] == len(nomes) - 1
     # e o footprint continua na faixa 0, ou seja, antes de tudo que a
     # montagem controla por prioridade explícita
     assert posicao["_ao_trade"] < posicao["_ao_trade_perfil_sessao"]

@@ -226,7 +226,7 @@ def test_o_metodo_entrega_depois_do_motor_e_antes_da_contagem():
     pos = _posicoes(montagem.barramento)
     assert pos["_ao_trade_motor"] < pos["_ao_trade_metodo"]
     assert pos["_ao_trade_metodo"] < pos["_contar_trade"]
-    assert pos["_contar_trade"] == len(nomes) - 1
+    assert pos["_ao_trade_montar_retrato"] == len(nomes) - 1
     assert nomes.count("_ao_trade_metodo") == 1
 
 

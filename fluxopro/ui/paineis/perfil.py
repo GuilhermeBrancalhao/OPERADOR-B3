@@ -205,9 +205,33 @@ class PainelPerfil(PainelDenso):
         # recebe e o que mantem o painel dentro do portao de 5x.
         self._render: list[tuple[int, int]] = []
         self._versao_eixo = -1
+        self._medir(densidade)
+        self.setMinimumSize(120, 200)
+
+    def _medir(self, densidade: tokens.Densidade) -> None:
+        """O que a densidade define. Construtor e `aplicar_densidade` chamam
+        ESTA, para que as duas nao possam divergir."""
         self._fm_rotulo = metrica(tokens.fonte_rotulo())
         self._fm_chip = metrica(tokens.fonte_rotulo(CORPO_CHIP))
-        self.setMinimumSize(120, 200)
+
+    def aplicar_densidade(self, nova: tokens.Densidade) -> None:
+        """Troca a densidade a quente. O `_render` ja calculado e invalidado.
+
+        Este painel **nao** mexe no `EixoPreco`: o dono dele e o
+        `PainelFootprint` (ver a docstring do modulo — o alinhamento e por
+        identidade de objeto, nao por coincidencia de conta). Mexer aqui daria
+        dois donos para a mesma geometria, que e o defeito F5 que o eixo
+        compartilhado existe para fechar.
+
+        `_versao_eixo = -1` forca o reprojeto na proxima passada: o `_render`
+        guardado esta em PIXELS, medidos com a altura de linha antiga.
+        """
+        if nova is self.densidade:
+            return
+        self.densidade = nova
+        self._medir(nova)
+        self._versao_eixo = -1
+        self.marcar_tudo_sujo()
 
     # ------------------------------------------------------------- geometria
     @property

@@ -1480,3 +1480,69 @@ class TestAquecimentoDaFatia:
             if r.x == mod.COL_RARIDADE and r.cor == tokens.ABSORPTION.name()
         ]
         assert len(preenchidos) == 1
+
+
+class TestBandaSemAltura:
+    """Banda que promete dado e entrega vao.
+
+    Achado por um construtor da composicao, com endereco: com a doca em
+    260px (o proprio minimo do painel), `ao_redimensionar` calcula `util`
+    NEGATIVO, `_n_slots` vira 0 — e o painel desenhava assim mesmo o rotulo
+    `DETECÇÕES`, o placar `0 MÉTODO · N GENÉRICAS` e a faixa de cabecalhos
+    `REGRA TIPO PREÇO LD CONF DADO HORA`, retornando so DEPOIS. O operador
+    lia um cabecalho de tabela com nenhuma linha embaixo.
+
+    A composicao ja impos um piso de doca derivado das constantes deste
+    modulo. Isto e a outra metade: o painel nao pode depender de quem o
+    monta para nao mentir.
+    """
+
+    ALTURA_SEM_SLOT = 278
+    """Medido, nao chutado. Abaixo de ~266 a banda nem chega a ser desenhada
+    (nao ha o que mentir); de 302 para cima cabe um slot e a tabela e
+    honesta. A janela em que o defeito vivia e **270-294**, e o teste tem de
+    cair dentro dela — a primeira versao deste teste usou 262 e passava por
+    estar FORA do cenario, provando nada."""
+
+    def _sem_altura(self, qapp):
+        painel = PainelMatriz(WDO_GRID)
+        painel.resize(420, self.ALTURA_SEM_SLOT)
+        painel.show()
+        painel.ao_redimensionar(420, self.ALTURA_SEM_SLOT)
+        painel._recriar_backing()
+        return painel
+
+    def test_sem_slot_nao_desenha_cabecalho_de_coluna(self, qapp):
+        painel = self._sem_altura(qapp)
+        assert painel._n_slots <= 0, "cenario invalido: a banda ainda tem slot"
+        # Comparacao ITEM A ITEM, nunca substring sobre o texto juntado:
+        # `CONF` esta dentro de `CONFLUÊNCIA` e de `CONFIRMADO`, que sao
+        # desenhados legitimamente pela banda de cima. A primeira versao
+        # deste teste reprovou por isso — o mesmo erro que a composicao ja
+        # tinha cometido e consertado noutro teste.
+        desenhados = set(_textos_de(painel))
+        # Os rotulos das colunas sao a PROMESSA de que ha linhas abaixo.
+        for coluna in ("REGRA", "TIPO", "CONF", "DADO"):
+            assert coluna not in desenhados, f"{coluna!r} prometido sem linha nenhuma"
+
+    def test_sem_slot_o_contador_continua_dito(self, qapp):
+        """Esconder tudo perderia dado por falta de espaco.
+
+        `566 DETECÇÕES` e fato e cabe numa linha; o que sai e a promessa de
+        tabela, nao o numero.
+        """
+        painel = self._sem_altura(qapp)
+        desenhados = _textos_de(painel)
+        assert any("DETECÇÕES" in t for t in desenhados)
+        assert "SEM ALTURA" in desenhados
+
+    def test_com_altura_a_tabela_volta(self, qapp):
+        painel = PainelMatriz(WDO_GRID)
+        painel.resize(420, 620)
+        painel.show()
+        painel.ao_redimensionar(420, 620)
+        painel._recriar_backing()
+        assert painel._n_slots > 0
+        desenhados = set(_textos_de(painel))
+        assert "REGRA" in desenhados, "com altura, a tabela tem cabecalho"
+        assert "SEM ALTURA" not in desenhados

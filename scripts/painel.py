@@ -40,11 +40,12 @@ import dataclasses
 import logging
 import sys
 import threading
+import unicodedata
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from PySide6.QtCore import QTimer  # noqa: E402
+from PySide6.QtCore import QRect, QTimer  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from fluxopro.app.config import ConfigOperacao, FonteDados  # noqa: E402
@@ -57,6 +58,12 @@ from fluxopro.ui.janela import (  # noqa: E402
     formatar_limiar,
 )
 from fluxopro.ui.ponte import PonteFluxo  # noqa: E402
+from fluxopro.ui.trilha import TrilhaEventos  # noqa: E402
+from fluxopro.ui.workspace import (  # noqa: E402
+    NOMES_DE_FABRICA,
+    WORKSPACES_DE_FABRICA,
+    por_nome,
+)
 from scripts.operar import (  # noqa: E402
     config_de_args,
     construir_parser,
@@ -214,6 +221,42 @@ def _parser():
         ),
     )
     g.add_argument(
+        "--workspace",
+        choices=list(NOMES_DE_FABRICA),
+        default=NOMES_DE_FABRICA[0],
+        help="arranjo de fabrica inicial (§4.1). Ctrl+1..9 troca a quente.",
+    )
+    g.add_argument(
+        "--retrato-workspaces",
+        action="store_true",
+        dest="retrato_workspaces",
+        help=(
+            "com --retrato, gera UM PNG por workspace de fabrica, sufixando o "
+            "nome do arquivo. E a evidencia da fase 3: quatro arranjos, quatro "
+            "imagens, todas da MESMA janela do produto."
+        ),
+    )
+    g.add_argument(
+        "--persistir-workspace",
+        action="store_true",
+        dest="persistir",
+        help=(
+            "grava geometria e arranjo em %APPDATA%/FluxoPro/workspaces ao "
+            "fechar, e le de la ao trocar de workspace (§4.1). Desligado por "
+            "padrao: um retrato nunca deve depender do perfil de quem roda."
+        ),
+    )
+    g.add_argument(
+        "--caixas-retencao",
+        action="store_true",
+        dest="caixas_retencao",
+        help=(
+            "imprime as caixas de `scripts/retencao.py` derivadas da GEOMETRIA "
+            "DOS PROPRIOS PAINEIS, ja mapeadas para a janela. Caixa medida a "
+            "mao no PNG e uma das fontes de ruido que aquele script nomeia."
+        ),
+    )
+    g.add_argument(
         "--tela-cheia",
         action="store_true",
         dest="tela_cheia",
@@ -277,9 +320,10 @@ def main(argv: list[str] | None = None) -> int:
     ponte = PonteFluxo(montagem.barramento)
 
     modo = ""
+    em_replay = config.fonte is FonteDados.REPLAY
     if config.fonte is FonteDados.SIMULADOR:
         modo = "SIMULADOR"
-    elif config.fonte is FonteDados.REPLAY:
+    elif em_replay:
         velocidade = args.velocidade
         modo = "▶ REPLAY " + ("máx" if velocidade == "max" else f"{velocidade}×")
 
@@ -310,6 +354,20 @@ def main(argv: list[str] | None = None) -> int:
         # continuam vindo do retrato, montado sob o lock.
         sessao=montagem.sessao,
         ressalva=ressalva,
+        # A configuracao INTEIRA, e nao so o motor: o footprint precisa do
+        # `timeframe_ns` e do `ConfigFootprint`, o perfil do
+        # `ConfigVolumeProfile` e o delta do `ConfigDelta`. Passar so o motor
+        # faria os tres nascerem com defaults que nao sao os desta sessao — e o
+        # painel de delta acenderia `EIXOS ≠` contra uma divergencia que este
+        # processo mesmo teria criado.
+        config=config,
+        # O flag do replay e EXPLICITO. E o que mata a contradicao que o
+        # construtor do replay achou: com ele, `StripTopo` e `StripRodape`
+        # param de grafar `● AO VIVO` sob a tarja `▶ REPLAY`.
+        em_replay=em_replay,
+        workspace=por_nome(args.workspace),
+        persistir=args.persistir,
+        trilha=TrilhaEventos(),
     )
     janela.tape.definir_filtro(args.filtro_tape)
     janela.resize(args.largura, args.altura)
@@ -323,6 +381,123 @@ def main(argv: list[str] | None = None) -> int:
     if args.retrato:
         duracao = args.duracao if args.duracao else 8.0
 
+        def _salvar(caminho: Path) -> None:
+            # Fecha um quadro completo antes de copiar os pixels: os relogios
+            # de desenho sao assincronos e o backing poderia estar um quadro
+            # atras.
+            janela.desenhar_agora()
+            caminho.parent.mkdir(parents=True, exist_ok=True)
+            janela.grab().save(str(caminho))
+            if args.caixas_retencao:
+                _imprimir_caixas()
+            _logger.info(
+                "retrato %s | %dx%d | workspace %s | trilho %s",
+                caminho,
+                janela.width(),
+                janela.height(),
+                janela.workspace.nome,
+                "ARRANJO LIVRE: " + janela.trilho.motivo
+                if janela.trilho.arranjo_livre
+                else "cadeia em 4 colunas",
+            )
+
+        def _capturar_workspaces() -> None:
+            base = Path(args.retrato)
+            for ws in WORKSPACES_DE_FABRICA:
+                janela.aplicar_workspace(ws)
+                aplicacao.processEvents()
+                janela._sincronizar_trilho()
+                # ASCII de proposito: `revisão` vira `revisao`. Nome de
+                # arquivo com acento viaja mal entre shell, git e navegador, e
+                # o retrato existe justamente para circular.
+                seguro = ws.nome.lower().replace(" & ", "_").replace(" ", "_")
+                seguro = (
+                    unicodedata.normalize("NFKD", seguro)
+                    .encode("ascii", "ignore")
+                    .decode("ascii")
+                )
+                seguro = "".join(c for c in seguro if c.isalnum() or c == "_")
+                _salvar(base.with_name(base.stem + "_" + seguro + base.suffix))
+            janela.close()
+
+        def _imprimir_caixas() -> None:
+            """As caixas do canal, do mesmo `QRect` que o desenho usou.
+
+            Os PARES sao o portao: `--par RESSALVA=VEREDITO` sai com codigo 1
+            quando a ressalva retem menos traco que o veredito que ela
+            qualifica. Nenhuma coordenada e digitada aqui.
+            """
+            metodo = janela.metodo
+
+            # O retrato sai em PIXEL DE IMAGEM, e a geometria do Qt esta em
+            # pixel LOGICO: num monitor a 125% os dois diferem, e uma caixa
+            # publicada em coordenada logica mede o pedaco errado da imagem —
+            # o portao passa a reprovar (ou aprovar) uma regiao que ninguem
+            # escolheu. Multiplicar pelo `devicePixelRatio` da janela e o que
+            # faz a medicao valer em qualquer maquina.
+            dpr = janela.devicePixelRatioF()
+
+            def caixa(nome, widget, rect):
+                canto = widget.mapTo(janela, rect.topLeft())
+                return '"%s:%d,%d,%d,%d"' % (
+                    nome,
+                    round(canto.x() * dpr),
+                    round(canto.y() * dpr),
+                    round(rect.width() * dpr),
+                    round(rect.height() * dpr),
+                )
+
+            from fluxopro.ui.paineis.metodo import I_PLACAR, I_REGIME
+
+            partes = [
+                caixa("proc_regime", metodo, metodo.rect_chip_procedencia(I_REGIME)),
+                caixa("veredito_regime", metodo, metodo.rect_texto_valor(I_REGIME)),
+                caixa("proc_placar", metodo, metodo.rect_chip_procedencia(I_PLACAR)),
+                caixa("veredito_placar", metodo, metodo.rect_texto_valor(I_PLACAR)),
+                caixa("cobertura", metodo, metodo.rect_chip_cobertura()),
+                caixa("trilho_elo1", janela.trilho, janela.trilho.segmentos()[0]),
+            ]
+            # A coluna do registro entrou no portao na rodada da composicao
+            # curta: quando a coluna nao cabe inteira, a linha do CORTE e a
+            # ressalva daquele painel — ela e que diz que a lista na tela nao
+            # e a lista toda. Se ela retiver menos traco que o rodape que
+            # qualifica, o canal entrega uma lista aparentemente completa,
+            # que e o defeito de origem com outra roupa.
+            from fluxopro.ui.janela import ALTURA_LINHA_REGRA, MARGEM
+
+            regras = janela.regras
+            plano = regras.layout_corrente()
+            pares_extra = ""
+            if plano.rodape_visivel:
+                partes.append(
+                    caixa(
+                        "rodape_modo",
+                        regras,
+                        QRect(0, plano.rodape.top() + 4, regras.width(), 18),
+                    )
+                )
+                if plano.y_corte >= 0:
+                    partes.append(
+                        caixa(
+                            "corte_regras",
+                            regras,
+                            QRect(
+                                MARGEM,
+                                plano.y_corte,
+                                regras.width() - 2 * MARGEM,
+                                ALTURA_LINHA_REGRA,
+                            ),
+                        )
+                    )
+                    pares_extra = " --par corte_regras=rodape_modo"
+            print("caixas para scripts/retencao.py:")
+            print("  " + " ".join("--caixa " + c for c in partes))
+            print(
+                "  --par proc_regime=veredito_regime "
+                "--par proc_placar=veredito_placar "
+                "--par cobertura=trilho_elo1" + pares_extra
+            )
+
         def _capturar() -> None:
             # Fecha um quadro completo antes de copiar os pixels: os relogios
             # de desenho sao assincronos e o backing poderia estar um quadro
@@ -331,6 +506,8 @@ def main(argv: list[str] | None = None) -> int:
             caminho = Path(args.retrato)
             caminho.parent.mkdir(parents=True, exist_ok=True)
             janela.grab().save(str(caminho))
+            if args.caixas_retencao:
+                _imprimir_caixas()
             _logger.info(
                 "retrato %s | %dx%d | %d negocios | %d deteccoes | %d sinais",
                 caminho,
@@ -342,7 +519,10 @@ def main(argv: list[str] | None = None) -> int:
             )
             janela.close()
 
-        QTimer.singleShot(int(duracao * 1000), _capturar)
+        QTimer.singleShot(
+            int(duracao * 1000),
+            _capturar_workspaces if args.retrato_workspaces else _capturar,
+        )
     elif args.duracao:
         # `--duracao` vem do parser de `operar.py`. Honra-la aqui e o que
         # impede a flag de existir na ajuda e nao fazer nada — e e o que

@@ -499,11 +499,14 @@ class PainelBookmap(PainelDenso):
                 "a escada precisa de %d pisos, um por degrau da rampa" % _N
             )
 
-        self._fm_grade = QFontMetrics(tokens.fonte_numero(densidade.fonte_grade))
-        self._fm_rotulo = QFontMetrics(tokens.fonte_rotulo())
-        self._largura_eixo = self._fm_grade.horizontalAdvance(MOLDE_PRECO) + 2 * MARGEM
+        self._medir(densidade)
 
         self.geometria = GeometriaBookmap(0, 0, 0, 0, largura_coluna, altura_nivel)
+        #: Ligado SO durante `aplicar_densidade`. Um parametro em
+        #: `ao_redimensionar` mudaria a assinatura que `PainelDenso` chama por
+        #: evento de resize; uma flag de escopo curto mantem o caminho quente
+        #: intacto e o reprojeto explicitamente excepcional.
+        self._reprojetar = False
         self._bandas: list[QRect] = [QRect() for _ in range(N_BANDAS)]
 
         # --- o plano. Um byte por celula, `n_niveis` linhas de `_stride`.
@@ -538,6 +541,40 @@ class PainelBookmap(PainelDenso):
         self.setMouseTracking(True)
         self.setMinimumSize(320, 220)
         self._montar_tabela()
+
+    # -------------------------------------------------------- densidade
+    def _medir(self, densidade: tokens.Densidade) -> None:
+        """O que a densidade define. Construtor e `aplicar_densidade` chamam
+        ESTA — a largura do eixo sai da metrica, e duas copias da conta
+        divergiriam na primeira mudanca do molde."""
+        self._fm_grade = QFontMetrics(tokens.fonte_numero(densidade.fonte_grade))
+        self._fm_rotulo = QFontMetrics(tokens.fonte_rotulo())
+        self._largura_eixo = self._fm_grade.horizontalAdvance(MOLDE_PRECO) + 2 * MARGEM
+
+    def aplicar_densidade(self, nova: tokens.Densidade) -> None:
+        """Troca a densidade a quente. O PLANO sobrevive.
+
+        Reconstruir o painel jogava fora o heatmap inteiro — que aqui e o
+        produto, nao um detalhe: e o unico lugar da tela onde a liquidez tem
+        historia. Mutar so `self.densidade` deixaria `_largura_eixo`, medido
+        no construtor com a fonte antiga, recortando a calha de precos
+        desenhados com a fonte nova.
+
+        `ao_redimensionar` e chamado em seguida porque a banda do cabecalho e
+        a largura util saem dos dois valores que acabaram de mudar
+        (`altura_cabecalho` e `_largura_eixo`); ele reflui o plano pela mesma
+        rotina que uma janela redimensionada usa.
+        """
+        if nova is self.densidade:
+            return
+        self.densidade = nova
+        self._medir(nova)
+        self._reprojetar = True
+        try:
+            self.ao_redimensionar(self.width(), self.height())
+        finally:
+            self._reprojetar = False
+        self.marcar_tudo_sujo()
 
     # ------------------------------------------------------------ paleta
     def _montar_tabela(self) -> None:
@@ -623,18 +660,46 @@ class PainelBookmap(PainelDenso):
             self.geometria.n_niveis,
         ):
             self.geometria = nova
-            self._realocar()
+            self._realocar(preservar=self._reprojetar)
         else:
             self.geometria = nova
 
-    def _realocar(self) -> None:
+    def _realocar(self, preservar: bool = False) -> None:
         """Realoca TODA estrutura para a janela nova, e descarta o resto.
 
         Encolher joga fora o excedente em vez de guardar "para quando a
         janela crescer de novo" — guardar seria exatamente a estrutura que
         cresce com o passado, so que com nome de cache. E a mesma decisao de
         `PainelMatriz._redimensionar_slots`, pelo mesmo motivo.
+
+        `preservar` REPROJETA o que ja estava desenhado em vez de zerar, e e
+        usado por um chamador so: `aplicar_densidade`. A distincao nao e
+        preciosismo. Redimensionar a janela e o operador dizendo quanto de
+        tela quer; trocar a densidade e ele dizendo com que corpo quer LER O
+        MESMO periodo, e apagar o heatmap ai e responder outra pergunta.
+
+        O reprojeto e ancorado como o painel ja e: linha 0 e sempre
+        `_topo_ticks` (o preco mais alto) e a ultima coluna e sempre agora,
+        entao as linhas casam pelo TOPO e as colunas pela DIREITA. O que nao
+        cabe cai — pela mesma regra de sempre, e nao ha "cache" nenhum
+        guardado fora da tela.
         """
+        n_niveis_antes = (
+            len(self._plano) // self._stride if self._stride > 0 else 0
+        )
+        plano_antes, neg_antes, stride_antes = (
+            self._plano,
+            self._plano_neg,
+            self._stride,
+        )
+        cols_antes = len(self._mid)
+        vetores_antes = (
+            self._mid,
+            self._pico_qty,
+            self._pico_ticks,
+            self._neg_compra,
+            self._neg_venda,
+        )
         g = self.geometria
         self._stride = (g.n_cols + 3) // 4 * 4
         self._plano = bytearray(self._stride * g.n_niveis)
@@ -659,6 +724,29 @@ class PainelBookmap(PainelDenso):
         self._pico_janela = 0
         self._pico_janela_ticks = 0
         self._cursor = None
+
+        if not preservar:
+            return
+        linhas = min(n_niveis_antes, g.n_niveis)
+        colunas = min(cols_antes, g.n_cols)
+        if linhas <= 0 or colunas <= 0:
+            return
+        for linha in range(linhas):
+            o = linha * stride_antes + (cols_antes - colunas)
+            d = linha * self._stride + (g.n_cols - colunas)
+            self._plano[d : d + colunas] = plano_antes[o : o + colunas]
+            self._plano_neg[d : d + colunas] = neg_antes[o : o + colunas]
+        for destino, origem in zip(
+            (
+                self._mid,
+                self._pico_qty,
+                self._pico_ticks,
+                self._neg_compra,
+                self._neg_venda,
+            ),
+            vetores_antes,
+        ):
+            destino[g.n_cols - colunas :] = origem[cols_antes - colunas :]
 
     @property
     def _coluna_atual(self) -> int:

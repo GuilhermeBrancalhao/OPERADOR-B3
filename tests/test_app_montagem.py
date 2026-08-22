@@ -94,6 +94,11 @@ def test_ordem_de_entrega_no_barramento_para_trade():
     """
     montagem = montar(config_curta())
     assert donos(montagem.barramento, Trade) == [
+        # Antes de TODO acumulador: o carimbo de qual thread esta publicando,
+        # que e o que decide se montar o retrato de analytics inline e seguro
+        # (`SessaoFluxo.retrato_de_analytics`). Carimbar depois deixaria uma
+        # janela em que o primeiro trade ja mutou o perfil.
+        ("SessaoFluxo", "_ao_trade_marca_thread"),
         ("EstadoMercado", "_ao_trade"),
         ("VolumeProfilePorPeriodo", "_ao_trade"),
         ("FootprintPorTimeframe", "_ao_trade"),
@@ -108,6 +113,9 @@ def test_ordem_de_entrega_no_barramento_para_trade():
         ("SessaoFluxo", "_ao_trade_motor"),
         ("SessaoFluxo", "_ao_trade_metodo"),
         ("SessaoFluxo", "_contar_trade"),
+        # Depois da contagem: o retrato de analytics so pode ser congelado
+        # quando "processado" ja quer dizer processado.
+        ("SessaoFluxo", "_ao_trade_montar_retrato"),
     ]
 
 

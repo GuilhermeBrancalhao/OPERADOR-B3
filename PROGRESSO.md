@@ -8,11 +8,15 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
-> **Estado corrente — 22/08/2026, onda 10.** `python -m pytest tests/ -q` → **796 passed**.
-> Fundação de UI + DOM + tape + strips entregues; footprint em diante são fases 2–5.
+> **Estado corrente — 22/08/2026.** `python -m pytest tests/ -q` → **1.321 passed, 1 xfailed**.
+> Fases 1, 2, 3 e 5 do plano de UI entregues e montadas numa janela só; `fluxopro/metodologia/`
+> ligado ao pipeline vivo. Detalhe do ciclo em `GAUNTLET_ASG.md`.
 > **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
-> *(Este é o único lugar do arquivo onde o número de testes é mantido. Número velho sob selo
-> de verificação é pior que número nenhum, porque convida a confiar.)*
+>
+> *(Este é o único lugar do arquivo onde o número de testes é mantido. Número velho sob selo de
+> verificação é pior que número nenhum, porque convida a confiar — e este bloco ficou **quatro
+> ondas** dizendo 796 depois de a suíte passar de mil. Foi uma revisão externa que apontou,
+> não eu: escrevi a regra e cometi o defeito dela no mesmo arquivo.)*
 
 ## Barra de qualidade
 1. **UI**: screenshots reais do Profit Pro (armazenados em `bar/`) — comparação cega lado a lado.

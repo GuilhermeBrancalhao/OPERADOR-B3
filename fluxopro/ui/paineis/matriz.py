@@ -1662,6 +1662,22 @@ class PainelMatriz(PainelDenso):
 
     # ------------------------------------------------------------- deteccoes
     def _desenhar_deteccoes(self, painter: QPainter, banda: QRect, regiao: QRect) -> None:
+        if self._n_slots <= 0:
+            # BANDA QUE PROMETE DADO E ENTREGA VAO. Sem esta guarda, o rotulo
+            # `DETECÇÕES`, o placar `0 MÉTODO · N GENÉRICAS` e a faixa de
+            # cabecalhos de coluna eram desenhados e SO DEPOIS o metodo
+            # retornava por falta de slot — o operador lia "566 genericas" com
+            # `REGRA TIPO PREÇO LD CONF DADO HORA` embaixo e nenhuma linha.
+            #
+            # Achado por um construtor da composicao ao diagnosticar por que a
+            # banda saia vazia no workspace Revisao: com a doca em 260px,
+            # `ao_redimensionar` calcula `util` NEGATIVO e `_n_slots` vira 0.
+            # A composicao ja impos um piso de doca derivado destas constantes
+            # (`janela.altura_minima_matriz`), entao em uso normal isto nao
+            # dispara. Fica como a segunda metade do conserto: o painel nao
+            # pode depender de quem o monta para nao mentir.
+            self._desenhar_banda_sem_slot(painter, banda, regiao)
+            return
         cabecalho = QRect(0, banda.top(), banda.width(), ALTURA_ROTULO)
         if cabecalho.intersects(regiao):
             painter.fillRect(cabecalho, self.cor_fundo)
@@ -1695,7 +1711,52 @@ class PainelMatriz(PainelDenso):
         colunas = QRect(0, banda.top() + ALTURA_ROTULO, banda.width(), ALTURA_COLUNAS)
         if colunas.intersects(regiao):
             self._desenhar_colunas(painter, colunas)
+        self._desenhar_corpo_de_slots(painter, banda, regiao)
 
+    def _desenhar_banda_sem_slot(
+        self, painter: QPainter, banda: QRect, regiao: QRect
+    ) -> None:
+        """A banda encolheu abaixo de uma linha. Diz isso, e nao promete.
+
+        O contador de sessao continua sendo publicado — `566 DETECÇÕES` e
+        fato, e escondê-lo seria perder dado por falta de espaco. O que sai
+        e a promessa: nenhum cabecalho de coluna, nenhuma calha vazia. Mesma
+        regra do `PASSA SEM MEDIR` do gate de magnitude: nao publique um
+        numero na forma que ele nao sustenta.
+        """
+        alvo = banda.intersected(regiao)
+        if not alvo.isValid():
+            return
+        painter.fillRect(alvo, self.cor_fundo)
+        painter.setPen(tokens.BORDER)
+        painter.drawLine(MARGEM, banda.top(), banda.width() - MARGEM, banda.top())
+        if banda.height() < ALTURA_ROTULO:
+            return
+        interno = QRect(0, banda.top(), banda.width(), ALTURA_ROTULO).adjusted(
+            MARGEM, 1, -MARGEM, 0
+        )
+        painter.setFont(tokens.fonte_rotulo())
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(
+            interno,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            "%s DETECÇÕES" % formato.formatar_inteiro(self._n_deteccoes),
+        )
+        painter.setPen(tokens.ALERT)
+        painter.drawText(
+            interno,
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+            "SEM ALTURA",
+        )
+
+    def _desenhar_corpo_de_slots(
+        self, painter: QPainter, banda: QRect, regiao: QRect
+    ) -> None:
+        """As linhas, e o fundo abaixo da ultima.
+
+        Extraido de `_desenhar_deteccoes` para que a guarda de banda sem
+        slot fique ANTES do cabecalho e nao depois dele — que era o defeito.
+        """
         # O corpo INTEIRO da banda e fundo do painel — inclusive a sobra
         # abaixo do ultimo slot, quando a janela e mais alta que o teto de
         # slots. Sem isso ali aparece o backing anterior.
@@ -1705,8 +1766,6 @@ class PainelMatriz(PainelDenso):
         ).intersected(regiao)
         if corpo.isValid():
             painter.fillRect(corpo, self.cor_fundo)
-        if self._n_slots <= 0:
-            return
         area = self._area_slots
         alvo = area.intersected(regiao)
         if not alvo.isValid():

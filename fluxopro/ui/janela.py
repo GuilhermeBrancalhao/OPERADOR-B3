@@ -65,6 +65,7 @@ decide quanto custa mostrar.
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass
 
 from PySide6.QtCore import QRect, Qt, QTimer
@@ -80,13 +81,16 @@ from PySide6.QtGui import (
     QShortcut,
 )
 from PySide6.QtWidgets import (
+    QApplication,
+    QDockWidget,
     QFrame,
-    QHBoxLayout,
     QMainWindow,
     QVBoxLayout,
     QWidget,
 )
 
+from fluxopro.analytics.delta import ConfigDelta
+from fluxopro.app.config import ConfigOperacao
 from fluxopro.core.eventos import PriceGrid
 from fluxopro.metodologia.confianca import Confianca
 from fluxopro.metodologia.regras import REGRAS
@@ -102,6 +106,7 @@ from fluxopro.ui.paineis.hud import (
     players_de_perfil,
     pressao_da_janela,
 )
+from fluxopro.ui.paineis import matriz as matriz_mod
 from fluxopro.ui.paineis.matriz import (
     MARCA_REGRA,
     ROTULO_CONFIANCA,
@@ -110,9 +115,29 @@ from fluxopro.ui.paineis.matriz import (
     derivar,
     regras_do_campo,
 )
+from fluxopro.ui.paineis.bookmap import PainelBookmap
+from fluxopro.ui.paineis.delta_acumulado import PainelDeltaAcumulado, derivar_delta
+from fluxopro.ui.paineis.footprint import PainelFootprint, derivar_footprint
+from fluxopro.ui.paineis.metodo import PainelMetodo
+from fluxopro.ui.paineis.metodo import altura_natural as altura_natural_metodo
+from fluxopro.ui.paineis.perfil import PainelPerfil, derivar_perfil
+from fluxopro.ui.paineis.replay import ControlesReplay, EstadoReplay, TarjaReplay
 from fluxopro.ui.paineis.strips import StripRodape, StripTopo, cor_do_estado
 from fluxopro.ui.paineis.tape import PainelTape
 from fluxopro.ui.ponte import CAPACIDADE_TAPE, EstadoFeed, Instantaneo, PonteFluxo
+from fluxopro.ui.trilha import Nivel, PainelTrilha, TrilhaEventos
+from fluxopro.ui.workspace import (
+    ELO_DA_DOCA,
+    ELO_FORA,
+    N_ELOS,
+    TITULO_DA_DOCA,
+    WORKSPACES_DE_FABRICA,
+    Workspace,
+    cortes_da_cadeia,
+    folha_de_estilo,
+    por_atalho,
+    reancorar,
+)
 
 ALTURA_FAIXA = 3
 """§3.5: "estado global merece sinal global". A faixa e da JANELA, nao do
@@ -140,6 +165,52 @@ ALTURA_RESSALVA = 44
 LARGURA_DECISAO = 340
 
 MARGEM = 8
+
+SLOTS_MINIMOS_MATRIZ = 3
+"""Quantas deteccoes a banda tem de conseguir mostrar para a composicao
+aceitar dar a doca a `PainelMatriz`.
+
+Nasce de um defeito medido, e nao de gosto: no workspace **Revisão** a doca
+da matriz chegava aos 260px do `setMinimumSize` do proprio painel, e nessa
+altura `matriz.ao_redimensionar` calcula `util < 0` — ZERO slots. O painel
+continua desenhando o rotulo `DETECÇÕES 0 MÉTODO · N GENÉRICAS` e a linha de
+colunas (`matriz.py:1664`, `_desenhar_deteccoes`, que so retorna DEPOIS de
+desenhar as duas), e o que o operador ve e um cabecalho que promete N
+deteccoes sobre vao vazio. Banda que reserva cabecalho e nao mostra linha e
+pior que banda ausente.
+
+O conserto de dentro (nao mostrar o cabecalho quando nao ha slot, ou pedir
+minimo compativel com a propria banda) e de `matriz.py` e nao meu. O que a
+composicao pode garantir — e garante — e que nenhum arranjo de fabrica
+entregue a essa doca uma altura em que a banda nao caiba: tres linhas e o
+menor numero em que a banda ainda e uma LISTA, e nao uma amostra."""
+
+
+def altura_minima_matriz(
+    densidade: tokens.Densidade = tokens.PADRAO,
+    slots: int = SLOTS_MINIMOS_MATRIZ,
+) -> int:
+    """Altura em que `PainelMatriz` ainda abre `slots` linhas de deteccao.
+
+    Derivada das constantes do PROPRIO painel — copiar os numeros aqui seria
+    uma segunda geometria, que envelhece no dia em que a matriz mudar uma
+    banda de altura e ninguem vier corrigir esta linha."""
+    fixas = (
+        densidade.altura_cabecalho
+        + matriz_mod.ALTURA_ESTAGIO
+        + matriz_mod.ALTURA_DOMINANCIA
+        + matriz_mod.ALTURA_REGUA
+        + matriz_mod.ALTURA_MAGNITUDE
+        + matriz_mod.ALTURA_ROTULO
+        + 4 * densidade.altura_linha
+    )
+    banda = (
+        matriz_mod.ALTURA_ROTULO
+        + matriz_mod.ALTURA_COLUNAS
+        + min(slots, matriz_mod.MAX_SLOTS_DETECCAO) * densidade.altura_linha
+    )
+    return fixas + banda
+
 
 CARENCIA_PLAYERS_QUADROS = 240
 """Quadros sem NENHUM participante antes de o painel de players se recolher.
@@ -192,24 +263,12 @@ class _DeltaDoRetrato:
         )
 
 
-def _separador(vertical: bool) -> QFrame:
-    """1px de `--border`. E o unico "cromo" que a area de dados tem.
-
-    `QSplitter` daria arrasto, e foi recusado por duas razoes: o punho e
-    desenhado pelo ESTILO DO SISTEMA (V5 pede o contrario) e a geometria
-    passaria a depender de onde o usuario largou o punho — o trilho da cadeia
-    alinha os segmentos com as colunas, e alinhamento que depende de estado
-    nao versionado e alinhamento que um dia sai errado no retrato."""
-    linha = QFrame()
-    if vertical:
-        linha.setFixedWidth(1)
-    else:
-        linha.setFixedHeight(1)
-    linha.setAutoFillBackground(True)
-    paleta = linha.palette()
-    paleta.setColor(QPalette.ColorRole.Window, tokens.BORDER)
-    linha.setPalette(paleta)
-    return linha
+# O `_separador` de 1px que dividia as colunas saiu com o docking: quem separa
+# doca de doca agora e o `QMainWindow::separator`, declarado a partir dos
+# tokens em `ui/workspace.folha_de_estilo` — e o argumento que recusava o
+# `QSplitter` (punho desenhado pelo estilo do SO, alinhamento dependendo de
+# estado nao versionado) esta escrito la, resolvido, em "o conflito docking x
+# cadeia".
 
 
 def _maior_que_cabe(alternativas: tuple[str, ...], largura: int, fonte: QFont) -> str:
@@ -348,6 +407,9 @@ ETAPAS: tuple[tuple[str, str, str], ...] = (
 )
 """Os quatro elos, do mais longo ao mais curto. Ver `_maior_que_cabe`."""
 
+ROTULO_ARRANJO_LIVRE = "ARRANJO LIVRE · SEM CADEIA"
+"""O que o trilho grafa quando o docking desmanchou as quatro colunas."""
+
 
 class TrilhoCadeia(PainelDenso):
     """Os quatro elos da cadeia, cada um do tamanho da regiao que nomeia.
@@ -370,13 +432,42 @@ class TrilhoCadeia(PainelDenso):
         super().__init__(parent, cor_fundo=tokens.BG_RAISED)
         self.setFixedHeight(ALTURA_TRILHO)
         self._cortes: tuple[int, int, int] = (0, 0, 0)
+        self._motivo = ""
 
     def definir_cortes(self, cortes: tuple[int, int, int]) -> None:
-        if cortes != self._cortes:
+        if (cortes, "") != (self._cortes, self._motivo):
             self._cortes = cortes
+            self._motivo = ""
             self.marcar_tudo_sujo()
 
+    def definir_arranjo_livre(self, motivo: str) -> None:
+        """O docking desmanchou a cadeia: o trilho SE ABSTEM de afirma-la.
+
+        Ver `ui/workspace.py`, secao "o conflito docking x cadeia". Quatro
+        segmentos desenhados sobre um arranjo que nao tem quatro colunas
+        seriam legenda desalinhada, e o proprio modulo argumenta que legenda
+        desalinhada e pior que rotulo nenhum: o operador aprende a apontar
+        para o lugar errado.
+        """
+        if motivo != self._motivo:
+            self._motivo = motivo
+            self.marcar_tudo_sujo()
+
+    @property
+    def arranjo_livre(self) -> bool:
+        return bool(self._motivo)
+
+    @property
+    def motivo(self) -> str:
+        return self._motivo
+
     def segmentos(self) -> tuple[QRect, ...]:
+        """Os quatro segmentos, ou UM so quando o arranjo nao e cadeia.
+
+        A cardinalidade e a afirmacao: quem receber uma tupla de 1 sabe que
+        nao ha cadeia para apontar, sem ter de ler texto."""
+        if self._motivo:
+            return (QRect(0, 0, self.width(), self.height()),)
         limites = (0, *self._cortes, self.width())
         return tuple(
             QRect(limites[i], 0, max(0, limites[i + 1] - limites[i]), self.height())
@@ -387,6 +478,9 @@ class TrilhoCadeia(PainelDenso):
         painter.fillRect(regiao, self.cor_fundo)
         painter.setPen(tokens.BORDER)
         painter.drawLine(0, self.height() - 1, self.width(), self.height() - 1)
+        if self._motivo:
+            self._desenhar_arranjo_livre(painter)
+            return
 
         fonte = tokens.fonte_ui(12, 600)
         for indice, segmento in enumerate(self.segmentos()):
@@ -419,6 +513,37 @@ class TrilhoCadeia(PainelDenso):
             # depende de a familia de fonte existir na maquina.
             painter.drawLine(x - 4, meio - 4, x + 1, meio)
             painter.drawLine(x + 1, meio, x - 4, meio + 4)
+
+    def _desenhar_arranjo_livre(self, painter: QPainter) -> None:
+        """Um bloco preenchido, e o motivo literal ao lado.
+
+        Chip e nao texto fino: esta e a RESSALVA mais importante da tela
+        quando ela aparece — "o que voce esta vendo nao esta em ordem de
+        cadeia" —, e a lei medida e que o canal apaga a ressalva."""
+        rotulo = ROTULO_ARRANJO_LIVRE
+        fonte = tokens.fonte_rotulo(11)
+        metrica = QFontMetrics(fonte)
+        largura = metrica.horizontalAdvance(rotulo) + 2 * MARGEM
+        caixa = QRect(MARGEM, 4, largura, self.height() - 9)
+        painter.fillRect(caixa, tokens.ALERT)
+        painter.setFont(fonte)
+        painter.setPen(tokens.BG_BASE)
+        painter.drawText(caixa, Qt.AlignmentFlag.AlignCenter, rotulo)
+
+        resto = QRect(
+            caixa.right() + MARGEM, 0, self.width() - caixa.right() - 2 * MARGEM, self.height()
+        )
+        if resto.width() <= 0:
+            return
+        painter.setFont(tokens.fonte_ui(11))
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(
+            resto,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            _maior_que_cabe(
+                (self._motivo, self._motivo.split(" ")[0]), resto.width(), tokens.fonte_ui(11)
+            ),
+        )
 
 
 # --------------------------------------------------------------------------
@@ -656,6 +781,20 @@ PARAMETROS_EM_VIGOR: tuple[tuple[str, str], ...] = (
     ("janela_micro_ns", "JANELA MICRO"),
 )
 
+ALTURA_RODAPE_REGRAS = 34
+"""Duas linhas: a frase de modo em cima, o motivo embaixo. Ver
+`PainelRegras._desenhar_rodape`."""
+
+CORPO_CORTE = 12
+"""Corpo da linha de corte. Nunca menor que o do rodape que ela qualifica
+(11px): a lei do canal, medida, e que a ressalva em corpo menor morre na
+transmissao e a conclusao sobrevive sozinha."""
+
+ALTURA_TITULO_LIMIARES = 18
+"""Rotulo `LIMIARES EM VIGOR` mais a regua de 1px embaixo dele."""
+
+VAO_SECAO = 8
+
 RODAPE_MODO = "MODO SINAIS · NÃO ENVIA ORDEM"
 """O fim honesto da cadeia. O elo 4 chama-se DECISAO e a decisao e do
 operador: este programa nao manda ordem para lugar nenhum
@@ -686,6 +825,187 @@ def _familias() -> tuple[tuple[str, int, int, Confianca], ...]:
     return tuple(linhas)
 
 
+@dataclass(frozen=True, slots=True)
+class LayoutRegras:
+    """Quem cabe INTEIRO na coluna do registro, e o que ficou de fora.
+
+    O desenho e o teste leem esta mesma funcao: e a lei n.o 6 aplicada ao
+    painel em que a lei n.o 2 (F8) tinha sido violada. Antes, `desenhar`
+    empilhava as treze familias e os quatro limiares a partir do topo e o
+    rodape era desenhado por cima do que sobrou — as duas ultimas familias
+    ficavam ESCRITAS EM CIMA de `MODO SINAIS · NÃO ENVIA ORDEM`, e os
+    limiares caiam fora do widget sem que nada dissesse que existiam.
+
+    **Quem cede e a lista, nunca o rodape.** A frase do rodape e a
+    declaracao de escopo do produto (este programa nao manda ordem): se ela
+    nao couber, nao ha painel que valha a pena desenhar. Uma familia que nao
+    cabe, ao contrario, e uma ausencia DECLARAVEL — cabe em uma linha dizer
+    quantas ficaram fora, e e o que `texto_do_corte` escreve. Meia lista
+    silenciosa seria a fraqueza F8: parece a lista inteira.
+
+    A ordem das secoes nao muda com a altura de proposito. Promover os
+    limiares na frente das familias quando aperta faria a ordem de leitura
+    do painel depender do tamanho da janela — o operador aprenderia uma
+    tela diferente a cada arrasto de divisor.
+    """
+
+    altura: int
+    rodape: QRect
+    rodape_visivel: bool
+    y_familias: int
+    n_familias: int
+    familias_fora: int
+    y_limiares: int
+    """Topo do rotulo `LIMIARES EM VIGOR`. `-1` quando a secao nao entra."""
+    n_limiares: int
+    limiares_fora: int
+    y_corte: int
+    """Topo da linha que declara o que ficou de fora. `-1` quando nada ficou."""
+
+    @property
+    def completo(self) -> bool:
+        return self.familias_fora == 0 and self.limiares_fora == 0
+
+
+def layout_regras(
+    altura: int,
+    n_familias: int,
+    n_limiares: int = len(PARAMETROS_EM_VIGOR),
+    densidade: tokens.Densidade = tokens.PADRAO,
+) -> LayoutRegras:
+    """Geometria do `PainelRegras` para uma altura dada. Pura, sem widget."""
+    topo = densidade.altura_cabecalho + 4
+    rodape = QRect(0, altura - ALTURA_RODAPE_REGRAS, 0, ALTURA_RODAPE_REGRAS)
+    vazio = LayoutRegras(
+        altura=altura,
+        rodape=rodape,
+        rodape_visivel=False,
+        y_familias=topo,
+        n_familias=0,
+        familias_fora=n_familias,
+        y_limiares=-1,
+        n_limiares=0,
+        limiares_fora=n_limiares,
+        y_corte=-1,
+    )
+    if rodape.top() < topo:
+        # Nem o rodape cabe abaixo do cabecalho: o painel desenha so o
+        # cabecalho. Um rodape mordendo o cabecalho seria a mesma
+        # sobreposicao, um andar acima.
+        return vazio
+
+    disponivel = rodape.top() - topo
+    inteiro = (
+        n_familias * ALTURA_LINHA_REGRA
+        + VAO_SECAO
+        + ALTURA_TITULO_LIMIARES
+        + n_limiares * ALTURA_LINHA_PARAMETRO
+    )
+    if disponivel >= inteiro:
+        y_limiares = topo + n_familias * ALTURA_LINHA_REGRA + VAO_SECAO
+        return LayoutRegras(
+            altura=altura,
+            rodape=rodape,
+            rodape_visivel=True,
+            y_familias=topo,
+            n_familias=n_familias,
+            familias_fora=0,
+            y_limiares=y_limiares,
+            n_limiares=n_limiares,
+            limiares_fora=0,
+            y_corte=-1,
+        )
+
+    # Nao cabe tudo: a linha do corte e reservada ANTES de distribuir o
+    # resto. Ela e a unica coisa que impede a lista cortada de parecer
+    # inteira, entao ela nao pode ser a primeira a ser sacrificada.
+    sobra = disponivel - ALTURA_LINHA_REGRA
+    if sobra < 0:
+        # Nem a linha do corte cabe. O rodape ja coube (`rodape.top() >=
+        # topo`), e ele continua desenhado: quem cede e a lista, sempre —
+        # inclusive quando o que sobra dela e nada.
+        return dataclasses.replace(vazio, rodape_visivel=True)
+
+    cabem = min(n_familias, sobra // ALTURA_LINHA_REGRA)
+    sobra -= cabem * ALTURA_LINHA_REGRA
+    y_limiares = -1
+    postos = 0
+    if cabem == n_familias:
+        espaco = sobra - VAO_SECAO - ALTURA_TITULO_LIMIARES
+        if espaco >= ALTURA_LINHA_PARAMETRO:
+            postos = min(n_limiares, espaco // ALTURA_LINHA_PARAMETRO)
+            y_limiares = topo + cabem * ALTURA_LINHA_REGRA + VAO_SECAO
+            sobra -= VAO_SECAO + ALTURA_TITULO_LIMIARES + postos * ALTURA_LINHA_PARAMETRO
+    y_corte = rodape.top() - ALTURA_LINHA_REGRA
+    return LayoutRegras(
+        altura=altura,
+        rodape=rodape,
+        rodape_visivel=True,
+        y_familias=topo,
+        n_familias=cabem,
+        familias_fora=n_familias - cabem,
+        y_limiares=y_limiares,
+        n_limiares=postos,
+        limiares_fora=n_limiares - postos,
+        y_corte=y_corte,
+    )
+
+
+def familias_na_tela(
+    familias: tuple[tuple[str, int, int, Confianca], ...], n_linhas: int
+) -> tuple[tuple[str, int, int, Confianca], ...]:
+    """Quais familias sobrevivem a `n_linhas`. O corte e no MEIO, de proposito.
+
+    A lista chega ordenada de quem tem lastro para quem nao tem — as
+    RECUSADAS (`0/1`) sao a cauda. Cortar pela cauda, que e o que uma
+    truncagem ingenua faz, apagaria exatamente `EXAUSTÃO 0/1 § S/ FONTE` e
+    `MAKER 0/1`: as linhas que desmentem, de dentro da tela, o item mais
+    frequente da banda de deteccoes. Seria a lei n.o 1 cometida em geometria
+    — o aperto preservando o veredito e comendo a ressalva.
+
+    Entao quem some primeiro e o MIOLO: as familias implementadas do meio da
+    lista, que o painel ja resume no `n/n` do cabecalho. A ordem de leitura
+    nao muda com a altura; o que muda e quantas linhas dela existem, e a
+    linha de corte diz quantas.
+    """
+    if n_linhas >= len(familias):
+        return familias
+    if n_linhas <= 0:
+        return ()
+    recusadas = tuple(f for f in familias if f[1] == 0)
+    # Metade e metade, e nao "as recusadas primeiro": uma lista so de `0/1`
+    # inverteria a mentira em vez de corrigi-la — o painel passaria a
+    # parecer um produto que nao implementa nada. As duas metades da
+    # afirmacao (o que tem lastro, o que nao tem) sobrevivem ao aperto
+    # juntas, ou o corte nao seria honesto em nenhuma das direcoes.
+    n_cauda = min(len(recusadas), max(1, n_linhas // 2)) if recusadas else 0
+    cauda = recusadas[len(recusadas) - n_cauda:] if n_cauda else ()
+    cabeca = familias[: n_linhas - n_cauda]
+    return cabeca + cauda
+
+
+def texto_do_corte(familias_fora: int, limiares_fora: int) -> tuple[str, ...]:
+    """Alternativas do mais explicito ao mais curto (F8, `_maior_que_cabe`).
+
+    Nunca `…`: reticencia diz que ha mais alguma coisa, e nao QUANTA. O
+    numero e o conteudo da linha."""
+    partes = []
+    if familias_fora:
+        partes.append("%d FAMÍLIAS" % familias_fora)
+    if limiares_fora:
+        partes.append("%d LIMIARES" % limiares_fora)
+    junto = " · ".join(partes)
+    curto = "+".join(
+        p.split(" ")[0] for p in partes
+    )
+    return (
+        "COLUNA CURTA · %s FORA DA TELA" % junto,
+        "%s FORA DA TELA" % junto,
+        "%s FORA" % junto,
+        "%s FORA" % curto,
+    )
+
+
 class PainelRegras(PainelDenso):
     """As regras que o registro avaliza, e os limiares em vigor.
 
@@ -709,6 +1029,10 @@ class PainelRegras(PainelDenso):
     O painel e mobiliario: o conteudo nao muda entre dois trades, entao ele
     desenha uma vez e nunca mais suja. E de proposito que ele nao tem
     `aplicar`.
+
+    **Quando a coluna nao cabe**, quem manda e `layout_regras` e o que ela
+    decide esta escrito la: o rodape e intocavel, a lista cede, e o que
+    cedeu vai escrito numa linha em vez de desaparecer.
     """
 
     def __init__(
@@ -722,6 +1046,13 @@ class PainelRegras(PainelDenso):
         self._familias = _familias()
         self._implementadas = sum(1 for r in REGRAS.values() if r.implementada)
         self.setMinimumSize(240, 200)
+
+    # ----------------------------------------------------------- geometria
+    def layout_corrente(self) -> LayoutRegras:
+        """A geometria corrente. MESMA funcao que o teste mede."""
+        return layout_regras(
+            self.height(), len(self._familias), len(PARAMETROS_EM_VIGOR)
+        )
 
     # ------------------------------------------------------------- conteudo
     def texto_do_parametro(self, campo: str) -> str:
@@ -758,8 +1089,11 @@ class PainelRegras(PainelDenso):
         altura_cabecalho = tokens.PADRAO.altura_cabecalho
         self._desenhar_cabecalho(painter, QRect(0, 0, self.width(), altura_cabecalho))
 
-        y = altura_cabecalho + 4
-        for familia, implementadas, total, pior in self._familias:
+        plano = self.layout_corrente()
+        y = plano.y_familias
+        for familia, implementadas, total, pior in familias_na_tela(
+            self._familias, plano.n_familias
+        ):
             self._desenhar_familia(
                 painter,
                 QRect(0, y, self.width(), ALTURA_LINHA_REGRA),
@@ -770,24 +1104,29 @@ class PainelRegras(PainelDenso):
             )
             y += ALTURA_LINHA_REGRA
 
-        y += 8
-        painter.setFont(tokens.fonte_rotulo())
-        painter.setPen(tokens.TEXT_SECONDARY)
-        painter.drawText(
-            QRect(MARGEM, y, self.width() - 2 * MARGEM, 14),
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-            "LIMIARES EM VIGOR",
-        )
-        painter.setPen(tokens.BORDER)
-        painter.drawLine(MARGEM, y + 15, self.width() - MARGEM, y + 15)
-        y += 18
-        for campo, rotulo in PARAMETROS_EM_VIGOR:
-            self._desenhar_parametro(
-                painter, QRect(0, y, self.width(), ALTURA_LINHA_PARAMETRO), campo, rotulo
+        if plano.n_limiares:
+            y = plano.y_limiares
+            painter.setFont(tokens.fonte_rotulo())
+            painter.setPen(tokens.TEXT_SECONDARY)
+            painter.drawText(
+                QRect(MARGEM, y, self.width() - 2 * MARGEM, 14),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                "LIMIARES EM VIGOR",
             )
-            y += ALTURA_LINHA_PARAMETRO
+            painter.setPen(tokens.BORDER)
+            painter.drawLine(MARGEM, y + 15, self.width() - MARGEM, y + 15)
+            y += ALTURA_TITULO_LIMIARES
+            for campo, rotulo in PARAMETROS_EM_VIGOR[: plano.n_limiares]:
+                self._desenhar_parametro(
+                    painter,
+                    QRect(0, y, self.width(), ALTURA_LINHA_PARAMETRO),
+                    campo,
+                    rotulo,
+                )
+                y += ALTURA_LINHA_PARAMETRO
 
-        self._desenhar_rodape(painter)
+        self._desenhar_corte(painter, plano)
+        self._desenhar_rodape(painter, plano)
 
     def _desenhar_cabecalho(self, painter: QPainter, rect: QRect) -> None:
         painter.fillRect(rect, tokens.BG_RAISED)
@@ -896,12 +1235,42 @@ class PainelRegras(PainelDenso):
             cor_chip,
         )
 
-    def _desenhar_rodape(self, painter: QPainter) -> None:
-        """Ancorado embaixo: e a ultima frase da coluna da DECISAO."""
-        altura = 34
-        rect = QRect(0, self.height() - altura, self.width(), altura)
-        if rect.top() <= 0:
+    def _desenhar_corte(self, painter: QPainter, plano: LayoutRegras) -> None:
+        """A linha que declara o que a coluna curta deixou de fora.
+
+        Em `ALERT` (12,34:1) e nao em `DANGER` (5,45:1): a lei do canal desta
+        rodada tem duas metades, e a segunda diz que ressalva viaja em
+        LUMINANCIA, nao em croma — o JPEG subamostra croma 2x e come
+        exatamente o tipo de aviso que esta linha e."""
+        if plano.y_corte < 0:
             return
+        faixa = QRect(MARGEM, plano.y_corte, self.width() - 2 * MARGEM, ALTURA_LINHA_REGRA)
+        fonte = tokens.fonte_ui(CORPO_CORTE, 700)
+        texto = _maior_que_cabe(
+            texto_do_corte(plano.familias_fora, plano.limiares_fora),
+            faixa.width() - 8,
+            fonte,
+        )
+        # CHIP, e nao texto colorido: a primeira versao saiu em `ALERT` sobre
+        # o fundo do painel e `scripts/retencao.py` reprovou o par —
+        # `corte_regras` retinha 37,6% contra 44,2% do rodape que ela
+        # qualifica. Bloco preenchido com texto escuro e a forma que este
+        # produto ja usa para ressalva, e e a que a recompressao nao apaga.
+        # O corpo e o MESMO do rodape (11px, 600): a ressalva nunca viaja
+        # menor que o dado que ela qualifica.
+        largura = min(faixa.width(), QFontMetrics(fonte).horizontalAdvance(texto) + 12)
+        rect = QRect(faixa.left(), faixa.top() + 1, largura, faixa.height() - 2)
+        painter.fillRect(rect, tokens.ALERT)
+        painter.setFont(fonte)
+        painter.setPen(tokens.BG_BASE)
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, texto)
+
+    def _desenhar_rodape(self, painter: QPainter, plano: LayoutRegras) -> None:
+        """Ancorado embaixo: e a ultima frase da coluna da DECISAO."""
+        if not plano.rodape_visivel:
+            return
+        rect = QRect(plano.rodape)
+        rect.setWidth(self.width())
         painter.setPen(tokens.BORDER)
         painter.drawLine(MARGEM, rect.top(), self.width() - MARGEM, rect.top())
         painter.setFont(tokens.fonte_ui(11, 600))
@@ -922,9 +1291,90 @@ class PainelRegras(PainelDenso):
 
 # --------------------------------------------------------------------------
 # 4. A janela
+
+# --------------------------------------------------------------------------
+# 4. A doca — o cromo do SO trocado por cromo nosso
+# --------------------------------------------------------------------------
+ALTURA_CABECALHO_DOCA = 20
+"""Cabecalho proprio de cada doca. 20px e o menor corpo em que `fonte_rotulo`
+de 10px ainda respira, e um cabecalho maior custaria area de dado catorze
+vezes."""
+
+
+class CabecalhoDoca(QWidget):
+    """A barra de titulo de um `QDockWidget`, desenhada por nos.
+
+    E o pedaco que faz o docking parar de violar V5. Por padrao o Qt desenha
+    o titulo, o botao de flutuar e o de fechar com o ESTILO DO SISTEMA — que
+    era exatamente a objecao que a composicao usou para recusar `QSplitter`
+    ("o punho e desenhado pelo estilo do SO"). `setTitleBarWidget` substitui a
+    barra inteira; o que sobra do estilo do sistema e o separador entre docas,
+    e esse vai declarado em `workspace.folha_de_estilo`, a partir dos tokens.
+
+    Nao e um `PainelDenso`: nao tem dado, nao muda entre quadros e nao merece
+    um `QTimer`. Catorze relogios de desenho para pintar catorze titulos fixos
+    seria pagar o preco do ativo mais caro do projeto de UI pelo texto que
+    menos muda na tela.
+
+    Nao ha botao de fechar de proposito. Um painel que o operador pode perder
+    com um clique e um painel em que ele nao pode confiar no meio do pregao; a
+    troca de arranjo e por workspace (`Ctrl+1..9`), que e reversivel e
+    nomeada.
+    """
+
+    def __init__(self, chave: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.chave = chave
+        self.titulo = TITULO_DA_DOCA.get(chave, chave.upper())
+        self.elo = ELO_DA_DOCA.get(chave, ELO_FORA)
+        self.setFixedHeight(ALTURA_CABECALHO_DOCA)
+        self.setAutoFillBackground(True)
+
+    def paintEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        painter = QPainter(self)
+        rect = self.rect()
+        painter.fillRect(rect, tokens.BG_RAISED)
+        painter.setPen(tokens.BORDER)
+        painter.drawLine(0, rect.bottom(), rect.width(), rect.bottom())
+        painter.setFont(tokens.fonte_rotulo())
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(
+            rect.adjusted(MARGEM, 0, -MARGEM, 0),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            self.titulo,
+        )
+        if self.elo != ELO_FORA:
+            # O numero do elo NO cabecalho da doca. E o que mantem a cadeia
+            # apontavel quando o trilho se abstem: com o arranjo desmanchado o
+            # operador ainda le, em cada painel, a que altura da cadeia ele
+            # pertence. A ressalva sobrevive a perda do veredito.
+            painter.setPen(tokens.TEXT_MUTED)
+            painter.drawText(
+                rect.adjusted(MARGEM, 0, -MARGEM, 0),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                "ELO %d" % self.elo,
+            )
+        painter.end()
+
+
+# --------------------------------------------------------------------------
+# 5. A janela
 # --------------------------------------------------------------------------
 class JanelaFluxo(QMainWindow):
-    """Shell sem cromo, quatro regioes na ordem da cadeia, um relogio de dados."""
+    """Shell com docking, quatro elos da cadeia, e UM relogio de dados.
+
+    ## O que mudou, e o que nao mudou
+
+    A cadeia continua sendo a afirmacao central desta camada — mas ela deixou
+    de ser uma promessa do LAYOUT e passou a ser uma leitura do ARRANJO. Ver
+    `ui/workspace.py`, secao "o conflito docking x cadeia": os dois convivem, e
+    quem se subordina e o trilho.
+
+    Um relogio de dados: `_tick` le a ponte uma vez e distribui o mesmo
+    `Instantaneo`; painel nenhum chama `ponte.ler()`. `sessao.leitura_do_metodo()`
+    entra no mesmo quadro — nao drena, e imutavel, e traz os cinco retratos do
+    metodo com o mesmo `timestamp_ns` por construcao.
+    """
 
     def __init__(
         self,
@@ -938,13 +1388,26 @@ class JanelaFluxo(QMainWindow):
         config_motor: ConfigMotorSinais | None = None,
         sessao=None,
         ressalva: tuple[str, str] = ("", ""),
+        config: ConfigOperacao | None = None,
+        em_replay: bool = False,
+        workspace: Workspace | None = None,
+        persistir: bool = False,
+        trilha: TrilhaEventos | None = None,
     ) -> None:
         super().__init__()
         self.ponte = ponte
+        self.simbolo = simbolo
+        self.grid = grid
         self.paleta = paleta
+        self.densidade = densidade
         self.sessao = sessao
+        self.config = config if config is not None else ConfigOperacao(symbol=simbolo)
         self.config_motor = config_motor if config_motor is not None else ConfigMotorSinais()
+        self.trilha = trilha if trilha is not None else TrilhaEventos()
         self._ao_fechar = ao_fechar
+        self._persistir = persistir
+        self._em_replay = em_replay
+        self._modo = modo
         self._n_eventos = 0
         self._n_deteccoes = 0
         self._n_sinais = 0
@@ -953,6 +1416,8 @@ class JanelaFluxo(QMainWindow):
         self._estado_faixa: EstadoFeed | None = None
         self._quadros_sem_players = 0
         self._players_visivel = True
+        self._motivo_trilho = ""
+        self._quadros_perdidos_corrida = 0
 
         self.setWindowTitle(f"FluxoPro — {simbolo}")
         self.resize(1480, 900)
@@ -964,64 +1429,35 @@ class JanelaFluxo(QMainWindow):
 
         self.ressalva = FaixaRessalva(*ressalva) if ressalva[0] else None
         self.topo = StripTopo(simbolo, grid, paleta=paleta)
-        self.topo.definir_modo(modo)
+        self.topo.definir_modo(modo, replay=em_replay)
         self.trilho = TrilhoCadeia()
         self.rodape = StripRodape()
 
-        # --- elo 1: dados de mercado -------------------------------------
-        self.dom = PainelDOM(grid, paleta=paleta, densidade=densidade)
-        self.tape = PainelTape(grid, paleta=paleta, densidade=densidade)
-        self.players = PainelPlayers(paleta=paleta, densidade=densidade)
-
-        coluna_tape = QWidget()
-        pilha_tape = QVBoxLayout(coluna_tape)
-        pilha_tape.setContentsMargins(0, 0, 0, 0)
-        pilha_tape.setSpacing(0)
-        pilha_tape.addWidget(self.tape, 5)
-        pilha_tape.addWidget(_separador(vertical=False))
-        pilha_tape.addWidget(self.players, 2)
-
-        self.area_dados = QWidget()
-        linha_dados = QHBoxLayout(self.area_dados)
-        linha_dados.setContentsMargins(0, 0, 0, 0)
-        linha_dados.setSpacing(0)
-        linha_dados.addWidget(self.dom, 3)
-        linha_dados.addWidget(_separador(vertical=True))
-        linha_dados.addWidget(coluna_tape, 2)
-
-        # --- elo 2: processamento ----------------------------------------
-        self.conduto = PainelConduto()
-
-        # --- elo 3: estado derivado --------------------------------------
-        self.matriz = PainelMatriz(
-            grid, densidade=densidade, paleta=paleta, config=self.config_motor
+        # O anfitriao das docas e um `QMainWindow` ANINHADO. As strips e o
+        # trilho tem de ficar FORA da area de docking — se estivessem no
+        # widget central do anfitriao, uma doca arrastada para a borda
+        # passaria por cima do trilho, e o trilho e justamente o que afirma
+        # onde as colunas estao.
+        self._host = QMainWindow()
+        self._host.setDockNestingEnabled(True)
+        self._host.setDockOptions(
+            QMainWindow.DockOption.AllowNestedDocks
+            | QMainWindow.DockOption.AllowTabbedDocks
         )
+        # V5: o separador do `QMainWindow` deixa de ser desenhado pelo SO.
+        self._host.setStyleSheet(folha_de_estilo())
+        vazio = QWidget()
+        vazio.setMaximumSize(0, 0)
+        self._host.setCentralWidget(vazio)
 
-        # --- elo 4: decisao ----------------------------------------------
-        self.hud = PainelHUD(densidade=densidade, paleta=paleta)
-        self.regras = PainelRegras(self.config_motor)
+        self.docas: dict[str, QDockWidget] = {}
+        self._paineis: dict[str, QWidget] = {}
+        self._montar_paineis()
+        self._montar_docas()
 
-        self.area_decisao = QWidget()
-        self.area_decisao.setFixedWidth(LARGURA_DECISAO)
-        pilha_decisao = QVBoxLayout(self.area_decisao)
-        pilha_decisao.setContentsMargins(0, 0, 0, 0)
-        pilha_decisao.setSpacing(0)
-        pilha_decisao.addWidget(self.hud)
-        pilha_decisao.addWidget(_separador(vertical=False))
-        pilha_decisao.addWidget(self.regras, 1)
-
-        # --- corpo: as quatro regioes, na ordem da cadeia -----------------
-        self._corpo = QWidget()
-        linha = QHBoxLayout(self._corpo)
-        linha.setContentsMargins(0, 0, 0, 0)
-        linha.setSpacing(0)
-        linha.addWidget(self.area_dados, 5)
-        linha.addWidget(_separador(vertical=True))
-        linha.addWidget(self.conduto)
-        linha.addWidget(_separador(vertical=True))
-        linha.addWidget(self.matriz, 4)
-        linha.addWidget(_separador(vertical=True))
-        linha.addWidget(self.area_decisao)
+        self.tarja_replay = TarjaReplay()
+        self.tarja_replay.instalar_em(self)
+        self.tarja_replay.setVisible(False)
 
         central = QWidget()
         coluna = QVBoxLayout(central)
@@ -1032,28 +1468,428 @@ class JanelaFluxo(QMainWindow):
             coluna.addWidget(self.ressalva)
         coluna.addWidget(self.topo)
         coluna.addWidget(self.trilho)
-        coluna.addWidget(self._corpo, 1)
+        coluna.addWidget(self._host, 1)
         coluna.addWidget(self.rodape)
         self.setCentralWidget(central)
 
+        # O arranjo canonico e capturado AQUI, antes de qualquer arquivo de
+        # workspace entrar. E o piso de todo `Ctrl+N`: sem ele, um estado
+        # salvo estranho contaminaria os quatro workspaces de fabrica de uma
+        # vez e nao haveria como voltar sem apagar arquivo na mao.
+        self._estado_de_fabrica = self._host.saveState()
+
+        self._atalhos: list[QShortcut] = []
+        self._instalar_atalhos()
+
+        self._workspace: Workspace = workspace or WORKSPACES_DE_FABRICA[0]
+        self.aplicar_workspace(self._workspace, registrar=False)
+
+        self._conferir_eixos()
         self._atualizar_faixa(EstadoFeed.AGUARDANDO)
         self._sincronizar_trilho()
         self.dom.setFocus()
 
-        # Recolher/mostrar o ranking de players. Atalho e nao menu: menu e
-        # cromo, e a area de dados nao tem cromo (V5).
-        self._atalho_players = QShortcut(QKeySequence("Ctrl+P"), self)
-        self._atalho_players.activated.connect(self.alternar_players)
-
-        # UM relogio de dados. Os paineis tem os seus proprios relogios de
-        # DESENHO (`PainelDenso`), e sao coisas diferentes de proposito: o de
-        # dados decide o que a tela sabe, o de desenho decide quanto custa
-        # mostrar. Juntar os dois traria de volta o repaint por tick.
         self._relogio = QTimer(self)
         self._relogio.setInterval(INTERVALO_QUADRO_MS)
         self._relogio.setTimerType(Qt.TimerType.PreciseTimer)
         self._relogio.timeout.connect(self._tick)
         self._relogio.start()
+
+    # ------------------------------------------------------------- montagem
+    #: Paineis que sabem trocar de densidade a quente, preservando o estado
+    #: de tela. `footprint`, `perfil` e `delta` andam JUNTOS: os dois ultimos
+    #: recebem os eixos do primeiro por identidade de objeto, entao preservar
+    #: um sem o outro quebraria o acoplamento que faz os tres compartilharem
+    #: eixo. Ou os tres ficam, ou os tres sao reconstruidos.
+    TROCAM_A_QUENTE = ("footprint", "perfil", "delta", "bookmap", "tape")
+
+    def _montar_paineis(self, preservados: dict | None = None) -> None:
+        """Constroi os paineis na densidade corrente.
+
+        Chamado no construtor e de novo em `aplicar_densidade`. A ORDEM de
+        construcao importa num ponto so, e e o ponto que o construtor da fase
+        2 documentou: `PainelPerfil` e `PainelDeltaAcumulado` recebem os eixos
+        do `PainelFootprint` **por identidade de objeto**. Nao ha copia, nao
+        ha formula equivalente — e o mesmo `EixoPreco` e o mesmo `EixoTempo`.
+
+        `preservados` reaproveita instancias que ja trocaram de densidade a
+        quente, em vez de descarta-las. E o que permite `Ctrl+Shift+D` nao
+        apagar as colunas do footprint, o plano do bookmap e o anel do tape.
+        """
+        vivos = preservados or {}
+        cfg = self.config
+        d, p = self.densidade, self.paleta
+
+        self.dom = PainelDOM(self.grid, paleta=p, densidade=d)
+        self.tape = vivos.get("tape") or PainelTape(self.grid, paleta=p, densidade=d)
+        self.players = PainelPlayers(paleta=p, densidade=d)
+        self.bookmap = vivos.get("bookmap") or PainelBookmap(
+            self.grid, symbol=self.simbolo, paleta=p, densidade=d
+        )
+
+        self.conduto = PainelConduto()
+        self.conduto.setFixedWidth(LARGURA_CONDUTO)
+
+        if "footprint" in vivos:
+            # Os tres juntos, ou nenhum — ver `TROCAM_A_QUENTE`.
+            self.footprint = vivos["footprint"]
+            self.perfil = vivos["perfil"]
+            self.delta = vivos["delta"]
+        else:
+            self.footprint = PainelFootprint(
+                self.grid,
+                densidade=d,
+                paleta=p,
+                config=cfg.footprint,
+                simbolo=self.simbolo,
+                timeframe_ns=cfg.timeframe_ns,
+            )
+            self.perfil = PainelPerfil(
+                self.grid,
+                self.footprint.eixo_preco,
+                densidade=d,
+                paleta=p,
+                config=cfg.volume_profile,
+            )
+            self.delta = PainelDeltaAcumulado(
+                self.footprint.eixo_tempo, densidade=d, paleta=p, config=cfg.delta
+            )
+        self.matriz = PainelMatriz(
+            self.grid, densidade=d, paleta=p, config=self.config_motor
+        )
+        # O minimo do painel (260px) e menor que a altura em que a sua
+        # propria banda de deteccoes abre a primeira linha. Ver
+        # `altura_minima_matriz`: a composicao nao conserta `matriz.py`,
+        # so recusa entregar a ela uma doca em que a banda so cabe como
+        # promessa.
+        self.matriz.setMinimumHeight(altura_minima_matriz(d))
+
+        self.hud = PainelHUD(densidade=d, paleta=p)
+        self.metodo = PainelMetodo(self.grid, densidade=d, paleta=p)
+        self.regras = PainelRegras(self.config_motor)
+
+        self.controles_replay = ControlesReplay(densidade=d)
+        self.controles_replay.buscou.connect(self._ao_buscar_replay)
+        self.controles_replay.velocidade_mudou.connect(self._ao_mudar_velocidade)
+        self.controles_replay.pausa_alternada.connect(self._ao_alternar_pausa)
+        self.painel_trilha = PainelTrilha(self.trilha, densidade=d)
+
+        self._paineis = {
+            "dom": self.dom,
+            "tape": self.tape,
+            "players": self.players,
+            "bookmap": self.bookmap,
+            "conduto": self.conduto,
+            "footprint": self.footprint,
+            "perfil": self.perfil,
+            "delta": self.delta,
+            "matriz": self.matriz,
+            "hud": self.hud,
+            "metodo": self.metodo,
+            "regras": self.regras,
+            "replay": self.controles_replay,
+            "trilha": self.painel_trilha,
+        }
+
+    def _nova_doca(self, chave: str) -> QDockWidget:
+        doca = QDockWidget(TITULO_DA_DOCA[chave], self._host)
+        # `objectName` nao e cosmetico: `saveState`/`restoreState` casam doca
+        # com estado POR ESSE NOME. Uma doca sem nome volta do arquivo no
+        # lugar errado, em silencio.
+        doca.setObjectName("doca_" + chave)
+        doca.setTitleBarWidget(CabecalhoDoca(chave))
+        doca.setFeatures(
+            QDockWidget.DockWidgetFeature.DockWidgetMovable
+            | QDockWidget.DockWidgetFeature.DockWidgetFloatable
+        )
+        doca.setWidget(self._paineis[chave])
+        self.docas[chave] = doca
+        return doca
+
+    def _montar_docas(self) -> None:
+        """O arranjo canonico: quatro colunas, na ordem da cadeia.
+
+        Construido por `splitDockWidget` explicito e nao por `addDockWidget`
+        em area: `addDockWidget` deixa o Qt escolher a ordem, e a ordem AQUI e
+        a afirmacao do produto.
+        """
+        area = Qt.DockWidgetArea.LeftDockWidgetArea
+        host = self._host
+        host.addDockWidget(area, self._nova_doca("dom"))
+        H = Qt.Orientation.Horizontal
+        V = Qt.Orientation.Vertical
+
+        # PRIMEIRO o esqueleto de COLUNAS, so com splits horizontais. A ordem
+        # importa e custou uma passada: subdividir uma coluna na vertical
+        # ANTES de terminar os cortes horizontais faz o corte seguinte incidir
+        # sobre a sub-celula, e a coluna do elo 3 passa a ocupar a largura
+        # inteira por baixo do elo 4 — dois elos na mesma faixa, e o trilho
+        # (corretamente) se abstem num arranjo que era para ser o canonico.
+        host.splitDockWidget(self.docas["dom"], self._nova_doca("tape"), H)
+        host.splitDockWidget(self.docas["tape"], self._nova_doca("conduto"), H)
+        host.splitDockWidget(self.docas["conduto"], self._nova_doca("matriz"), H)
+        host.splitDockWidget(self.docas["matriz"], self._nova_doca("hud"), H)
+
+        # DEPOIS as subdivisoes, cada uma dentro da coluna do seu elo.
+        host.splitDockWidget(self.docas["tape"], self._nova_doca("players"), V)
+        host.splitDockWidget(self.docas["matriz"], self._nova_doca("footprint"), V)
+        host.splitDockWidget(self.docas["footprint"], self._nova_doca("perfil"), H)
+        host.splitDockWidget(self.docas["footprint"], self._nova_doca("delta"), V)
+        host.splitDockWidget(self.docas["hud"], self._nova_doca("metodo"), V)
+        host.splitDockWidget(self.docas["metodo"], self._nova_doca("regras"), V)
+
+        # O bookmap nasce TABULADO com o DOM: os dois respondem a mesma
+        # pergunta (onde esta a liquidez) em escalas de tempo diferentes, e
+        # ocupam a mesma coluna do elo 1.
+        host.tabifyDockWidget(self.docas["dom"], self._nova_doca("bookmap"))
+
+        # Transporte e meta: rodape da area de docking, FORA da cadeia.
+        host.addDockWidget(
+            Qt.DockWidgetArea.BottomDockWidgetArea, self._nova_doca("replay")
+        )
+        host.splitDockWidget(self.docas["replay"], self._nova_doca("trilha"), H)
+
+        host.resizeDocks(
+            [self.docas["dom"], self.docas["tape"], self.docas["conduto"],
+             self.docas["matriz"], self.docas["hud"]],
+            [300, 220, LARGURA_CONDUTO, 460, LARGURA_DECISAO],
+            H,
+        )
+        # As alturas da coluna da DECISAO vem da geometria dos proprios
+        # paineis (`altura_natural`), e nao de tres numeros escolhidos a olho:
+        # o primeiro retrato saiu com `PainelRegras` espremido e as duas
+        # ultimas familias desenhadas por cima do rodape `MODO SINAIS`, que e
+        # a linha que diz que o produto nao envia ordem. Ressalva coberta por
+        # dado e o modo de falha que esta rodada inteira existe para nao ter.
+        host.resizeDocks(
+            [self.docas["hud"], self.docas["metodo"], self.docas["regras"]],
+            [220, altura_natural_metodo(self.densidade) + ALTURA_CABECALHO_DOCA, 520],
+            V,
+        )
+
+    def _conferir_eixos(self) -> None:
+        """`ConfigDelta.timeframe_ns` tem de bater com `ConfigOperacao`.
+
+        Nao "corrige" nada: se as duas configuracoes discordam, quem esta
+        errado e quem montou, e o painel de delta ja acende `EIXOS ≠` sozinho
+        — comportamento correto, e nao defeito. O que a janela faz e deixar a
+        divergencia ESCRITA na trilha, com os dois numeros, para o operador
+        nao precisar deduzir do painel por que o eixo nao alinha.
+        """
+        seu = self.config.delta.timeframe_ns
+        meu = self.config.timeframe_ns
+        if seu != meu:
+            self.trilha.aviso(
+                "eixos",
+                "ConfigDelta.timeframe_ns=%s e ConfigOperacao.timeframe_ns=%s: o "
+                "delta acumulado vai acender EIXOS ≠"
+                % (formato.formatar_duracao_s(seu / 1e9), formato.formatar_duracao_s(meu / 1e9)),
+            )
+
+    # ------------------------------------------------------------- atalhos
+    def _instalar_atalhos(self) -> None:
+        def liga(sequencia: str, alvo) -> None:
+            atalho = QShortcut(QKeySequence(sequencia), self)
+            atalho.activated.connect(alvo)
+            self._atalhos.append(atalho)
+
+        liga("Ctrl+P", self.alternar_players)
+        liga("Ctrl+Shift+D", self.proxima_densidade)
+        for digito in range(1, 10):
+            liga("Ctrl+%d" % digito, lambda d=digito: self.workspace_por_atalho(d))
+
+    # ---------------------------------------------------------- workspaces
+    @property
+    def workspace(self) -> Workspace:
+        return self._workspace
+
+    def workspace_por_atalho(self, digito: int) -> bool:
+        alvo = por_atalho(digito)
+        if alvo is None:
+            # Ctrl+5..9 existem em §4.1 e ainda nao tem workspace. Silencio
+            # seria o atalho parecer quebrado; a trilha diz que ele funcionou
+            # e nao havia para onde ir.
+            self.trilha.info("workspace", "Ctrl+%d não tem workspace atribuído" % digito)
+            return False
+        self.aplicar_workspace(alvo)
+        return True
+
+    def aplicar_workspace(self, alvo: Workspace, registrar: bool = True) -> None:
+        """Troca o arranjo. Esconde doca, nunca destroi painel.
+
+        Destruir e reconstruir a cada `Ctrl+N` reiniciaria o historico de tela
+        do footprint e do bookmap toda vez — o operador que fosse ao Bookmap
+        conferir uma coisa e voltasse encontraria a grade do Fluxo vazia.
+        """
+        estado = self._estado_salvo(alvo)
+        self._host.restoreState(estado if estado is not None else self._estado_de_fabrica)
+        for chave, doca in self.docas.items():
+            doca.setVisible(chave in alvo.docas)
+        self._workspace = alvo
+        self._sincronizar_trilho()
+        if registrar:
+            self.trilha.info("workspace", "%s — %s" % (alvo.nome, alvo.descricao))
+        if not alvo.cadeia_completa:
+            self.trilha.aviso(
+                "cadeia",
+                "o workspace %s não cobre os quatro elos: o trilho vai se abster"
+                % alvo.nome,
+            )
+
+    def _estado_salvo(self, alvo: Workspace):
+        if not self._persistir:
+            return None
+        from fluxopro.ui import workspace as ws_mod
+
+        try:
+            dados = ws_mod.carregar(alvo.nome)
+        except (ValueError, OSError) as erro:
+            # §3.5: erro nunca e modal, vai para a trilha com o motivo
+            # literal. E o arranjo de fabrica assume — um workspace ilegivel
+            # nao pode ser motivo para a janela nao abrir.
+            self.trilha.erro("workspace", "não li %s: %s" % (alvo.nome, erro))
+            return None
+        return None if dados is None else dados[1]
+
+    def salvar_workspace(self):
+        """Grava geometria + estado do arranjo corrente. `None` se desligado."""
+        if not self._persistir:
+            return None
+        from fluxopro.ui import workspace as ws_mod
+
+        try:
+            return ws_mod.salvar(
+                self._workspace.nome,
+                self.saveGeometry(),
+                self._host.saveState(),
+                {"densidade": self.densidade.nome, "simbolo": self.simbolo},
+            )
+        except OSError as erro:
+            self.trilha.erro("workspace", "não gravei %s: %s" % (self._workspace.nome, erro))
+            return None
+
+    def restaurar_geometria(self, geometria) -> bool:
+        """Restaura a geometria da janela E aplica a regra da janela orfa."""
+        ok = bool(self.restoreGeometry(geometria))
+        self.aplicar_regra_da_orfa()
+        return ok
+
+    # ------------------------------------------------------- janela orfa
+    def _areas_de_tela(self) -> tuple[tuple[QRect, ...], QRect]:
+        app = QApplication.instance()
+        telas = list(app.screens()) if app is not None else []
+        areas = tuple(tela.availableGeometry() for tela in telas)
+        primaria = QRect()
+        if app is not None and app.primaryScreen() is not None:
+            primaria = app.primaryScreen().availableGeometry()
+        elif areas:
+            primaria = areas[0]
+        return areas, primaria
+
+    def aplicar_regra_da_orfa(self) -> tuple[str, ...]:
+        """§4.1: janela orfa vai para o primario **com aviso na trilha**.
+
+        Vale para a janela principal E para cada doca destacada — e "cada
+        janela destacada guarda monitor + geometria" que §4.1 pede, do lado em
+        que da para consertar. Sem isto, restaurar um arranjo de tres monitores
+        numa maquina de um monitor abre painel fora da area visivel, que e o
+        "defeito classico de terminal" nomeado no documento.
+        """
+        areas, primaria = self._areas_de_tela()
+        if not areas or primaria.isEmpty():
+            return ()
+        avisos: list[str] = []
+        alvos: list[tuple[str, QWidget]] = [("janela principal", self)]
+        alvos += [
+            (TITULO_DA_DOCA.get(chave, chave), doca)
+            for chave, doca in self.docas.items()
+            if doca.isFloating() and doca.isVisible()
+        ]
+        for nome, alvo in alvos:
+            antes = alvo.frameGeometry()
+            depois, orfa = reancorar(antes, areas, primaria)
+            if not orfa:
+                continue
+            alvo.setGeometry(depois)
+            texto = (
+                "%s estava fora da área visível (%dx%d em %d,%d); "
+                "trazida para o monitor primário em %d,%d"
+                % (
+                    nome,
+                    antes.width(), antes.height(), antes.x(), antes.y(),
+                    depois.x(), depois.y(),
+                )
+            )
+            avisos.append(texto)
+            self.trilha.aviso("multi-monitor", texto)
+        return tuple(avisos)
+
+    # ---------------------------------------------------------- densidade
+    def proxima_densidade(self) -> tokens.Densidade:
+        indice = tokens.DENSIDADES.index(self.densidade)
+        return self.aplicar_densidade(
+            tokens.DENSIDADES[(indice + 1) % len(tokens.DENSIDADES)]
+        )
+
+    def aplicar_densidade(self, nova: tokens.Densidade) -> tokens.Densidade:
+        """Fase 3, item 9: as tres densidades a quente, SEM perder historico.
+
+        A versao anterior **reconstruia** os paineis, e a justificativa dela
+        estava certa pela metade: mutar so `painel.densidade` deixaria a
+        geometria calculada com a fonte ANTIGA e o texto desenhado com a nova —
+        calha estreita, rotulo descartado por F8, e nenhum erro em lugar
+        nenhum. O que ela nao tinha era a terceira opcao.
+
+        Os paineis passaram a expor `aplicar_densidade`, que refaz **todo**
+        derivado da densidade (as `QFontMetrics` do construtor inclusive) e
+        preserva o estado de tela. Entao o custo que estava dito aqui — "o
+        historico de tela recomeca" — deixou de existir, e a linha da trilha
+        que o anunciava saiu junto: ressalva que sobrevive ao conserto vira
+        mentira com selo de honestidade.
+
+        Quem nao expoe o metodo continua sendo reconstruido, e o docking e
+        preservado de qualquer forma (`saveState`/`restoreState`).
+        """
+        if nova is self.densidade:
+            return nova
+        self.densidade = nova
+
+        # Os que sabem trocar a quente refazem os proprios derivados e ficam
+        # de pe; os demais sao reconstruidos como antes.
+        preservados = {}
+        for chave in self.TROCAM_A_QUENTE:
+            painel = self._paineis.get(chave)
+            metodo = getattr(painel, "aplicar_densidade", None)
+            if painel is not None and callable(metodo):
+                metodo(nova)
+                preservados[chave] = painel
+
+        estado = self._host.saveState()
+        visiveis = {c for c, dc in self.docas.items() if dc.isVisible()}
+        antigos = [
+            painel
+            for chave, painel in self._paineis.items()
+            if chave not in preservados
+        ]
+        for painel in antigos:
+            if isinstance(painel, PainelDenso):
+                painel.parar_relogio()
+
+        self._montar_paineis(preservados=preservados)
+        for chave, doca in self.docas.items():
+            doca.setWidget(self._paineis[chave])
+        for painel in antigos:
+            painel.setParent(None)
+            painel.deleteLater()
+
+        self._host.restoreState(estado)
+        for chave, doca in self.docas.items():
+            doca.setVisible(chave in visiveis)
+
+        self._leitura = None
+        self._sincronizar_trilho()
+        self.trilha.info("densidade", nova.nome)
+        return nova
 
     # ------------------------------------------------------------- aparencia
     def _pintar_fundo(self) -> None:
@@ -1067,35 +1903,75 @@ class JanelaFluxo(QMainWindow):
     @property
     def paineis(self) -> tuple[PainelDenso, ...]:
         """Todo painel da janela — usado para parar relogio e para os testes."""
-        base = (
-            self.topo,
-            self.trilho,
-            self.dom,
-            self.tape,
-            self.players,
-            self.conduto,
-            self.matriz,
-            self.hud,
-            self.regras,
-            self.rodape,
-        )
-        return base + ((self.ressalva,) if self.ressalva is not None else ())
+        base: list[PainelDenso] = [self.topo, self.trilho, self.rodape, self.tarja_replay]
+        base += [p for p in self._paineis.values() if isinstance(p, PainelDenso)]
+        if self.ressalva is not None:
+            base.append(self.ressalva)
+        return tuple(base)
 
-    def _sincronizar_trilho(self) -> None:
-        """Os cortes do trilho SAO as bordas das colunas. Uma conta so.
+    # ------------------------------------------------------------ o trilho
+    def faixas_dos_elos(self) -> tuple[tuple[int, int] | None, ...]:
+        """A faixa horizontal de cada elo, em coordenadas da JANELA.
 
-        O layout precisa estar resolvido antes da leitura: `activate()` forca
-        isso, e sem ele a primeira sincronizacao leria a geometria do
-        construtor (tudo em 640x480) e o trilho nasceria desalinhado ate o
-        primeiro redimensionamento — que num retrato automatico nunca vem."""
-        layout = self._corpo.layout()
+        Uniao das docas visiveis e ancoradas do elo. Doca escondida nao entra
+        (nao ocupa faixa nenhuma) e doca FLUTUANDO tambem nao — ela esta noutra
+        janela, possivelmente noutro monitor, e mapear a coordenada dela para
+        esta janela daria um numero sem significado geometrico.
+        """
+        layout = self._host.layout()
         if layout is not None:
             layout.activate()
-        cortes = tuple(
-            widget.mapTo(self, widget.rect().topRight()).x() + 1
-            for widget in (self.area_dados, self.conduto, self.matriz)
-        )
-        self.trilho.definir_cortes(cortes)  # type: ignore[arg-type]
+        faixas: list[tuple[int, int] | None] = []
+        for elo in range(1, N_ELOS + 1):
+            esquerda: int | None = None
+            direita: int | None = None
+            for chave, doca in self.docas.items():
+                if ELO_DA_DOCA[chave] != elo or doca.isFloating() or not doca.isVisible():
+                    continue
+                if not self._host.rect().contains(
+                    QRect(doca.mapTo(self._host, doca.rect().topLeft()), doca.size())
+                ):
+                    # Doca TABULADA atras de outra. Ela continua "visivel" para
+                    # o Qt — o `QDockWidget` nao foi escondido, so nao e a aba
+                    # da frente — e o Qt a estaciona FORA da area do anfitriao
+                    # (x negativo). Sem este corte, a aba de tras contamina a
+                    # faixa do elo com uma coluna que ninguem esta vendo: foi
+                    # assim que o elo 1 passou a comecar em x = -500.
+                    #
+                    # O criterio e geometrico e nao `visibleRegion()`: a regiao
+                    # visivel so fica correta depois de o sistema expor a
+                    # janela de verdade, e o retrato automatico e o teste medem
+                    # antes disso.
+                    continue
+                l = doca.mapTo(self, doca.rect().topLeft()).x()
+                r = doca.mapTo(self, doca.rect().topRight()).x()
+                esquerda = l if esquerda is None else min(esquerda, l)
+                direita = r if direita is None else max(direita, r)
+            faixas.append(None if esquerda is None else (esquerda, direita))  # type: ignore[arg-type]
+        return tuple(faixas)
+
+    def _sincronizar_trilho(self) -> None:
+        """Os cortes SAO as bordas reais das colunas. Uma conta so.
+
+        `activate()` forca o layout a se resolver antes da leitura: sem ele a
+        primeira sincronizacao leria a geometria do construtor e o trilho
+        nasceria desalinhado ate o primeiro redimensionamento — que num
+        retrato automatico nunca vem.
+        """
+        cortes, motivo = cortes_da_cadeia(self.faixas_dos_elos(), self.trilho.width())
+        if cortes is None:
+            if motivo != self._motivo_trilho and self.isVisible():
+                # So na MUDANCA: `resizeEvent` passa por aqui dezenas de vezes
+                # num arrasto, e uma trilha inundada pelo proprio arrasto e uma
+                # trilha em que o gap de sequencia do MBO nao vai ser achado.
+                self.trilha.aviso("cadeia", "trilho abstém-se — " + motivo)
+            self._motivo_trilho = motivo
+            self.trilho.definir_arranjo_livre(motivo)
+            return
+        if self._motivo_trilho and self.isVisible():
+            self.trilha.info("cadeia", "arranjo voltou a ser quatro colunas em ordem")
+        self._motivo_trilho = ""
+        self.trilho.definir_cortes(cortes)
 
     def resizeEvent(self, evento) -> None:  # noqa: N802
         super().resizeEvent(evento)
@@ -1111,15 +1987,42 @@ class JanelaFluxo(QMainWindow):
 
     def definir_players_visivel(self, visivel: bool) -> None:
         """Painel escondido nao gasta quadro — `PainelDenso.hideEvent` para o
-        relogio dele, e `_tick` deixa de montar o ranking. As duas economias
-        importam: a de desenho e a maior, a de dados evita ordenar uma lista
-        de participantes que ninguem esta olhando."""
+        relogio dele, e `_tick` deixa de montar o ranking."""
         if visivel == self._players_visivel:
             return
         self._players_visivel = visivel
+        doca = self.docas.get("players")
+        if doca is not None:
+            doca.setVisible(visivel and "players" in self._workspace.docas)
         self.players.setVisible(visivel)
         if visivel:
             self._quadros_sem_players = 0
+
+    # ------------------------------------------------------------- replay
+    def definir_estado_replay(self, estado: EstadoReplay) -> None:
+        """A tarja da JANELA INTEIRA, e o transporte, do mesmo estado.
+
+        E o unico caminho pelo qual a tela entra em modo replay: as strips
+        recebem o mesmo `ativo` que a tarja, entao nao existe quadro em que a
+        tarja diga `▶ REPLAY` e a strip diga `● AO VIVO`. A contradicao que o
+        construtor do replay achou morreu em `paineis/strips.rotulo_do_estado`,
+        e este metodo e o que garante que as duas afirmacoes tem UMA fonte.
+        """
+        self._em_replay = estado.ativo
+        self.tarja_replay.definir_estado(estado)
+        self.tarja_replay.setVisible(estado.ativo)
+        self.controles_replay.definir_estado(estado)
+        self.topo.definir_modo(estado.texto_tarja if estado.ativo else self._modo,
+                               replay=estado.ativo)
+
+    def _ao_buscar_replay(self, timestamp_ns: int) -> None:
+        self.trilha.info("replay", "busca para %s" % formato.formatar_hora_ns(timestamp_ns))
+
+    def _ao_mudar_velocidade(self, velocidade: float) -> None:
+        self.trilha.info("replay", "velocidade %s" % formato.formatar_sinalizado(velocidade, 2))
+
+    def _ao_alternar_pausa(self, pausado: bool) -> None:
+        self.trilha.info("replay", "pausado" if pausado else "tocando")
 
     # ---------------------------------------------------------------- quadro
     def _tick(self) -> None:
@@ -1127,9 +2030,6 @@ class JanelaFluxo(QMainWindow):
         eventos = self.ponte.drenar_eventos()
         self._n_eventos += len(eventos)
 
-        # Um `Sinal` e ESTADO, nao historia: so o ultimo importa. Uma
-        # `Deteccao` e evento, e todas importam — a matriz empilha em slots
-        # de tela e as mais velhas caem pelo fim.
         deteccoes = []
         sinal_do_quadro = None
         for evento in eventos:
@@ -1141,18 +2041,8 @@ class JanelaFluxo(QMainWindow):
                 deteccoes.append(evento)
         self._n_deteccoes += len(deteccoes)
 
-        # `derivar(None, ...)` NAO e "sem sinal": e "sem sinal NOVO", e ai os
-        # campos do motor vem do quadro anterior. `SessaoFluxo` emite `Sinal`
-        # so na mudanca de estagio, entao passar o ultimo sinal de novo a cada
-        # quadro reaplicaria uma evidencia velha como se fosse deste instante.
         self._leitura = derivar(
             sinal_do_quadro,
-            # Lido do lado do Qt enquanto a thread da fonte escreve — e o
-            # mesmo caminho de `scripts/retrato_matriz.py`. Sao tres leituras
-            # escalares independentes e nenhuma invariante e afirmada ENTRE
-            # elas; o que nao se pode fazer e ler assim algo com invariante
-            # composta, e por isso o delta vem do `Instantaneo` (montado sob
-            # o lock) em vez de `sessao.delta`.
             self.sessao.agressao if self.sessao is not None else None,
             _DeltaDoRetrato.de(retrato),
             anterior=self._leitura,
@@ -1161,22 +2051,77 @@ class JanelaFluxo(QMainWindow):
         self.topo.aplicar(retrato)
         self.dom.aplicar(retrato.livro, retrato.ultimo_preco)
         self.tape.aplicar(retrato.novos_trades)
+        self.bookmap.aplicar(
+            retrato.livro, retrato.ultimo_preco, retrato.novos_trades
+        )
         self.matriz.aplicar(self._leitura, deteccoes)
         self.hud.aplicar(self._contexto(retrato))
+        self._aplicar_metodo()
+        self._aplicar_footprint()
         self._aplicar_players()
+        self.painel_trilha.aplicar()
         self.conduto.aplicar(retrato, self._n_deteccoes, self._n_sinais)
-        # O p95 relatado e o do DOM: e o painel mais denso do elo 1, entao e
-        # o que primeiro acusaria uma regressao de desenho.
-        self.rodape.aplicar(retrato, self.dom.p95_ms(), self._n_eventos)
+        self.rodape.aplicar(
+            retrato, self.dom.p95_ms(), self._n_eventos, replay=self._em_replay
+        )
         self._atualizar_faixa(retrato.estado)
 
-    def desenhar_agora(self) -> None:
-        """Fecha um quadro inteiro AGORA — le os dados e forca o desenho.
+    def _aplicar_footprint(self) -> None:
+        """Footprint, perfil e delta — nesta ordem, e a ordem e o contrato.
 
-        Existe para captura. O relogio de DESENHO de cada painel e assincrono
-        e so gasta quadro quando ha sujeira, entao um `grab()` disparado no
-        meio do intervalo copiaria o backing do quadro anterior — a tela
-        estaria certa 16 ms depois e o PNG, errado para sempre."""
+        O footprint move os DOIS eixos (recentraliza o preco, rola o tempo). O
+        perfil consome a faixa de preco que o footprint acabou de definir; o
+        delta consome o numero de colunas do mesmo `EixoTempo`. Invertida, a
+        ordem entrega ao perfil a faixa do quadro ANTERIOR — um painel atrasado
+        um quadro em relacao ao vizinho com que ele compartilha o eixo.
+        """
+        # ATE A ONDA PASSADA isto lia `sessao.footprint`, `sessao.perfil_sessao`
+        # e `sessao.delta` DIRETO — acumuladores vivos da thread da fonte — e os
+        # tres `derivar_*` iteram colecoes deles. Do lado do Qt isso e iterar um
+        # dicionario que a outra thread faz crescer: `dictionary changed size
+        # during iteration`, que derrubou o primeiro retrato desta composicao
+        # com 9.098 negocios. Havia aqui uma guarda que capturava o
+        # `RuntimeError`, contava `_quadros_perdidos_corrida` e pulava o quadro
+        # — e ela nunca foi o conserto, so um relatorio honesto de que o
+        # produto estava perdendo quadros.
+        #
+        # `app/sessao_fluxo.py` passou a expor `retrato_de_analytics`, no molde
+        # de `ui/ponte.Instantaneo`: retrato montado do lado de la e entregue
+        # pronto. Nao ha mais o que capturar, entao a guarda saiu.
+        if self.sessao is None or not hasattr(self.sessao, "retrato_de_analytics"):
+            return
+        n_colunas = self.footprint.eixo_tempo.n_colunas
+        retrato = self.sessao.retrato_de_analytics(n_colunas)
+        if retrato is None:
+            # Primeiro quadro do outro lado do lock: a thread da fonte ainda
+            # nao montou nenhum. Manter a leitura anterior e o certo — a tela
+            # fica um quadro velha, e nao mente.
+            return
+        leitura_fp = derivar_footprint(
+            retrato.footprint, self.footprint.inicio_vivo_ns, retrato.n_colunas
+        )
+        leitura_pf = derivar_perfil(retrato.perfil_sessao, self.footprint.faixa_visivel)
+        leitura_dl = derivar_delta(
+            retrato.delta, self.delta.inicio_vivo_ns, retrato.n_colunas
+        )
+        self.footprint.aplicar(leitura_fp)
+        self.perfil.aplicar(leitura_pf)
+        self.delta.aplicar(leitura_dl)
+
+    def _aplicar_metodo(self) -> None:
+        """`sessao.leitura_do_metodo()` — uma vez por quadro, sem drenar.
+
+        A janela **nao** toca em `sessao.metodo.<componente>`: aqueles sao
+        acumuladores vivos da thread da fonte, e ler campo a campo daria uma
+        tela costurada de dois instantes — o defeito que `LeituraMetodo` existe
+        para tornar impossivel (os cinco carimbos de tempo sao iguais por
+        construcao, e o construtor recusa o contrario).
+        """
+        ler = getattr(self.sessao, "leitura_do_metodo", None) if self.sessao else None
+        self.metodo.aplicar(ler() if callable(ler) else None)
+
+    def desenhar_agora(self) -> None:
+        """Fecha um quadro inteiro AGORA — le os dados e forca o desenho."""
         self._tick()
         for painel in self.paineis:
             painel._quadro()
@@ -1185,22 +2130,6 @@ class JanelaFluxo(QMainWindow):
         taxa, volume = TAXA_NEUTRA, 0
         if self.sessao is not None and getattr(self.sessao, "agressao", None) is not None:
             taxa, volume = pressao_da_janela(self.sessao.agressao)
-        # A barra do dia precisa das duas parcelas, e elas saem DERIVADAS do
-        # retrato — nao lidas de `sessao.delta`. O construtor do HUD sugeriu
-        # `self.sessao.delta.volume_comprador_sessao` e o par vendedor, o que
-        # funcionaria e violaria a invariante que esta janela ja respeita: sao
-        # tres escalares lidos da thread do Qt enquanto a thread da fonte
-        # escreve, e entre eles existe uma invariante COMPOSTA
-        # (`total == comprador + vendedor + nao_atribuido`). Uma leitura
-        # rasgada daria parcelas que nao somam o total, e a barra desenharia
-        # uma proporcao que nunca existiu.
-        #
-        # O `Instantaneo` traz delta, volume e nao-atribuido montados sob o
-        # lock, no mesmo instante. Duas equacoes resolvem as parcelas:
-        #     comprador + vendedor = volume - nao_atribuido
-        #     comprador - vendedor = delta
-        # A divisao por 2 e exata porque soma e diferenca tem sempre a mesma
-        # paridade; `//` aqui nao arredonda nada, so evita o float.
         atribuido = retrato.volume_sessao - retrato.volume_nao_atribuido
         comprador = (atribuido + retrato.delta_sessao) // 2
         vendedor = (atribuido - retrato.delta_sessao) // 2
@@ -1217,19 +2146,12 @@ class JanelaFluxo(QMainWindow):
     def _aplicar_players(self) -> None:
         perfil = getattr(self.sessao, "perfil_player", None) if self.sessao else None
         if perfil is None:
-            # Sem sessao nao ha de onde tirar participante nenhum. Manter o
-            # painel na tela seria reservar coluna para um dado que este
-            # processo nao tem como obter.
             self.definir_players_visivel(False)
             return
         if not self._players_visivel:
             self._quadros_sem_players += 1
             if self._quadros_sem_players % QUADROS_ENTRE_SONDAGENS:
                 return
-            # Sondagem barata (top 1) e espacada: o painel recolhido volta
-            # sozinho se a fonte comecar a divulgar participante — o que
-            # acontece de verdade quando se troca simulador por replay de
-            # gravacao no meio do dia.
             if players_de_perfil(perfil, top_n=1):
                 self.definir_players_visivel(True)
             return
@@ -1250,6 +2172,11 @@ class JanelaFluxo(QMainWindow):
             cor = QColor(tokens.BG_BASE)  # discreta: sem noticia e boa noticia
         else:
             cor = cor_do_estado(estado)
+            self.trilha.registrar(
+                Nivel.ERRO if estado is EstadoFeed.SEM_FEED else Nivel.AVISO,
+                "feed",
+                "estado passou a %s" % estado.name,
+            )
         paleta_qt = self.faixa.palette()
         paleta_qt.setColor(QPalette.ColorRole.Window, cor)
         self.faixa.setPalette(paleta_qt)
@@ -1257,6 +2184,7 @@ class JanelaFluxo(QMainWindow):
     # ------------------------------------------------------------ fechamento
     def closeEvent(self, evento: QCloseEvent) -> None:  # noqa: N802
         self._relogio.stop()
+        self.salvar_workspace()
         for painel in self.paineis:
             painel.parar_relogio()
         # Solta as assinaturas ANTES de deixar a janela morrer: sem isso o

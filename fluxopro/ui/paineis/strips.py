@@ -11,6 +11,27 @@ E a razao de o estado do feed ficar aqui, e nao num dialogo, esta em §3.5:
 dado atrasado que parece vivo e pior que uma tela preta, porque o operador
 age sobre ele. Entao o atraso e permanente e discreto quando esta bom, e
 grita quando nao esta — sem nunca virar modal, que num pregao e dano.
+
+## `AO VIVO` e `REPLAY` na mesma tela — a contradicao, e por que ela morre aqui
+
+O construtor do replay achou e nao pos conserta-lo: com replay ativo a tarja
+de `paineis/replay.py` grafa `▶ REPLAY` e estas duas strips grafavam
+`● AO VIVO`, porque `EstadoFeed.VIVO` so afirma *"chegou dado recente"* — e
+num replay chega mesmo. Duas afirmacoes contraditorias na mesma tela, e §3.5
+nomeia a tarja como a que **nao pode ser desmentida**: *"Impossivel confundir
+replay com ao vivo."* Ele preferiu tirar a `StripTopo` do retrato dele a
+publicar imagem que se contradiz — o que resolve o retrato e deixa o produto
+mentindo.
+
+O conserto e na fonte, e e uma funcao so: `rotulo_do_estado(estado, replay)`.
+Ela e a UNICA autoridade sobre esse rotulo, usada pelas duas strips e pelo
+teste, e tem uma pos-condicao dura — **com `replay=True` a string nao contem
+`AO VIVO`**, verificada em runtime (`RotuloContraditorioError`), nao numa
+docstring que uma refatoracao distraida revoga em silencio.
+
+E ela nao apaga a saude do transporte, que continua sendo informacao de
+trading: um replay pode travar, e ai o rotulo le `▶ REPLAY · SEM FEED`. O que
+some e so a palavra que a tarja desmente.
 """
 
 from __future__ import annotations
@@ -44,8 +65,47 @@ _COR_ESTADO = {
 }
 
 
+GLIFO_VIVO = "●"
+GLIFO_REPLAY = "▶"
+ROTULO_REPLAY = "REPLAY"
+PROIBIDO_EM_REPLAY = _ROTULO_ESTADO[EstadoFeed.VIVO]
+"""A palavra que a tarja de replay desmente. Lida do proprio dicionario: quem
+renomear `AO VIVO` renomeia a proibicao junto."""
+
+
+class RotuloContraditorioError(AssertionError):
+    """A strip ia grafar `AO VIVO` com a tarja de replay na mesma tela."""
+
+
 def cor_do_estado(estado: EstadoFeed) -> QColor:
     return _COR_ESTADO.get(estado, tokens.TEXT_SECONDARY)
+
+
+def rotulo_do_estado(estado: EstadoFeed, replay: bool = False) -> tuple[str, QColor]:
+    """O rotulo de estado das DUAS strips. Autoridade unica — ver o modulo.
+
+    Fora do replay, nada muda: glifo redondo + o estado do feed.
+
+    Em replay, `VIVO` e `AGUARDANDO` nao sao ditos: os dois significam
+    *"o transporte esta bem"*, e em replay isso nao e noticia — noticia e
+    que nada daquilo esta acontecendo agora. Os estados que sao ma noticia
+    (`ATRASADO`, `SEM FEED`, `ENCERRADO`) continuam ditos, subordinados ao
+    `REPLAY`: o replay pode travar, e engolir isso seria trocar uma mentira
+    por outra.
+    """
+    base = _ROTULO_ESTADO[estado]
+    if not replay:
+        return GLIFO_VIVO + " " + base, cor_do_estado(estado)
+    if estado in (EstadoFeed.VIVO, EstadoFeed.AGUARDANDO):
+        texto, cor = GLIFO_REPLAY + " " + ROTULO_REPLAY, tokens.ALERT
+    else:
+        texto, cor = GLIFO_REPLAY + " " + ROTULO_REPLAY + " · " + base, cor_do_estado(estado)
+    if PROIBIDO_EM_REPLAY in texto:
+        raise RotuloContraditorioError(
+            "com replay ativo a strip ia grafar %r ao lado da tarja %r"
+            % (PROIBIDO_EM_REPLAY, ROTULO_REPLAY)
+        )
+    return texto, cor
 
 
 class StripTopo(PainelDenso):
@@ -72,12 +132,24 @@ class StripTopo(PainelDenso):
         self._nao_atribuido = 0
         self._atraso = 0.0
         self._modo = ""
+        self._replay = False
 
-    def definir_modo(self, texto: str) -> None:
-        """`REPLAY 2,0x`, `SIMULADOR`, vazio para ao vivo."""
-        if texto != self._modo:
+    def definir_modo(self, texto: str, replay: bool = False) -> None:
+        """`REPLAY 2,0x`, `SIMULADOR`, vazio para ao vivo.
+
+        `replay` e um PARAMETRO e nao uma farejada no texto: quem monta a
+        janela sabe qual e a fonte (`FonteDados.REPLAY`), e deduzir isso de
+        substring faria o produto depender de uma palavra de rotulo que
+        qualquer traducao ou reformatacao quebraria em silencio.
+        """
+        if (texto, replay) != (self._modo, self._replay):
             self._modo = texto
+            self._replay = replay
             self.marcar_tudo_sujo()
+
+    @property
+    def em_replay(self) -> bool:
+        return self._replay
 
     def aplicar(self, retrato: Instantaneo) -> None:
         # So marca sujo quando algo VISIVEL muda. O atraso e arredondado a
@@ -114,8 +186,7 @@ class StripTopo(PainelDenso):
         x = self._campo(painter, x, altura, self.simbolo, tokens.TEXT_PRIMARY, tokens.fonte_ui(12, 600))
         x = self._separador(painter, x, altura)
 
-        cor_estado = cor_do_estado(self._estado)
-        rotulo = "● " + _ROTULO_ESTADO[self._estado]
+        rotulo, cor_estado = rotulo_do_estado(self._estado, self._replay)
         if self._estado in (EstadoFeed.ATRASADO, EstadoFeed.SEM_FEED):
             rotulo += " " + formato.formatar_duracao_s(self._atraso)
         x = self._campo(painter, x, altura, rotulo, cor_estado, tokens.fonte_ui(11))
@@ -219,9 +290,15 @@ class StripRodape(PainelDenso):
         self._texto_direita = ""
         self._cor_esquerda = tokens.TEXT_SECONDARY
 
-    def aplicar(self, retrato: Instantaneo, p95_ms: float, n_eventos: int) -> None:
+    def aplicar(
+        self,
+        retrato: Instantaneo,
+        p95_ms: float,
+        n_eventos: int,
+        replay: bool = False,
+    ) -> None:
         contadores = retrato.contadores
-        esquerda = "● " + _ROTULO_ESTADO[retrato.estado]
+        esquerda, cor_rotulo = rotulo_do_estado(retrato.estado, replay)
         direita = (
             f"{formato.formatar_inteiro(contadores.trades)} neg  ·  "
             f"{formato.formatar_inteiro(contadores.snapshots + contadores.deltas)} book  ·  "
@@ -232,7 +309,7 @@ class StripRodape(PainelDenso):
             # Perda contada e perda dita. Um painel que engole dado em
             # silencio mente sobre a propria cobertura.
             direita += f"  ·  {formato.formatar_inteiro(descartados)} descartados"
-        cor = cor_do_estado(retrato.estado)
+        cor = cor_rotulo
         if (esquerda, direita, cor) != (self._texto_esquerda, self._texto_direita, self._cor_esquerda):
             self._texto_esquerda = esquerda
             self._texto_direita = direita

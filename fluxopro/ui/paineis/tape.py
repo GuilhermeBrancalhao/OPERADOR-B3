@@ -65,10 +65,31 @@ class PainelTape(PainelDenso):
         self._linhas: deque[ItemTape] = deque(maxlen=CAPACIDADE_ANEL)
         self._filtrados = 0
         self._n_visiveis = 1
-        self._fm = QFontMetrics(tokens.fonte_numero(densidade.fonte_grade))
+        self._medir(densidade)
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumSize(200, 120)
+
+    def _medir(self, densidade: tokens.Densidade) -> None:
+        """O que a densidade define aqui. Chamada pelo construtor E por
+        `aplicar_densidade`, para que as duas nao possam divergir."""
+        self._fm = QFontMetrics(tokens.fonte_numero(densidade.fonte_grade))
+
+    def aplicar_densidade(self, nova: tokens.Densidade) -> None:
+        """Troca a densidade a quente. O anel de negocios SOBREVIVE.
+
+        Reconstruir o painel apagava o tape inteiro; mutar so `self.densidade`
+        deixaria `self._fm` — medida no construtor com a fonte antiga —
+        decidindo o recorte de um texto desenhado com a fonte nova. Aqui a
+        metrica e refeita e `_n_visiveis` volta a sair de `altura_linha`, que
+        e o outro derivado da densidade.
+        """
+        if nova is self.densidade:
+            return
+        self.densidade = nova
+        self._medir(nova)
+        self.ao_redimensionar(self.width(), self.height())
+        self.marcar_tudo_sujo()
 
     # ------------------------------------------------------------- geometria
     @property

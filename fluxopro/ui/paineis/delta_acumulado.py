@@ -218,10 +218,33 @@ class PainelDeltaAcumulado(PainelDenso):
         self._inicio_vivo_ns: int | None = None
         self._escala = 1
         self._chave_cabecalho: tuple | None = None
+        self._medir(densidade)
+        self.setMinimumSize(320, 120)
+
+    def _medir(self, densidade: tokens.Densidade) -> None:
+        """O que a densidade define. Construtor e `aplicar_densidade` chamam
+        ESTA, para que as duas nao possam divergir."""
         self._fm_rotulo = metrica(tokens.fonte_rotulo())
         self._fm_chip = metrica(tokens.fonte_rotulo(CORPO_CHIP))
         self._fm_numero = metrica(tokens.fonte_numero(10))
-        self.setMinimumSize(320, 120)
+
+    def aplicar_densidade(self, nova: tokens.Densidade) -> None:
+        """Troca a densidade a quente. `_recentes` — o unico estado que este
+        painel guarda — sobrevive.
+
+        O `EixoTempo` NAO e tocado aqui: o dono e o `PainelFootprint`, e este
+        painel apenas confere o alinhamento contra ele. `_chave_cabecalho` e
+        zerada porque o cabecalho e memoizado por uma chave que nao inclui a
+        densidade — sem isso, a faixa do titulo continuaria com os pixels
+        medidos na fonte anterior ate o proximo dado mudar.
+        """
+        if nova is self.densidade:
+            return
+        self.densidade = nova
+        self._medir(nova)
+        self._chave_cabecalho = None
+        self._inicios_vistos = ()
+        self.marcar_tudo_sujo()
 
     # ------------------------------------------------------------- geometria
     @property

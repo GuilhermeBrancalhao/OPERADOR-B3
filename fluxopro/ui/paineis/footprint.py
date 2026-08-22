@@ -791,6 +791,19 @@ class PainelFootprint(PainelDenso):
         self._colunas: list[Coluna | None] = []
         self._inicio_vivo_ns: int | None = None
 
+        self._rect_chip_limiar = QRect()
+        self._medir(densidade)
+        self.setMinimumSize(320, 240)
+
+    def _medir(self, densidade: tokens.Densidade) -> None:
+        """Tudo que a densidade define. **Uma funcao so, dois chamadores.**
+
+        O construtor e `aplicar_densidade` chamam ESTA — nao duas copias da
+        mesma conta. Este modulo ja registrou por que (`MOLDE_PRECO`): formula
+        copiada diverge na primeira mudanca, e o sintoma seria geometria
+        medida com a fonte antiga desenhada com a nova, sem erro nenhum em
+        lugar nenhum.
+        """
         self._fm_celula = metrica(tokens.fonte_numero(10))
         self._fm_preco = metrica(tokens.fonte_numero(densidade.fonte_grade, 500))
         self._fm_rotulo = metrica(tokens.fonte_rotulo())
@@ -799,14 +812,46 @@ class PainelFootprint(PainelDenso):
         # rodape. Medir so o preco custou um defeito: `Δ SALDO ±10%` nao cabia,
         # a regra F8 o descartava, e a faixa de barras do saldo ficava sem
         # nome nenhum — uma linha de geometria que o leitor teria de adivinhar.
-        self._rect_chip_limiar = QRect()
         self._largura_calha = max(
             56,
             self._fm_preco.horizontalAdvance(MOLDE_PRECO) + 2 * MARGEM,
             max(self._fm_rotulo.horizontalAdvance(r) for r in ROTULOS_RODAPE)
             + 2 * MARGEM,
         )
-        self.setMinimumSize(320, 240)
+
+    def aplicar_densidade(self, nova: tokens.Densidade) -> None:
+        """Troca a densidade A QUENTE, sem perder o historico de tela.
+
+        Reconstruir o painel era o que a janela fazia, e custava as colunas ja
+        absorvidas mais as chaves do `EixoTempo` — ou seja, o operador trocava
+        a densidade e o dia recomecava na tela.
+
+        Mutar so `self.densidade` seria pior que reconstruir: as quatro
+        `QFontMetrics` e a largura da calha sao MEDIDAS no construtor a partir
+        de `densidade.fonte_grade`, e a geometria ficaria calculada com a
+        fonte antiga enquanto o texto sai na nova — calha estreita, rotulo do
+        rodape descartado por F8, e nenhum erro em lugar nenhum. Por isso aqui
+        se remede tudo (`_medir`) e se refaz a geometria dependente.
+
+        Os eixos sao MUTADOS, nunca trocados: `PainelPerfil` e
+        `PainelDeltaAcumulado` seguram estes mesmos objetos por identidade
+        (ver a docstring de `EixoPreco`), e substitui-los quebraria em
+        silencio o alinhamento que a identidade existe para tornar
+        impossivel de errar.
+        """
+        if nova is self.densidade:
+            return
+        self.densidade = nova
+        self.eixo_preco.altura_linha = max(1, nova.celula_footprint_h)
+        self.eixo_preco.versao += 1
+        self.eixo_tempo.largura_coluna = max(1, nova.celula_footprint_w)
+        self.eixo_tempo.versao += 1
+        self._medir(nova)
+        # `ao_redimensionar` reconfigura os eixos com a geometria nova e
+        # reaproveita os slots pela DIREITA (`_redimensionar_slots`): cabendo
+        # menos colunas, cai o mais velho, que e a mesma politica da rolagem.
+        self.ao_redimensionar(self.width(), self.height())
+        self.marcar_tudo_sujo()
 
     # ------------------------------------------------------------- geometria
     @property
