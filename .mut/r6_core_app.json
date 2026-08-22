@@ -1,0 +1,352 @@
+[
+  {
+    "id": "N01",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R2/N01 (viva 5 rodadas): a chave de ordenacao perde o desempate por origem e indice",
+    "de": "        for _chave, evento in heapq.merge(*fluxos, key=lambda item: item[0]):",
+    "para": "        for _chave, evento in heapq.merge(*fluxos, key=lambda item: item[0][0]):"
+  },
+  {
+    "id": "N01b",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R2/N01 variante: a chave perde so o indice dentro do arquivo",
+    "de": "            yield (evento.timestamp_ns, origem, indice), evento",
+    "para": "            yield (evento.timestamp_ns, origem, 0), evento"
+  },
+  {
+    "id": "N03",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R2/N03 (viva 5 rodadas): buyer_broker e seller_broker trocados na leitura do CSV",
+    "de": "                buyer_broker=linha.get(\"buyer_broker\") or \"\",\n                seller_broker=linha.get(\"seller_broker\") or \"\",",
+    "para": "                buyer_broker=linha.get(\"seller_broker\") or \"\",\n                seller_broker=linha.get(\"buyer_broker\") or \"\","
+  },
+  {
+    "id": "P01",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R5/P01 (=R2/N02): trade e delta trocam a prioridade no empate de timestamp",
+    "de": "_ORIGEM_TRADE = 0\n_ORIGEM_DELTA = 1",
+    "para": "_ORIGEM_TRADE = 1\n_ORIGEM_DELTA = 0"
+  },
+  {
+    "id": "MP1",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: a guarda de monotonicidade nao roda (arquivo fora de ordem embaralha em silencio)",
+    "de": "        if anterior is not None and evento.timestamp_ns < anterior:",
+    "para": "        if False:"
+  },
+  {
+    "id": "MP2",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: a guarda recusa timestamp IGUAL (empate no mesmo ns e comum e valido)",
+    "de": "        if anterior is not None and evento.timestamp_ns < anterior:",
+    "para": "        if anterior is not None and evento.timestamp_ns <= anterior:"
+  },
+  {
+    "id": "MP3",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: o replay volta a MATERIALIZAR o arquivo inteiro (a 7a casa reintroduzida)",
+    "de": "        for _chave, evento in heapq.merge(*fluxos, key=lambda item: item[0]):\n            yield evento",
+    "para": "        combinados = sorted(\n            [item for fluxo in fluxos for item in fluxo], key=lambda item: item[0]\n        )\n        for _chave, evento in combinados:\n            yield evento"
+  },
+  {
+    "id": "MP4",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: a guarda de monotonicidade so vale para o arquivo de trades",
+    "de": "        for indice, evento in enumerate(_monotonico(leitor(caminho), caminho)):",
+    "para": "        fonte = _monotonico(leitor(caminho), caminho) if origem == _ORIGEM_TRADE else leitor(caminho)\n        for indice, evento in enumerate(fonte):"
+  },
+  {
+    "id": "B01",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R5/B01: publicar itera uma COPIA (a correcao de reentrancia aplicada por fora)",
+    "de": "        for assinatura in self._assinantes.get(type(evento), ()):\n            assinatura.callback(evento)",
+    "para": "        for assinatura in list(self._assinantes.get(type(evento), ())):\n            assinatura.callback(evento)"
+  },
+  {
+    "id": "B02",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R5/B02: excecao de assinante engolida (a cadeia segue como se nada tivesse acontecido)",
+    "de": "        for assinatura in self._assinantes.get(type(evento), ()):\n            assinatura.callback(evento)",
+    "para": "        for assinatura in self._assinantes.get(type(evento), ()):\n            try:\n                assinatura.callback(evento)\n            except Exception:\n                pass"
+  },
+  {
+    "id": "B03",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R5/B03 (re-expressa no codigo novo): ordenacao por prioridade removida de assinar",
+    "de": "        self._assinantes[tipo] = tuple(\n            sorted(atuais + (assinatura,), key=lambda a: (a.prioridade, a.ordem))\n        )",
+    "para": "        self._assinantes[tipo] = atuais + (assinatura,)"
+  },
+  {
+    "id": "X21",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R3/X21 (re-expressa): prioridade ignorada, so a ordem de inscricao vale",
+    "de": "            sorted(atuais + (assinatura,), key=lambda a: (a.prioridade, a.ordem))",
+    "para": "            sorted(atuais + (assinatura,), key=lambda a: (a.ordem,))"
+  },
+  {
+    "id": "X22",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R3/X22 (re-expressa): empate de prioridade resolvido pela ordem INVERSA de inscricao",
+    "de": "            sorted(atuais + (assinatura,), key=lambda a: (a.prioridade, a.ordem))",
+    "para": "            sorted(atuais + (assinatura,), key=lambda a: (a.prioridade, -a.ordem))"
+  },
+  {
+    "id": "MB1",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: publicar volta a iterar a colecao VIVA (sem instantaneo de reentrancia)",
+    "de": "        for assinatura in self._assinantes.get(type(evento), ()):\n            assinatura.callback(evento)",
+    "para": "        i = 0\n        while i < len(self._assinantes.get(type(evento), ())):\n            self._assinantes[type(evento)][i].callback(evento)\n            i += 1"
+  },
+  {
+    "id": "MB2",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: desassinar compara por IDENTIDADE (metodo ligado nunca e o mesmo objeto)",
+    "de": "        restantes = tuple(a for a in atuais if a.callback != callback)",
+    "para": "        restantes = tuple(a for a in atuais if a.callback is not callback)"
+  },
+  {
+    "id": "MB3",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: desassinar_objeto remove por CLASSE do dono, nao pela instancia",
+    "de": "                a for a in atuais if getattr(a.callback, \"__self__\", None) is not dono",
+    "para": "                a\n                for a in atuais\n                if type(getattr(a.callback, \"__self__\", None)) is not type(dono)"
+  },
+  {
+    "id": "MB4",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: desassinar diz que removeu mesmo quando nao removeu nada",
+    "de": "        if len(restantes) == len(atuais):\n            return False",
+    "para": "        if len(restantes) == len(atuais):\n            return True"
+  },
+  {
+    "id": "RL1",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "R5/RL1: RelogioReal troca monotonic_ns por time_ns (volta no tempo em ajuste de NTP)",
+    "de": "    def agora_ns(self) -> int:\n        return time.monotonic_ns()",
+    "para": "    def agora_ns(self) -> int:\n        return time.time_ns()"
+  },
+  {
+    "id": "RL2",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "R5/RL2: replay recusa timestamp IGUAL (a docstring diz que empate e aceito de proposito)",
+    "de": "        if timestamp_ns < self._atual_ns:",
+    "para": "        if timestamp_ns <= self._atual_ns:"
+  },
+  {
+    "id": "M09",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "R1/M09: RelogioReplay aceita retroceder",
+    "de": "        if timestamp_ns < self._atual_ns:",
+    "para": "        if False:"
+  },
+  {
+    "id": "MR1",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "MINHA: RelogioReal fica PARADO (monotonico, mas nao mede tempo nenhum)",
+    "de": "    def agora_ns(self) -> int:\n        return time.monotonic_ns()",
+    "para": "    def agora_ns(self) -> int:\n        return 0"
+  },
+  {
+    "id": "MR2",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "MINHA: avancar_para nao grava o valor novo (o relogio de replay nunca anda)",
+    "de": "        self._atual_ns = timestamp_ns",
+    "para": "        pass"
+  },
+  {
+    "id": "Y04",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "R4/Y04 (viva): fonte construida ANTES da sessao (a corrida que a docstring nega)",
+    "de": "    sessao = SessaoFluxo(bus, cfg, ao_sinal=ao_sinal, ao_deteccao=ao_deteccao)\n    fonte = criar_fonte(cfg, bus, replay)",
+    "para": "    fonte = criar_fonte(cfg, bus, replay)\n    sessao = SessaoFluxo(bus, cfg, ao_sinal=ao_sinal, ao_deteccao=ao_deteccao)"
+  },
+  {
+    "id": "Y05",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "R4/Y05: recorte --de/--ate no CSV do nucleo ignorado em silencio (falha ABERTA)",
+    "de": "        if opcoes.de is not None or opcoes.ate is not None:",
+    "para": "        if False:"
+  },
+  {
+    "id": "Y06",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "R4/Y06 (viva): escolhe o dia MAIS ANTIGO da gravacao em vez do mais recente",
+    "de": "    dia = opcoes.data if opcoes.data is not None else max(e.data for e in disponiveis)",
+    "para": "    dia = opcoes.data if opcoes.data is not None else min(e.data for e in disponiveis)"
+  },
+  {
+    "id": "Y07",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "R4/Y07 (viva): verificacao de hash da gravacao desligada em silencio",
+    "de": "        verificar_hash=opcoes.verificar_hash,",
+    "para": "        verificar_hash=False,"
+  },
+  {
+    "id": "MM1",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "MINHA: a verificacao de hash e FORCADA (a flag de diagnostico vira enfeite)",
+    "de": "        verificar_hash=opcoes.verificar_hash,",
+    "para": "        verificar_hash=True,"
+  },
+  {
+    "id": "MM2",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "MINHA: a gravacao de QUALQUER simbolo serve (o filtro por simbolo cai)",
+    "de": "    disponiveis = [e for e in entradas if e.symbol == config.symbol]",
+    "para": "    disponiveis = list(entradas)"
+  },
+  {
+    "id": "MM3",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "MINHA: --data explicita e ignorada (sempre o dia mais recente)",
+    "de": "    dia = opcoes.data if opcoes.data is not None else max(e.data for e in disponiveis)",
+    "para": "    dia = max(e.data for e in disponiveis)"
+  },
+  {
+    "id": "Y01",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "R4/Y01: perfil de sessao passa a entregar DEPOIS do motor (a seta que nao pode inverter)",
+    "de": "PRIORIDADE_PERFIL_SESSAO = 25",
+    "para": "PRIORIDADE_PERFIL_SESSAO = 45"
+  },
+  {
+    "id": "Y02",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "R4/Y02: micro (InferidorMBP) passa a entregar DEPOIS do motor",
+    "de": "PRIORIDADE_MICRO = 30",
+    "para": "PRIORIDADE_MICRO = 45"
+  },
+  {
+    "id": "Y03",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "R4/Y03: saida entrega ANTES de tudo (le o mundo de um evento atras)",
+    "de": "PRIORIDADE_SAIDA = 50",
+    "para": "PRIORIDADE_SAIDA = 1"
+  },
+  {
+    "id": "MC1",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "MINHA: WIN passa a usar a grade do WDO (todo preco deslocado 5x)",
+    "de": "    return WIN_GRID if symbol[:3].upper() == \"WIN\" else WDO_GRID",
+    "para": "    return WDO_GRID"
+  },
+  {
+    "id": "MC2",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "MINHA: perfil de sessao e micro empatam (a ordem vira acidente de construcao)",
+    "de": "PRIORIDADE_PERFIL_SESSAO = 25",
+    "para": "PRIORIDADE_PERFIL_SESSAO = 30"
+  },
+  {
+    "id": "Y08",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "R4/Y08: toda deteccao inferida e impressa como OBSERVADA (a marca mente)",
+    "de": "    if confianca >= CONFIANCA_OBSERVADO:\n        return \"[OBS]\"",
+    "para": "    if True:\n        return \"[OBS]\""
+  },
+  {
+    "id": "Y09",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "R4/Y09: direcao do sinal sempre impressa como '-' (o lado some da tela)",
+    "de": "        direcao = _DIRECAO.get(sinal.direcao, \"-\") if sinal.direcao else \"-\"",
+    "para": "        direcao = \"-\""
+  },
+  {
+    "id": "S01",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "R5/S01: marca [OBS] usa > em vez de >= (confianca exatamente 1.0 vira INFERIDA)",
+    "de": "    if confianca >= CONFIANCA_OBSERVADO:",
+    "para": "    if confianca > CONFIANCA_OBSERVADO:"
+  },
+  {
+    "id": "MS1",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "MINHA: o buffer de linhas volta a ser ILIMITADO (a 8a casa reintroduzida)",
+    "de": "        self.linhas: deque[str] = deque(maxlen=limite_linhas)",
+    "para": "        self.linhas: deque[str] = deque()"
+  },
+  {
+    "id": "MS2",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "MINHA: nada e observado — toda deteccao sai como inferida (o inverso de Y08)",
+    "de": "    if confianca >= CONFIANCA_OBSERVADO:\n        return \"[OBS]\"",
+    "para": "    if False:\n        return \"[OBS]\""
+  },
+  {
+    "id": "MS3",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "MINHA: guardar_linhas=False deixa de valer (o CLI volta a reter o pregao)",
+    "de": "        if self.guardar_linhas:\n            self.linhas.append(linha)",
+    "para": "        if True:\n            self.linhas.append(linha)"
+  },
+  {
+    "id": "MF1",
+    "arquivo": "fluxopro/app/sessao_fluxo.py",
+    "desc": "MINHA: desassina DEPOIS de recriar o footprint (quem sai do barramento e o NOVO)",
+    "de": "            removidas = self.barramento.desassinar_objeto(self.footprint)\n            assert removidas > 0, \"footprint nao estava assinado no barramento\"\n            self.footprint = FootprintPorTimeframe(\n                self.barramento, symbol, cfg.timeframe_ns, cfg.footprint\n            )",
+    "para": "            self.footprint = FootprintPorTimeframe(\n                self.barramento, symbol, cfg.timeframe_ns, cfg.footprint\n            )\n            removidas = self.barramento.desassinar_objeto(self.footprint)\n            assert removidas > 0, \"footprint nao estava assinado no barramento\""
+  },
+  {
+    "id": "MF2",
+    "arquivo": "fluxopro/app/sessao_fluxo.py",
+    "desc": "MINHA: o footprint deixa de ser recriado na virada (volta a carregar o dia anterior)",
+    "de": "        if self.footprint is not None:\n            # Desassinar ANTES de construir o substituto",
+    "para": "        if False:\n            # Desassinar ANTES de construir o substituto"
+  },
+  {
+    "id": "MF3",
+    "arquivo": "fluxopro/app/sessao_fluxo.py",
+    "desc": "MINHA: recria o footprint sem desassinar o velho (as duas instancias contam)",
+    "de": "            removidas = self.barramento.desassinar_objeto(self.footprint)\n            assert removidas > 0, \"footprint nao estava assinado no barramento\"\n",
+    "para": "            removidas = 1\n"
+  },
+  {
+    "id": "MF4",
+    "arquivo": "fluxopro/app/sessao_fluxo.py",
+    "desc": "MINHA: o livro novo nao e religado aos ouvintes na virada (a ponte MBP->MBO fica muda)",
+    "de": "            self._ligar_livro(self.livro)\n\n        self._ultimo_estagio = None",
+    "para": "            pass\n\n        self._ultimo_estagio = None"
+  },
+  {
+    "id": "MO1",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: o CLI volta a guardar toda linha em memoria (a 8a casa pelo lado do CLI)",
+    "de": "        guardar_linhas=False,",
+    "para": "        guardar_linhas=True,"
+  },
+  {
+    "id": "MO2",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: --sem-verificar-hash passa a valer sempre (integridade nunca conferida)",
+    "de": "        verificar_hash=not args.sem_verificar_hash,",
+    "para": "        verificar_hash=False,"
+  },
+  {
+    "id": "MO3",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: --de e --ate nao chegam nas opcoes de replay (recorte ignorado na origem)",
+    "de": "        de=args.de,\n        ate=args.ate,",
+    "para": "        de=None,\n        ate=None,"
+  },
+  {
+    "id": "MO4",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: --velocidade nao chega no adaptador (replay sempre a maxima)",
+    "de": "        velocidade=args.velocidade,",
+    "para": "        velocidade=\"max\","
+  },
+  {
+    "id": "MO5",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: o aviso de passada vazia nunca dispara",
+    "de": "        if montagem.sessao.contadores.n_eventos_bus == 0 and codigo == 0:",
+    "para": "        if False:"
+  },
+  {
+    "id": "MO6",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: o aviso de passada vazia dispara SEMPRE (vira ruido)",
+    "de": "        if montagem.sessao.contadores.n_eventos_bus == 0 and codigo == 0:",
+    "para": "        if codigo == 0:"
+  }
+]

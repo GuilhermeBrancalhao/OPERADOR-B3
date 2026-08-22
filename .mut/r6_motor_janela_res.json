@@ -1,0 +1,152 @@
+[
+  {
+    "id": "MJ01",
+    "desc": "desliga a janela: blocos_referencia=0 (janela INFINITA = referencia da onda 8)",
+    "veredito": "MORTA",
+    "morta_por": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "esperado": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "teste_esperado_confere": true,
+    "segundos": 4.2,
+    "log": "========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 31 passed in 2.72s\n"
+  },
+  {
+    "id": "MJ02",
+    "desc": "janela = so o bloco corrente (blocos_referencia=1): a referencia desce sem limite",
+    "veredito": "MORTA",
+    "morta_por": "test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra",
+    "esperado": "test_winfut_varredura_de_laterais_zero_confirmado_espurio",
+    "teste_esperado_confere": false,
+    "segundos": 1.8,
+    "log": "............F\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 13 passed in 0.34s\n"
+  },
+  {
+    "id": "MJ03",
+    "desc": "bloco curto demais (B=256): o proprio repique empurra o pico do dia para fora",
+    "veredito": "MORTA",
+    "morta_por": "test_winfut_nao_emite_confirmado_de_compra_no_repique_de_magnitude_menor",
+    "esperado": "test_winfut_varredura_de_laterais_zero_confirmado_espurio",
+    "teste_esperado_confere": false,
+    "segundos": 1.2,
+    "log": ".F\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_winfut_nao_emite_confirmado_de_compra_no_repique_de_magnitude_menor\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 10 passed in 0.09s\n"
+  },
+  {
+    "id": "MJ04",
+    "desc": "bloco gigante (B=10.000.000): janela maior que o pregao = o comportamento de hoje",
+    "veredito": "MORTA",
+    "morta_por": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "esperado": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "teste_esperado_confere": true,
+    "segundos": 5.8,
+    "log": "========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 31 passed in 4.39s\n"
+  },
+  {
+    "id": "MJ05",
+    "desc": "off-by-one na aposentadoria: a janela guarda um bloco a mais que o declarado",
+    "veredito": "MORTA",
+    "morta_por": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "esperado": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "teste_esperado_confere": true,
+    "segundos": 4.8,
+    "log": "========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 31 passed in 3.25s\n"
+  },
+  {
+    "id": "MJ06",
+    "desc": "a janela passa a andar com tape lateral (relogio do TAPE em vez da evidencia)",
+    "veredito": "MORTA",
+    "morta_por": "test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra",
+    "esperado": "test_janela_nao_anda_com_tape_lateral",
+    "teste_esperado_confere": false,
+    "segundos": 1.9,
+    "log": "............F\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 13 passed in 0.37s\n"
+  },
+  {
+    "id": "MJ07",
+    "desc": "rolar_bloco nunca recomputa para baixo: a referencia so sobe (defeito da onda 8)",
+    "veredito": "MORTA",
+    "morta_por": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "esperado": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "teste_esperado_confere": true,
+    "segundos": 7.0,
+    "log": "========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 31 passed in 5.93s\n"
+  },
+  {
+    "id": "MJ08",
+    "desc": "bloco pela metade vota: a referencia vira o [0] de um heap incompleto",
+    "veredito": "MORTA",
+    "morta_por": "test_bloco_com_menos_de_k_amostras_nao_vota_na_referencia",
+    "esperado": "test_bloco_com_menos_de_k_amostras_nao_vota_na_referencia",
+    "teste_esperado_confere": true,
+    "segundos": 8.0,
+    "log": "................F\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_bloco_com_menos_de_k_amostras_nao_vota_na_referencia\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 47 passed in 6.65s\n"
+  },
+  {
+    "id": "MJ09",
+    "desc": "iniciar_nova_sessao esquece os blocos: o dia 2 nasce com a janela do dia 1",
+    "veredito": "MORTA",
+    "morta_por": "test_iniciar_nova_sessao_zera_a_janela_de_blocos",
+    "esperado": "test_iniciar_nova_sessao_zera_a_janela_de_blocos",
+    "teste_esperado_confere": true,
+    "segundos": 8.7,
+    "log": ".........................F\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_iniciar_nova_sessao_zera_a_janela_de_blocos\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 49 passed in 6.95s\n"
+  },
+  {
+    "id": "MJ10",
+    "desc": "o bloco nunca fecha (o gatilho do rolamento nunca dispara)",
+    "veredito": "MORTA",
+    "morta_por": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "esperado": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "teste_esperado_confere": true,
+    "segundos": 5.2,
+    "log": "========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 31 passed in 3.58s\n"
+  },
+  {
+    "id": "MJ11",
+    "desc": "REGRESSAO onda 8: desliga o filtro de negocio unico (fat finger volta a entrar)",
+    "veredito": "MORTA",
+    "morta_por": "test_outlier_de_abertura_nao_trava_o_motor_pelo_resto_do_dia",
+    "esperado": "test_outlier_de_abertura_nao_trava_o_motor_pelo_resto_do_dia",
+    "teste_esperado_confere": true,
+    "segundos": 4.2,
+    "log": ".............F\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_outlier_de_abertura_nao_trava_o_motor_pelo_resto_do_dia\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 25 passed in 3.08s\n"
+  },
+  {
+    "id": "MJ12",
+    "desc": "REGRESSAO onda 8: referencia volta a ser o MAX da sessao (sem o anticorpo do top-K)",
+    "veredito": "MORTA",
+    "morta_por": "test_referencia_e_a_kesima_maior_e_nao_o_maximo_da_sessao",
+    "esperado": "test_referencia_e_a_kesima_maior_e_nao_o_maximo_da_sessao",
+    "teste_esperado_confere": true,
+    "segundos": 4.3,
+    "log": "................F\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_referencia_e_a_kesima_maior_e_nao_o_maximo_da_sessao\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 29 passed in 2.90s\n"
+  },
+  {
+    "id": "MJ13",
+    "desc": "bloco pela metade vota JA no caminho quente (heap incompleto vira referencia)",
+    "veredito": "MORTA",
+    "morta_por": "test_bloco_com_menos_de_k_amostras_nao_vota_na_referencia",
+    "esperado": "test_bloco_com_menos_de_k_amostras_nao_vota_na_referencia",
+    "teste_esperado_confere": true,
+    "segundos": 11.0,
+    "log": "................F\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_bloco_com_menos_de_k_amostras_nao_vota_na_referencia\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 47 passed in 9.36s\n"
+  },
+  {
+    "id": "MJ14",
+    "desc": "rolar_bloco larga a referencia no chao: nao recomputa nada dos blocos vivos",
+    "veredito": "MORTA",
+    "morta_por": "test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra",
+    "esperado": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "teste_esperado_confere": false,
+    "segundos": 1.5,
+    "log": "............F\n=========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 13 passed in 0.40s\n"
+  },
+  {
+    "id": "MJ15",
+    "desc": "so o bloco fechado MAIS RECENTE vota (a janela vira memoria de um bloco so)",
+    "veredito": "MORTA",
+    "morta_por": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+    "esperado": "test_winfut_varredura_de_laterais_zero_confirmado_espurio",
+    "teste_esperado_confere": false,
+    "segundos": 4.4,
+    "log": "========================== short test summary info ===========================\nFAILED tests/test_motor_sinais.py::test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 31 passed in 3.37s\n"
+  }
+]

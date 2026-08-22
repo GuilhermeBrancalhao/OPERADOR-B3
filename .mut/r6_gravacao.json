@@ -1,0 +1,201 @@
+[
+  {
+    "id": "M01",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "volta a lista de timestamps por evento (a 6a casa reaberta)",
+    "edits": [
+      [
+        "        # DOIS escalares por (symbol, dia) — nunca a lista de timestamps.\n        # Ver \"Retenção em memória\" no docstring do módulo.\n        self._hora_inicio_ns: dict[tuple[str, date], int] = {}\n        self._hora_fim_ns: dict[tuple[str, date], int] = {}\n",
+        "        self._horarios: dict[tuple[str, date], list[int]] = {}\n"
+      ],
+      [
+        "        # min/max INCREMENTAIS. Dois `int` por dia aberto, não um por evento.\n        ts = evento.timestamp_ns\n        inicio = self._hora_inicio_ns.get(chave_dia)\n        if inicio is None or ts < inicio:\n            self._hora_inicio_ns[chave_dia] = ts\n        fim = self._hora_fim_ns.get(chave_dia)\n        if fim is None or ts > fim:\n            self._hora_fim_ns[chave_dia] = ts\n",
+        "        self._horarios.setdefault(chave_dia, []).append(evento.timestamp_ns)\n"
+      ],
+      [
+        "            \"hora_inicio_ns\": self._hora_inicio_ns.get((symbol, dia)),\n            \"hora_fim_ns\": self._hora_fim_ns.get((symbol, dia)),\n",
+        "            \"hora_inicio_ns\": min(self._horarios.get((symbol, dia)) or [None]),\n            \"hora_fim_ns\": max(self._horarios.get((symbol, dia)) or [None]),\n"
+      ],
+      [
+        "        self._hora_inicio_ns.pop((symbol, dia), None)\n        self._hora_fim_ns.pop((symbol, dia), None)\n",
+        "        self._horarios.pop((symbol, dia), None)\n"
+      ]
+    ]
+  },
+  {
+    "id": "M02",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "min incremental com a comparacao INVERTIDA (ts > inicio)",
+    "edits": [
+      [
+        "        if inicio is None or ts < inicio:",
+        "        if inicio is None or ts > inicio:"
+      ]
+    ]
+  },
+  {
+    "id": "M03",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "max incremental com a comparacao INVERTIDA (ts < fim)",
+    "edits": [
+      [
+        "        if fim is None or ts > fim:",
+        "        if fim is None or ts < fim:"
+      ]
+    ]
+  },
+  {
+    "id": "M04",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "hora_inicio sobrescrita a cada evento (sem teste de menor)",
+    "edits": [
+      [
+        "        if inicio is None or ts < inicio:",
+        "        if True:"
+      ]
+    ]
+  },
+  {
+    "id": "M05",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "rotacao de dia nao limpa hora_inicio/hora_fim (vaza p/ o dia seguinte)",
+    "edits": [
+      [
+        "        self._hora_inicio_ns.pop((symbol, dia), None)\n        self._hora_fim_ns.pop((symbol, dia), None)\n",
+        "        pass\n"
+      ]
+    ]
+  },
+  {
+    "id": "M06",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "checkpoint periodico do meta.json desligado",
+    "edits": [
+      [
+        "        if self._meta_a_cada > 0 and self._desde_meta[chave_dia] >= self._meta_a_cada:",
+        "        if False:"
+      ]
+    ]
+  },
+  {
+    "id": "M07",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "checkpoint nao registra n_linhas_hasheadas",
+    "edits": [
+      [
+        "            n_linhas[nome] = arq.n_linhas\n\n        self._gravar_meta(symbol, dia, hashes, n_linhas, parcial=True)",
+        "            n_linhas.pop(nome, None)\n\n        self._gravar_meta(symbol, dia, hashes, n_linhas, parcial=True)"
+      ]
+    ]
+  },
+  {
+    "id": "M08",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "checkpoint escreve o meta ANTES do fsync dos CSVs",
+    "edits": [
+      [
+        "            arq.handle.flush()\n            os.fsync(arq.handle.fileno())\n            arq.n_desde_fsync = 0\n            nome = formato.NOMES_ARQUIVO[tipo]",
+        "            nome = formato.NOMES_ARQUIVO[tipo]"
+      ]
+    ]
+  },
+  {
+    "id": "M09",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "meta.json escrito sem troca atomica (deixa o .tmp para tras)",
+    "edits": [
+      [
+        "    os.replace(tmp, caminho)",
+        "    caminho.write_bytes(tmp.read_bytes())"
+      ]
+    ]
+  },
+  {
+    "id": "M10",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "retomada apos crash nao semeia o hasher com o que ja estava no disco",
+    "edits": [
+      [
+        "        if not novo:\n            hasher, n_linhas = _hash_e_contar_existente(caminho)",
+        "        if False:\n            hasher, n_linhas = _hash_e_contar_existente(caminho)"
+      ]
+    ]
+  },
+  {
+    "id": "M11",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "hash de prefixo com off-by-one (>= vira >)",
+    "edits": [
+      [
+        "            if n_linhas is not None and lidas >= n_linhas:",
+        "            if n_linhas is not None and lidas > n_linhas:"
+      ]
+    ]
+  },
+  {
+    "id": "M12",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "verificacao ignora n_linhas_hasheadas e hasheia o arquivo inteiro",
+    "edits": [
+      [
+        "            if n_linhas is not None and lidas >= n_linhas:",
+        "            if False:"
+      ]
+    ]
+  },
+  {
+    "id": "M13",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "leitor volta a materializar a janela inteira (o gemeo de 37 GB)",
+    "edits": [
+      [
+        "        fluxos = [\n            self._fluxo_de_um_arquivo(tipo)\n            for tipo in (Trade, BookSnapshot, BookDelta, FalhaCaptura)\n        ]\n        ultima: tuple[int, int, int] | None = None\n        for chave, evento in heapq.merge(*fluxos, key=_CHAVE):\n            if ultima is not None and chave < ultima:\n                raise GravacaoForaDeOrdemError(\n                    f\"{self._entrada.symbol} {self._entrada.data.isoformat()}: \"\n                    f\"evento {chave} depois de {ultima} — desordem maior que a \"\n                    f\"janela de {_JANELA_REORDENACAO} eventos; o replay nao \"\n                    f\"seria deterministico\"\n                )\n            ultima = chave\n            yield evento",
+        "        combinados = []\n        for tipo in (Trade, BookSnapshot, BookDelta, FalhaCaptura):\n            caminho = self._entrada.arquivo(formato.NOMES_ARQUIVO[tipo])\n            for indice, evento in enumerate(_ler_arquivo(caminho, tipo)):\n                if not self._dentro_do_intervalo(evento.timestamp_ns):\n                    continue\n                combinados.append((evento.timestamp_ns, _ORDEM_TIPO[tipo], indice, evento))\n        combinados.sort(key=lambda item: (item[0], item[1], item[2]))\n        return iter([item[3] for item in combinados])"
+      ]
+    ]
+  },
+  {
+    "id": "M14",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "chave do merge perde o desempate por indice no arquivo",
+    "edits": [
+      [
+        "heapq.heappush(janela, ((evento.timestamp_ns, ordem, indice), evento))",
+        "heapq.heappush(janela, ((evento.timestamp_ns, ordem, 0), evento))"
+      ]
+    ]
+  },
+  {
+    "id": "M15",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "guarda de ordem removida (replay fora de ordem publicado em silencio)",
+    "edits": [
+      [
+        "            if ultima is not None and chave < ultima:",
+        "            if False:"
+      ]
+    ]
+  },
+  {
+    "id": "M16",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "janela de reordenacao vai a zero (perde a tolerancia a desordem local)",
+    "edits": [
+      [
+        "_JANELA_REORDENACAO = 64",
+        "_JANELA_REORDENACAO = 0"
+      ]
+    ]
+  },
+  {
+    "id": "M17",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "filtro de intervalo perdido no caminho streaming",
+    "edits": [
+      [
+        "            if not self._dentro_do_intervalo(evento.timestamp_ns):\n                continue\n            heapq.heappush",
+        "            heapq.heappush"
+      ]
+    ]
+  }
+]

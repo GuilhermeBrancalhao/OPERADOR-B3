@@ -1,0 +1,232 @@
+[
+  {
+    "id": "M01",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "volta a lista de timestamps por evento (a 6a casa reaberta)",
+    "veredito": "MORTA",
+    "segundos": 82.0,
+    "mortas_por": [
+      "tests/test_gravacao_retencao.py::test_gravador_nao_guarda_nenhuma_colecao_indexada_por_evento",
+      "tests/test_gravacao_retencao.py::test_gravador_retencao_nao_cresce_com_numero_de_eventos"
+    ],
+    "n_testes_que_pegaram": 2
+  },
+  {
+    "id": "M02",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "min incremental com a comparacao INVERTIDA (ts > inicio)",
+    "veredito": "MORTA",
+    "segundos": 81.0,
+    "mortas_por": [
+      "tests/test_gravacao_gravador.py::test_gravador_meta_hora_inicio_e_hora_fim_nao_sao_trocados",
+      "tests/test_gravacao_retencao.py::test_hora_inicio_e_fim_com_o_menor_chegando_por_ultimo",
+      "tests/test_gravacao_retencao.py::test_hora_inicio_e_fim_consideram_os_quatro_tipos_de_evento"
+    ],
+    "n_testes_que_pegaram": 3
+  },
+  {
+    "id": "M03",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "max incremental com a comparacao INVERTIDA (ts < fim)",
+    "veredito": "MORTA",
+    "segundos": 80.5,
+    "mortas_por": [
+      "tests/test_gravacao_gravador.py::test_gravador_meta_hora_inicio_e_hora_fim_nao_sao_trocados",
+      "tests/test_gravacao_retencao.py::test_hora_inicio_e_fim_com_o_menor_chegando_por_ultimo",
+      "tests/test_gravacao_retencao.py::test_hora_inicio_e_fim_consideram_os_quatro_tipos_de_evento",
+      "tests/test_replay_determinismo.py::test_arquivo_com_timestamp_regredindo_e_recusado_com_o_ponto_exato",
+      "tests/test_replay_determinismo.py::test_deltas_fora_de_ordem_tambem_sao_recusados"
+    ],
+    "n_testes_que_pegaram": 5
+  },
+  {
+    "id": "M04",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "hora_inicio sobrescrita a cada evento (sem teste de menor)",
+    "veredito": "MORTA",
+    "segundos": 85.2,
+    "mortas_por": [
+      "tests/test_gravacao_retencao.py::test_hora_inicio_e_fim_consideram_os_quatro_tipos_de_evento",
+      "tests/test_replay_determinismo.py::test_arquivo_com_timestamp_regredindo_e_recusado_com_o_ponto_exato",
+      "tests/test_replay_determinismo.py::test_memoria_do_replay_nao_cresce_com_o_tamanho_do_arquivo[5000-40000]"
+    ],
+    "n_testes_que_pegaram": 3
+  },
+  {
+    "id": "M05",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "rotacao de dia nao limpa hora_inicio/hora_fim (vaza p/ o dia seguinte)",
+    "veredito": "MORTA",
+    "segundos": 90.6,
+    "mortas_por": [
+      "tests/test_gravacao_retencao.py::test_parar_devolve_a_retencao_do_gravador_a_zero"
+    ],
+    "n_testes_que_pegaram": 1
+  },
+  {
+    "id": "M06",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "checkpoint periodico do meta.json desligado",
+    "veredito": "MORTA",
+    "segundos": 86.2,
+    "mortas_por": [
+      "tests/test_app_pipeline.py::test_a_virada_preserva_a_ordem_ENTRE_faixas_de_prioridade",
+      "tests/test_barramento.py::test_ordem_por_prioridade_e_inscricao",
+      "tests/test_barramento.py::test_prioridade_vale_para_quem_assina_depois_da_primeira_publicacao",
+      "tests/test_gravacao_retencao.py::test_checkpoint_fsyncia_os_csvs_antes_de_escrever_o_meta",
+      "tests/test_gravacao_retencao.py::test_integridade_reprova_prefixo_truncado_abaixo_do_declarado",
+      "tests/test_gravacao_retencao.py::test_meta_json_e_escrito_periodicamente_sem_fechar_o_dia"
+    ],
+    "n_testes_que_pegaram": 8
+  },
+  {
+    "id": "M07",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "checkpoint nao registra n_linhas_hasheadas",
+    "veredito": "MORTA",
+    "segundos": 88.7,
+    "mortas_por": [
+      "tests/test_barramento.py::test_desassinar_compara_por_igualdade_e_nao_por_identidade",
+      "tests/test_barramento.py::test_desassinar_para_de_entregar_e_diz_se_removeu",
+      "tests/test_gravacao_retencao.py::test_integridade_reprova_prefixo_truncado_abaixo_do_declarado",
+      "tests/test_gravacao_retencao.py::test_meta_json_e_escrito_periodicamente_sem_fechar_o_dia",
+      "tests/test_gravacao_retencao.py::test_meta_parcial_e_indexavel_e_verificavel_apos_crash"
+    ],
+    "n_testes_que_pegaram": 5
+  },
+  {
+    "id": "M08",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "checkpoint escreve o meta ANTES do fsync dos CSVs",
+    "veredito": "MORTA",
+    "segundos": 75.2,
+    "mortas_por": [
+      "tests/test_gravacao_retencao.py::test_checkpoint_fsyncia_os_csvs_antes_de_escrever_o_meta"
+    ],
+    "n_testes_que_pegaram": 1
+  },
+  {
+    "id": "M09",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "meta.json escrito sem troca atomica (deixa o .tmp para tras)",
+    "veredito": "MORTA",
+    "segundos": 87.2,
+    "mortas_por": [
+      "tests/test_core_relogio.py::test_relogio_replay_aceita_ficar_parado_no_mesmo_timestamp",
+      "tests/test_gravacao_retencao.py::test_meta_json_nunca_deixa_arquivo_temporario_para_tras"
+    ],
+    "n_testes_que_pegaram": 2
+  },
+  {
+    "id": "M10",
+    "arquivo": "fluxopro/gravacao/gravador.py",
+    "desc": "retomada apos crash nao semeia o hasher com o que ja estava no disco",
+    "veredito": "MORTA",
+    "segundos": 81.2,
+    "mortas_por": [
+      "tests/test_core_relogio.py::test_relogio_real_avanca_de_verdade",
+      "tests/test_gravacao_retencao.py::test_gravador_retomado_apos_crash_reconstroi_o_hash_do_que_ja_existia"
+    ],
+    "n_testes_que_pegaram": 2
+  },
+  {
+    "id": "M11",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "hash de prefixo com off-by-one (>= vira >)",
+    "veredito": "MORTA",
+    "segundos": 86.3,
+    "mortas_por": [
+      "tests/test_app_montagem.py::test_a_sessao_ja_ouve_o_que_a_fonte_publica_no_construtor",
+      "tests/test_gravacao_retencao.py::test_integridade_reprova_prefixo_truncado_abaixo_do_declarado",
+      "tests/test_gravacao_retencao.py::test_meta_parcial_e_indexavel_e_verificavel_apos_crash"
+    ],
+    "n_testes_que_pegaram": 3
+  },
+  {
+    "id": "M12",
+    "arquivo": "fluxopro/gravacao/catalogo.py",
+    "desc": "verificacao ignora n_linhas_hasheadas e hasheia o arquivo inteiro",
+    "veredito": "MORTA",
+    "segundos": 92.0,
+    "mortas_por": [
+      "tests/test_app_montagem.py::test_o_perfil_de_sessao_ja_inclui_o_trade_quando_o_motor_roda",
+      "tests/test_app_montagem.py::test_ordem_de_entrega_no_barramento_para_trade",
+      "tests/test_app_pipeline.py::test_a_virada_preserva_a_ordem_ENTRE_faixas_de_prioridade",
+      "tests/test_gravacao_retencao.py::test_integridade_reprova_prefixo_truncado_abaixo_do_declarado",
+      "tests/test_gravacao_retencao.py::test_meta_parcial_e_indexavel_e_verificavel_apos_crash"
+    ],
+    "n_testes_que_pegaram": 5
+  },
+  {
+    "id": "M13",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "leitor volta a materializar a janela inteira (o gemeo de 37 GB)",
+    "veredito": "MORTA",
+    "segundos": 94.4,
+    "mortas_por": [
+      "tests/test_app_saida.py::test_a_direcao_do_sinal_aparece_na_linha",
+      "tests/test_app_saida.py::test_a_linha_do_sinal_carrega_a_evidencia_das_tres_condicoes",
+      "tests/test_gravacao_retencao.py::test_replay_nao_materializa_a_janela_em_memoria",
+      "tests/test_gravacao_retencao.py::test_replay_publica_o_primeiro_evento_sem_ler_o_arquivo_inteiro",
+      "tests/test_gravacao_retencao.py::test_replay_recusa_desordem_maior_que_a_janela_em_vez_de_mentir"
+    ],
+    "n_testes_que_pegaram": 5
+  },
+  {
+    "id": "M14",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "chave do merge perde o desempate por indice no arquivo",
+    "veredito": "MORTA",
+    "segundos": 83.5,
+    "mortas_por": [
+      "tests/test_app_saida.py::test_guardar_linhas_desligado_nao_retem_nada_e_ainda_imprime",
+      "tests/test_app_saida.py::test_o_CLI_nao_retem_o_pregao_inteiro_em_memoria",
+      "tests/test_gravacao_retencao.py::test_replay_entrega_na_mesma_ordem_da_ordenacao_global",
+      "tests/test_motor_sinais.py::test_janela_curta_demais_reabre_o_winfut",
+      "tests/test_motor_sinais.py::test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao",
+      "tests/test_motor_sinais.py::test_tempo_de_volta_nao_depende_do_tamanho_do_pico"
+    ],
+    "n_testes_que_pegaram": 10
+  },
+  {
+    "id": "M15",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "guarda de ordem removida (replay fora de ordem publicado em silencio)",
+    "veredito": "MORTA",
+    "segundos": 85.9,
+    "mortas_por": [
+      "tests/test_app_pipeline.py::test_a_virada_de_sessao_zera_o_historico_de_footprint",
+      "tests/test_app_pipeline.py::test_o_footprint_recriado_continua_ligado_e_conta_UMA_vez",
+      "tests/test_gravacao_retencao.py::test_replay_recusa_desordem_maior_que_a_janela_em_vez_de_mentir"
+    ],
+    "n_testes_que_pegaram": 3
+  },
+  {
+    "id": "M16",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "janela de reordenacao vai a zero (perde a tolerancia a desordem local)",
+    "veredito": "MORTA",
+    "segundos": 82.9,
+    "mortas_por": [
+      "tests/test_gravacao_retencao.py::test_replay_absorve_desordem_local_dentro_da_janela",
+      "tests/test_gravacao_retencao.py::test_replay_entrega_na_mesma_ordem_da_ordenacao_global",
+      "tests/test_motor_sinais.py::test_defaults_da_janela_de_referencia",
+      "tests/test_motor_sinais.py::test_iniciar_nova_sessao_zera_a_janela_de_blocos",
+      "tests/test_motor_sinais.py::test_referencia_e_monotona_dentro_da_janela",
+      "tests/test_motor_sinais.py::test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra"
+    ],
+    "n_testes_que_pegaram": 14
+  },
+  {
+    "id": "M17",
+    "arquivo": "fluxopro/dados/leitor_gravacao.py",
+    "desc": "filtro de intervalo perdido no caminho streaming",
+    "veredito": "MORTA",
+    "segundos": 84.8,
+    "mortas_por": [
+      "tests/test_gravacao_integridade.py::test_leitor_filtra_por_intervalo_de_horario_exclui_fora_da_janela",
+      "tests/test_gravacao_retencao.py::test_recorte_por_horario_continua_filtrando_no_caminho_streaming"
+    ],
+    "n_testes_que_pegaram": 2
+  }
+]

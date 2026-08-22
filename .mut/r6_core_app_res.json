@@ -1,0 +1,386 @@
+[
+  {
+    "id": "N01",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R2/N01 (viva 5 rodadas): a chave de ordenacao perde o desempate por origem e indice",
+    "veredito": "MORTA",
+    "segundos": 68.7,
+    "pego_por": "okDelta(timestamp_ns=100, symbol='WDOFUT', side=<Side.BUY: 'BUY'>, action=<BookAction.ADD: 'ADD'>, price=9999, qty=10, position=0), Trade)\n\ntests\\test_replay_determinismo.py:61: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_replay_determinismo.py::test_replay_ordena_por_timestamp_trade_antes_de_delta_em_empate\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 629 passed in 67.22s (0:01:07)\n"
+  },
+  {
+    "id": "N01b",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R2/N01 variante: a chave perde so o indice dentro do arquivo",
+    "veredito": "SOBREVIVEU",
+    "segundos": 77.8,
+    "pego_por": ""
+  },
+  {
+    "id": "N03",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R2/N03 (viva 5 rodadas): buyer_broker e seller_broker trocados na leitura do CSV",
+    "veredito": "MORTA",
+    "segundos": 46.3,
+    "pego_por": "0x0000027804799A00>()\nE        +        where <built-in method values of dict object at 0x0000027804799A00> = {1000: 1011, 10000: 10011, 100000: 100011}.values\n\ntests\\test_gravacao_retencao.py:213: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_retencao.py::test_gravador_retencao_nao_cresce_com_numero_de_eventos\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 274 passed in 44.58s\n"
+  },
+  {
+    "id": "P01",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R5/P01 (=R2/N02): trade e delta trocam a prioridade no empate de timestamp",
+    "veredito": "MORTA",
+    "segundos": 44.7,
+    "pego_por": "etorio / \"meta.json\").read_text(encoding=\"utf-8\"))\n>       assert meta[\"hora_inicio_ns\"] == inicio\nE       assert 1700000009000000000 == 1700000001000000000\n\ntests\\test_gravacao_gravador.py:137: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_gravador.py::test_gravador_meta_hora_inicio_e_hora_fim_nao_sao_trocados\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 261 passed in 42.90s\n"
+  },
+  {
+    "id": "MP1",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: a guarda de monotonicidade nao roda (arquivo fora de ordem embaralha em silencio)",
+    "veredito": "MORTA",
+    "segundos": 37.6,
+    "pego_por": "etorio / \"meta.json\").read_text(encoding=\"utf-8\"))\n>       assert meta[\"hora_inicio_ns\"] == inicio\nE       assert 1700000009000000000 == 1700000001000000000\n\ntests\\test_gravacao_gravador.py:137: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_gravador.py::test_gravador_meta_hora_inicio_e_hora_fim_nao_sao_trocados\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 261 passed in 35.76s\n"
+  },
+  {
+    "id": "MP2",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: a guarda recusa timestamp IGUAL (empate no mesmo ns e comum e valido)",
+    "veredito": "MORTA",
+    "segundos": 36.5,
+    "pego_por": "utf-8\"))\n        assert meta[\"hora_inicio_ns\"] == inicio\n>       assert meta[\"hora_fim_ns\"] == fim\nE       assert 1700000001000000000 == 1700000009000000000\n\ntests\\test_gravacao_gravador.py:138: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_gravador.py::test_gravador_meta_hora_inicio_e_hora_fim_nao_sao_trocados\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 261 passed in 35.20s\n"
+  },
+  {
+    "id": "MP3",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: o replay volta a MATERIALIZAR o arquivo inteiro (a 7a casa reintroduzida)",
+    "veredito": "MORTA",
+    "segundos": 44.5,
+    "pego_por": "utf-8\"))\n        assert meta[\"hora_inicio_ns\"] == inicio\n>       assert meta[\"hora_fim_ns\"] == fim\nE       assert 1700000001000000000 == 1700000009000000000\n\ntests\\test_gravacao_gravador.py:138: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_gravador.py::test_gravador_meta_hora_inicio_e_hora_fim_nao_sao_trocados\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 261 passed in 43.13s\n"
+  },
+  {
+    "id": "MP4",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: a guarda de monotonicidade so vale para o arquivo de trades",
+    "veredito": "MORTA",
+    "segundos": 44.7,
+    "pego_por": "ding=\"utf-8\"))\n>       assert meta[\"hora_inicio_ns\"] == _DIA_1_TS + 100 * _MS\nE       assert 1700000000900000000 == (1700000000000000000 + (100 * 1000000))\n\ntests\\test_gravacao_retencao.py:296: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_retencao.py::test_hora_inicio_e_fim_consideram_os_quatro_tipos_de_evento\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 277 passed in 43.04s\n"
+  },
+  {
+    "id": "B01",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R5/B01: publicar itera uma COPIA (a correcao de reentrancia aplicada por fora)",
+    "veredito": "MORTA",
+    "segundos": 48.9,
+    "pego_por": "ding=\"utf-8\"))\n>       assert meta[\"hora_inicio_ns\"] == _DIA_1_TS + 100 * _MS\nE       assert 1700000000900000000 == (1700000000000000000 + (100 * 1000000))\n\ntests\\test_gravacao_retencao.py:296: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_retencao.py::test_hora_inicio_e_fim_consideram_os_quatro_tipos_de_evento\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 277 passed in 47.27s\n"
+  },
+  {
+    "id": "B02",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R5/B02: excecao de assinante engolida (a cadeia segue como se nada tivesse acontecido)",
+    "veredito": "MORTA",
+    "segundos": 42.5,
+    "pego_por": "  \n>       with pytest.raises(RuntimeError, match=\"assinante quebrado\"):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE RuntimeError\n\ntests\\test_barramento.py:147: Failed\n=========================== short test summary info ===========================\nFAILED tests/test_barramento.py::test_excecao_de_assinante_propaga_para_quem_publicou\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 170 passed in 40.85s\n"
+  },
+  {
+    "id": "B03",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R5/B03 (re-expressa no codigo novo): ordenacao por prioridade removida de assinar",
+    "veredito": "MORTA",
+    "segundos": 37.4,
+    "pego_por": "omes) - 1\nE       AssertionError: assert 11 == (13 - 1)\nE        +  where 13 = len(['_ao_trade', '_ao_trade', '_ao_trade', '_ao_trade', '_ao_trade', '_ao_trade', ...])\n\ntests\\test_app_pipeline.py:594: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_pipeline.py::test_a_virada_preserva_a_ordem_ENTRE_faixas_de_prioridade\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 131 passed in 35.65s\n"
+  },
+  {
+    "id": "X21",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R3/X21 (re-expressa): prioridade ignorada, so a ordem de inscricao vale",
+    "veredito": "MORTA",
+    "segundos": 35.8,
+    "pego_por": "omes) - 1\nE       AssertionError: assert 11 == (13 - 1)\nE        +  where 13 = len(['_ao_trade', '_ao_trade', '_ao_trade', '_ao_trade', '_ao_trade', '_ao_trade', ...])\n\ntests\\test_app_pipeline.py:594: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_pipeline.py::test_a_virada_preserva_a_ordem_ENTRE_faixas_de_prioridade\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 131 passed in 34.39s\n"
+  },
+  {
+    "id": "X22",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R3/X22 (re-expressa): empate de prioridade resolvido pela ordem INVERSA de inscricao",
+    "veredito": "MORTA",
+    "segundos": 6.9,
+    "pego_por": ", ...] == [('EstadoMerc..._trade'), ...]\nE         \nE         At index 0 diff: ('RankingCorretoras', '_ao_trade') != ('EstadoMercado', '_ao_trade')\nE         Use -v to get more diff\n\ntests\\test_app_montagem.py:94: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_ordem_de_entrega_no_barramento_para_trade\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 67 passed in 5.32s\n"
+  },
+  {
+    "id": "MB1",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: publicar volta a iterar a colecao VIVA (sem instantaneo de reentrancia)",
+    "veredito": "MORTA",
+    "segundos": 37.8,
+    "pego_por": "recebeu o evento corrente\nE       assert ['primeiro', 'tardio'] == ['primeiro']\nE         \nE         Left contains one more item: 'tardio'\nE         Use -v to get more diff\n\ntests\\test_barramento.py:91: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_barramento.py::test_assinar_durante_publicar_nao_afeta_o_evento_corrente\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 168 passed in 36.44s\n"
+  },
+  {
+    "id": "MB2",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: desassinar compara por IDENTIDADE (metodo ligado nunca e o mesmo objeto)",
+    "veredito": "MORTA",
+    "segundos": 44.0,
+    "pego_por": "e.barramento.Barramento object at 0x000001793A150D70>.desassinar\nE        +    and   <built-in method append of list object at 0x000001793AC85840> = [_EventoTeste(valor=1)].append\n\ntests\\test_barramento.py:191: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_barramento.py::test_desassinar_para_de_entregar_e_diz_se_removeu\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 172 passed in 42.33s\n"
+  },
+  {
+    "id": "MB3",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: desassinar_objeto remove por CLASSE do dono, nao pela instancia",
+    "veredito": "MORTA",
+    "segundos": 41.9,
+    "pego_por": "ls>.Componente object at 0x000001351AF81160>)\nE        +    where desassinar_objeto = <fluxopro.core.barramento.Barramento object at 0x0000013522BE5730>.desassinar_objeto\n\ntests\\test_barramento.py:243: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_barramento.py::test_desassinar_objeto_remove_todas_as_assinaturas_do_dono\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 174 passed in 40.45s\n"
+  },
+  {
+    "id": "MB4",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: desassinar diz que removeu mesmo quando nao removeu nada",
+    "veredito": "MORTA",
+    "segundos": 47.6,
+    "pego_por": "v\"]\n>           assert meta[\"n_linhas_hasheadas\"][\"trades.csv\"] == 20\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE           KeyError: 'trades.csv'\n\ntests\\test_gravacao_retencao.py:377: KeyError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_retencao.py::test_meta_json_e_escrito_periodicamente_sem_fechar_o_dia\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 281 passed in 46.07s\n"
+  },
+  {
+    "id": "RL1",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "R5/RL1: RelogioReal troca monotonic_ns por time_ns (volta no tempo em ajuste de NTP)",
+    "veredito": "MORTA",
+    "segundos": 34.3,
+    "pego_por": "9995000000000] == [999999995000...9999000000000]\nE         \nE         At index 0 diff: 999999999000000000 != 999999995000000000\nE         Use -v to get more diff\n\ntests\\test_core_relogio.py:99: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_core_relogio.py::test_relogio_real_nao_regride_quando_o_relogio_de_PAREDE_regride\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 209 passed in 32.78s\n"
+  },
+  {
+    "id": "RL2",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "R5/RL2: replay recusa timestamp IGUAL (a docstring diz que empate e aceito de proposito)",
+    "veredito": "MORTA",
+    "segundos": 45.2,
+    "pego_por": "er: atual={self._atual_ns} \"\n                f\"proposto={timestamp_ns}\"\n            )\nE           ValueError: relogio de replay nao pode retroceder: atual=3000 proposto=3000\n\nfluxopro\\core\\relogio.py:63: ValueError\n=========================== short test summary info ===========================\nFAILED tests/test_core_relogio.py::test_relogio_replay_aceita_ficar_parado_no_mesmo_timestamp\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 205 passed in 43.87s\n"
+  },
+  {
+    "id": "M09",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "R1/M09: RelogioReplay aceita retroceder",
+    "veredito": "MORTA",
+    "segundos": 41.5,
+    "pego_por": "ogioReplay(inicio_ns=10_000)\n>       with pytest.raises(ValueError, match=\"retroceder\"):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE ValueError\n\ntests\\test_core_relogio.py:42: Failed\n=========================== short test summary info ===========================\nFAILED tests/test_core_relogio.py::test_relogio_replay_recusa_retroceder - Fa...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 206 passed in 40.15s\n"
+  },
+  {
+    "id": "MR1",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "MINHA: RelogioReal fica PARADO (monotonico, mas nao mede tempo nenhum)",
+    "veredito": "MORTA",
+    "segundos": 33.1,
+    "pego_por": " crescido.\"\"\"\n        relogio = RelogioReal()\n        t1 = relogio.agora_ns()\n        time.sleep(0.005)\n        t2 = relogio.agora_ns()\n>       assert t2 > t1\nE       assert 0 > 0\n\ntests\\test_core_relogio.py:126: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_core_relogio.py::test_relogio_real_avanca_de_verdade - asse...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 211 passed in 31.83s\n"
+  },
+  {
+    "id": "MR2",
+    "arquivo": "fluxopro/core/relogio.py",
+    "desc": "MINHA: avancar_para nao grava o valor novo (o relogio de replay nunca anda)",
+    "veredito": "MORTA",
+    "segundos": 43.6,
+    "pego_por": " == 2_000\nE       assert 1000 == 2000\nE        +  where 1000 = agora_ns()\nE        +    where agora_ns = <fluxopro.core.relogio.RelogioReplay object at 0x000001E0F78B02D0>.agora_ns\n\ntests\\test_core_relogio.py:27: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_core_relogio.py::test_relogio_replay_avanca_para_frente - a...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 204 passed in 41.76s\n"
+  },
+  {
+    "id": "Y04",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "R4/Y04 (viva): fonte construida ANTES da sessao (a corrida que a docstring nega)",
+    "veredito": "MORTA",
+    "segundos": 7.5,
+    "pego_por": "E22D310>, sessao=<fluxopro.app.sessao_fl...t_a_sessao_ja_ouve_o_que_a_fonte_publica_no_construtor.<locals>.FontePublicaNoConstrutor object at 0x0000018F4DF67230>).sessao\n\ntests\\test_app_montagem.py:401: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_a_sessao_ja_ouve_o_que_a_fonte_publica_no_construtor\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 98 passed in 5.92s\n"
+  },
+  {
+    "id": "Y05",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "R4/Y05: recorte --de/--ate no CSV do nucleo ignorado em silencio (falha ABERTA)",
+    "veredito": "MORTA",
+    "segundos": 5.8,
+    "pego_por": "aises(FonteIndisponivelError, match=\"recorte de horario\"):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE FonteIndisponivelError\n\ntests\\test_app_montagem.py:293: Failed\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_recorte_de_horario_em_csv_falha_fechado\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 92 passed in 4.10s\n"
+  },
+  {
+    "id": "Y06",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "R4/Y06 (viva): escolhe o dia MAIS ANTIGO da gravacao em vez do mais recente",
+    "veredito": "MORTA",
+    "segundos": 7.2,
+    "pego_por": "002030CC60170>, sessao=<fluxopro.app.sessao_fl...ct at 0x000002030C74A990>, fonte=<fluxopro.dados.leitor_gravacao.AdaptadorLeitorGravacao object at 0x000002030C74AAD0>).sessao\n\ntests\\test_app_montagem.py:479: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_replay_de_gravacao_escolhe_o_dia_MAIS_RECENTE\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 100 passed in 5.55s\n"
+  },
+  {
+    "id": "Y07",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "R4/Y07 (viva): verificacao de hash da gravacao desligada em silencio",
+    "veredito": "MORTA",
+    "segundos": 8.1,
+    "pego_por": "rquivo_de_dados(gravacao)\n    \n>       with pytest.raises(IntegridadeInvalidaError):\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       Failed: DID NOT RAISE IntegridadeInvalidaError\n\ntests\\test_app_montagem.py:536: Failed\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_montagem_reprova_gravacao_corrompida\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 102 passed in 6.12s\n"
+  },
+  {
+    "id": "MM1",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "MINHA: a verificacao de hash e FORCADA (a flag de diagnostico vira enfeite)",
+    "veredito": "MORTA",
+    "segundos": 7.5,
+    "pego_por": ": {falhas}\"\n            )\nE           fluxopro.dados.leitor_gravacao.IntegridadeInvalidaError: hash divergente para WDOV26 2020-09-14: ['trades.csv']\n\nfluxopro\\dados\\leitor_gravacao.py:154: IntegridadeInvalidaError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_sem_verificar_hash_e_uma_escolha_do_usuario_e_funciona\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 103 passed in 6.03s\n"
+  },
+  {
+    "id": "MM2",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "MINHA: a gravacao de QUALQUER simbolo serve (o filtro por simbolo cai)",
+    "veredito": "MORTA",
+    "segundos": 47.0,
+    "pego_por": "ificar_integridade(entrada)\n>       assert resultado[\"trades.csv\"] is True, resultado\nE       AssertionError: {'trades.csv': False}\nE       assert False is True\n\ntests\\test_gravacao_retencao.py:400: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_retencao.py::test_meta_parcial_e_indexavel_e_verificavel_apos_crash\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 282 passed in 45.42s\n"
+  },
+  {
+    "id": "MM3",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "MINHA: --data explicita e ignorada (sempre o dia mais recente)",
+    "veredito": "MORTA",
+    "segundos": 5.5,
+    "pego_por": "x000002511D8987D0>, sessao=<fluxopro.app.sessao_fl...ct at 0x000002511D779E50>, fonte=<fluxopro.dados.leitor_gravacao.AdaptadorLeitorGravacao object at 0x000002511D779A90>).sessao\n\ntests\\test_app_montagem.py:499: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_replay_de_gravacao_respeita_a_data_pedida\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 101 passed in 4.25s\n"
+  },
+  {
+    "id": "Y01",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "R4/Y01: perfil de sessao passa a entregar DEPOIS do motor (a seta que nao pode inverter)",
+    "veredito": "MORTA",
+    "segundos": 8.1,
+    "pego_por": "'EstadoMerc..._trade'), ...]\nE         \nE         At index 7 diff: ('SessaoFluxo', '_ao_trade_micro') != ('SessaoFluxo', '_ao_trade_perfil_sessao')\nE         Use -v to get more diff\n\ntests\\test_app_montagem.py:94: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_ordem_de_entrega_no_barramento_para_trade\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 67 passed in 6.75s\n"
+  },
+  {
+    "id": "Y02",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "R4/Y02: micro (InferidorMBP) passa a entregar DEPOIS do motor",
+    "veredito": "MORTA",
+    "segundos": 6.6,
+    "pego_por": ".] == [('EstadoMerc..._trade'), ...]\nE         \nE         At index 8 diff: ('SessaoFluxo', '_ao_trade_motor') != ('SessaoFluxo', '_ao_trade_micro')\nE         Use -v to get more diff\n\ntests\\test_app_montagem.py:94: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_ordem_de_entrega_no_barramento_para_trade\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 67 passed in 5.18s\n"
+  },
+  {
+    "id": "Y03",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "R4/Y03: saida entrega ANTES de tudo (le o mundo de um evento atras)",
+    "veredito": "MORTA",
+    "segundos": 5.1,
+    "pego_por": "[('EstadoMerc..._trade'), ...]\nE         \nE         At index 7 diff: ('SessaoFluxo', '_contar_trade') != ('SessaoFluxo', '_ao_trade_perfil_sessao')\nE         Use -v to get more diff\n\ntests\\test_app_montagem.py:94: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_ordem_de_entrega_no_barramento_para_trade\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 67 passed in 3.52s\n"
+  },
+  {
+    "id": "MC1",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "MINHA: WIN passa a usar a grade do WDO (todo preco deslocado 5x)",
+    "veredito": "MORTA",
+    "segundos": 4.8,
+    "pego_por": "ll down into differing attribute tick_size:\nE           tick_size: 0.5 != 5.0\nE         \nE         Drill down into differing attribute decimals:\nE           decimals: 1 != 0\n\ntests\\test_app_montagem.py:189: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_montagem.py::test_config_operacao_e_sobrescrivel_em_qualquer_nivel\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 85 passed in 3.13s\n"
+  },
+  {
+    "id": "MC2",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "MINHA: perfil de sessao e micro empatam (a ordem vira acidente de construcao)",
+    "veredito": "MORTA",
+    "segundos": 54.8,
+    "pego_por": "ificar_integridade(entrada)\n>       assert resultado[\"trades.csv\"] is True, resultado\nE       AssertionError: {'trades.csv': False}\nE       assert False is True\n\ntests\\test_gravacao_retencao.py:400: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_gravacao_retencao.py::test_meta_parcial_e_indexavel_e_verificavel_apos_crash\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 282 passed in 53.22s\n"
+  },
+  {
+    "id": "Y08",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "R4/Y08: toda deteccao inferida e impressa como OBSERVADA (a marca mente)",
+    "veredito": "MORTA",
+    "segundos": 2.6,
+    "pego_por": "stagios=analytics+microestrutura+detectores_tape+motor\\nhora    ... sessao    : VAL=5003.5 POC=5007.5 VAH=5011.5\\n  motor (final)       : estagio=NENHUM direcao=- faixa=PRE_DIRECIONAL\\n'\n\ntests\\test_app_cli.py:181: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_rodar_com_simulador_imprime_resumo_e_sai_zero\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 60 passed in 1.39s\n"
+  },
+  {
+    "id": "Y09",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "R4/Y09: direcao do sinal sempre impressa como '-' (o lado some da tela)",
+    "veredito": "MORTA",
+    "segundos": 37.5,
+    "pego_por": "     -      MAXIMA_CONVICCAO  | dom=0.834 mag=1240 mag_rel=1.020 regiao=sim micro=sim pre_sinal=nao micro_1a=-100 micro_2a=40 bruto=CONFIRMADO persist=7 vol_nao_atrib=17'\n\ntests\\test_app_saida.py:160: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_saida.py::test_a_linha_do_sinal_carrega_a_evidencia_das_tres_condicoes\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 148 passed in 36.10s\n"
+  },
+  {
+    "id": "S01",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "R5/S01: marca [OBS] usa > em vez de >= (confianca exatamente 1.0 vira INFERIDA)",
+    "veredito": "MORTA",
+    "segundos": 3.2,
+    "pego_por": "stagios=analytics+microestrutura+detectores_tape+motor\\nhora    ... sessao    : VAL=5003.5 POC=5007.5 VAH=5011.5\\n  motor (final)       : estagio=NENHUM direcao=- faixa=PRE_DIRECIONAL\\n'\n\ntests\\test_app_cli.py:180: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_rodar_com_simulador_imprime_resumo_e_sai_zero\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 60 passed in 1.74s\n"
+  },
+  {
+    "id": "MS1",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "MINHA: o buffer de linhas volta a ser ILIMITADO (a 8a casa reintroduzida)",
+    "veredito": "MORTA",
+    "segundos": 46.8,
+    "pego_por": " 5', ...]))\nE        +    where deque(['linha 0', 'linha 1', 'linha 2', 'linha 3', 'linha 4', 'linha 5', ...]) = <fluxopro.app.saida.ConsoleFluxo object at 0x000001463CC192B0>.linhas\n\ntests\\test_app_saida.py:347: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_saida.py::test_o_buffer_de_linhas_e_um_anel_limitado - ...\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 160 passed in 45.35s\n"
+  },
+  {
+    "id": "MS2",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "MINHA: nada e observado — toda deteccao sai como inferida (o inverso de Y08)",
+    "veredito": "MORTA",
+    "segundos": 4.2,
+    "pego_por": "stagios=analytics+microestrutura+detectores_tape+motor\\nhora    ... sessao    : VAL=5003.5 POC=5007.5 VAH=5011.5\\n  motor (final)       : estagio=NENHUM direcao=- faixa=PRE_DIRECIONAL\\n'\n\ntests\\test_app_cli.py:180: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_rodar_com_simulador_imprime_resumo_e_sai_zero\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 60 passed in 2.38s\n"
+  },
+  {
+    "id": "MS3",
+    "arquivo": "fluxopro/app/saida.py",
+    "desc": "MINHA: guardar_linhas=False deixa de valer (o CLI volta a reter o pregao)",
+    "veredito": "MORTA",
+    "segundos": 48.6,
+    "pego_por": "E        +    where deque(['linha 0', 'linha 1', 'linha 2', 'linha 3', 'linha 4', 'linha 5', ...]) = <fluxopro.app.saida.ConsoleFluxo object at 0x000001E140FB9550>.linhas\n\ntests\\test_app_saida.py:376: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_saida.py::test_guardar_linhas_desligado_nao_retem_nada_e_ainda_imprime\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 162 passed in 46.90s\n"
+  },
+  {
+    "id": "MF1",
+    "arquivo": "fluxopro/app/sessao_fluxo.py",
+    "desc": "MINHA: desassina DEPOIS de recriar o footprint (quem sai do barramento e o NOVO)",
+    "veredito": "MORTA",
+    "segundos": 31.9,
+    "pego_por": "o ficou mudo\nE       assert None is not None\nE        +  where None = <fluxopro.analytics.footprint.FootprintPorTimeframe object at 0x0000021925AA4DD0>.footprint_atual\n\ntests\\test_app_pipeline.py:548: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_pipeline.py::test_o_footprint_recriado_continua_ligado_e_conta_UMA_vez\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 129 passed in 30.55s\n"
+  },
+  {
+    "id": "MF2",
+    "arquivo": "fluxopro/app/sessao_fluxo.py",
+    "desc": "MINHA: o footprint deixa de ser recriado na virada (volta a carregar o dia anterior)",
+    "veredito": "MORTA",
+    "segundos": 25.7,
+    "pego_por": " <fluxopro.analytics.footprint.FootprintPorTimeframe object at 0x0000020B58B7EF50> is not <fluxopro.analytics.footprint.FootprintPorTimeframe object at 0x0000020B58B7EF50>\n\ntests\\test_app_pipeline.py:512: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_pipeline.py::test_a_virada_de_sessao_zera_o_historico_de_footprint\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 128 passed in 24.24s\n"
+  },
+  {
+    "id": "MF3",
+    "arquivo": "fluxopro/app/sessao_fluxo.py",
+    "desc": "MINHA: recria o footprint sem desassinar o velho (as duas instancias contam)",
+    "veredito": "MORTA",
+    "segundos": 31.3,
+    "pego_por": "luxopro.analytics.footprint.Footprint object at 0x000002B29C71E210> = <fluxopro.analytics.footprint.FootprintPorTimeframe object at 0x000002B29C34DA50>.footprint_atual\n\ntests\\test_app_pipeline.py:550: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_pipeline.py::test_o_footprint_recriado_continua_ligado_e_conta_UMA_vez\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 129 passed in 29.49s\n"
+  },
+  {
+    "id": "MF4",
+    "arquivo": "fluxopro/app/sessao_fluxo.py",
+    "desc": "MINHA: o livro novo nao e religado aos ouvintes na virada (a ponte MBP->MBO fica muda)",
+    "veredito": "MORTA",
+    "segundos": 30.8,
+    "pego_por": "ntes\nE        +    where <fluxopro.microestrutura.livro_mbo.LivroMBO object at 0x000002049DA57A10> = <fluxopro.app.sessao_fluxo.SessaoFluxo object at 0x00000204A40896D0>.livro\n\ntests\\test_app_pipeline.py:426: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_pipeline.py::test_virada_de_sessao_recria_o_livro_reconstruido\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 125 passed in 29.03s\n"
+  },
+  {
+    "id": "MO1",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: o CLI volta a guardar toda linha em memoria (a 8a casa pelo lado do CLI)",
+    "veredito": "MORTA",
+    "segundos": 50.0,
+    "pego_por": "  2\n  mercado             : max=5008.5 min=4998.5 vwap=5003 volume=5080 (compr=2545 vend=2535 nao_atrib=0)\n  perfil de sessao    : VAL=4999 POC=5004 VAH=5005\n  motor (final)       : estagio=NENHUM direcao=- faixa=PRE_DIRECIONAL\n=========================== short test summary info ===========================\nFAILED tests/test_app_saida.py::test_o_CLI_nao_retem_o_pregao_inteiro_em_memoria\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 163 passed in 48.40s\n"
+  },
+  {
+    "id": "MO2",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: --sem-verificar-hash passa a valer sempre (integridade nunca conferida)",
+    "veredito": "MORTA",
+    "segundos": 2.8,
+    "pego_por": "where False = OpcoesReplay(caminho=WindowsPath('dados'), caminho_deltas=None, data=None, de=None, ate=None, velocidade='max', verificar_hash=False).verificar_hash\n\ntests\\test_app_cli.py:135: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_verificacao_de_integridade_e_ligada_por_padrao_e_so_o_usuario_desliga\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 58 passed in 1.24s\n"
+  },
+  {
+    "id": "MO3",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: --de e --ate nao chegam nas opcoes de replay (recorte ignorado na origem)",
+    "veredito": "MORTA",
+    "segundos": 2.4,
+    "pego_por": "tas=WindowsPath('deltas.csv'), data=datetime.date(2026, 8, 20), de=None, ate=None, velocidade=7.0, verificar_hash=True).de\nE        +  and   datetime.time(9, 15) = hora_do_dia(9, 15)\n\ntests\\test_app_cli.py:122: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_opcoes_de_replay_chegam_TODAS_da_linha_de_comando\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 57 passed in 0.97s\n"
+  },
+  {
+    "id": "MO4",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: --velocidade nao chega no adaptador (replay sempre a maxima)",
+    "veredito": "MORTA",
+    "segundos": 2.9,
+    "pego_por": "os'), caminho_deltas=WindowsPath('deltas.csv'), data=datetime.date(2026, 8, 20), de=datetime.time(9, 15), ate=datetime.time(10, 45), velocidade='max', verificar_hash=True).velocidade\n\ntests\\test_app_cli.py:124: AssertionError\n=========================== short test summary info ===========================\nFAILED tests/test_app_cli.py::test_opcoes_de_replay_chegam_TODAS_da_linha_de_comando\n!!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 1 failures !!!!!!!!!!!!!!!!!!!!!!!!!!\n1 failed, 57 passed in 1.11s\n"
+  }
+]

@@ -240,9 +240,65 @@ Que um dos seus ataques falhou (virou evidência **a favor** do desenho); que co
 
 | Peça | Modelo | Estado |
 |---|---|---|
-| 6ª casa: gravador e leitor O(eventos) + durabilidade do meta | opus | 🔄 em voo |
-| Motor: referência de magnitude deixa o motor mudo após pico legítimo | opus | 🔄 em voo |
-| 27 mutações vivas em `core/`, `app/`, `scripts/`, `replay` | opus | 🔄 em voo |
+| **6ª casa: gravador e leitor O(eventos) + durabilidade do meta** | opus | ✅ **17/17 mortas, 4,52 GiB → 806 B, 45,7 GiB → 642 KB** |
+| **Motor: referência de magnitude deixa o motor mudo** | opus | ✅ **15/15 mortas, resolve os DOIS lados, +3,4% de custo** |
+| **27 mutações vivas em `core/`, `app/`, `scripts/`, `replay`** | opus | ✅ **47/50 mortas (3 provadas equivalentes) + achou a 7ª e a 8ª casas** |
+
+### A 7ª e a 8ª casas — o critério continua produzindo
+O builder aplicou o critério de crescimento aos seus 11 arquivos (varredura estática + `tracemalloc`) e duas coleções responderam "número de eventos do pregão":
+
+| | onde | medido | agora |
+|---|---|---|---|
+| **7ª casa** | `dados/replay.py::_eventos_ordenados` | 347 B/evento → **37,3 GB** em 6 h a 5.000 ev/s | `heapq.merge`, **248 B constante** |
+| **8ª casa** | `app/saida.py::ConsoleFluxo.linhas` | 184 B/linha → **0,44 GB/pregão** — e o CLI **nunca lia** o buffer | anel `deque(maxlen=5000)` + desligado no CLI |
+
+A 7ª é a **gêmea exata** do que a R5 achou no `leitor_gravacao.py` — mesma forma, no outro leitor, e o inventário da auditoria não a cobriu. A 8ª estava numa camada que o inventário nem listou (`app/`), e o comentário que a justificava — *"eventos raros, dezenas por sessão"* — **contradizia a própria auditoria**, que mediu 11.054 detecções em 500.000 eventos. Ele corrigiu a frase no código.
+
+**Consertos de produção**: `Barramento.desassinar` (a linha que a R5 disse valer "mais que as três mutações do barramento juntas"), com instantâneo de reentrância **sem alocação no caminho quente**; `FootprintPorTimeframe` recriado na virada — `SEM_RESET_POSSIVEL` virou `()`, fechando a última sobra medida (199 candles do dia 1 aparecendo no dia 2); e o exemplo do CLI que devolvia zero eventos em silêncio por causa de fuso.
+
+**Três sobreviventes, todas provadas equivalentes** — não supostas. A prova de que `heapq.merge` mantém uma entrada por iterável (tornando o índice na chave redundante) ficou na docstring, para a próxima rodada não gastar um ciclo redescobrindo.
+
+### O erro de método que ele pegou em si mesmo
+Dez veredictos do primeiro lote saíram "MORTA" por testes de **outro builder** que estavam vermelhos naquele momento — e `pytest -x` para no primeiro erro, que vinha antes no alfabeto. Ele reexecutou com critério **diferencial** (morta ⇔ falhas do mutante menos falhas da baseline ≠ ∅, com baseline remedida antes de cada mutação). Resultado: 6 morriam de verdade, **4 não** — e duas dessas eram furos reais dele (um `assert` que caía numa guarda e nunca exercitava o ramo decisivo; um teste que passava **pelo motivo errado**). Sem essa checagem, teria reportado 47 de 48 com dois furos dentro.
+
+**E apagou o próprio trabalho uma vez**: usou `git checkout -- replay.py` para desfazer um spot-check e levou junto a reescrita inteira, não commitada. Refez e registrou o aviso no harness. Num repositório com três builders e nada commitado, `git checkout` não é rede de segurança — é destruição.
+
+### Magnitude — a janela é medida em AMOSTRAS ACEITAS, não no relógio
+A cauda passou a viver em 4 blocos de 2.048 amostras, cada um com seu top-K; a referência é a maior das K-ésimas dos blocos vivos. Janela efetiva: 6.144 a 8.192 **amostras aceitas**.
+
+**Por que isso resolve os dois lados de uma vez**: amostra só entra depois do filtro de negócio único, então **tape lateral miúdo não produz nenhuma**. Medido: o contador ficou cravado em 2.390 tanto com 1.000 laterais quanto com 50.000 (82 minutos de relógio, zero evidência). A janela **não anda durante lateralização** — o defeito R3/R4 não volta nem com 5 milhões de laterais — e **anda quando o mercado produz magnitude**, então o pico de fechamento sai depois de fluxo normal. A janela virou a **fronteira declarada entre evento e regime**.
+
+**A aritmética que mata as alternativas** (no docstring):
+- *Janela de tempo*: a regressão do WINFUT põe até 83 min entre pico e repique (logo N > 83 min); o ataque novo põe ~200 s entre pico e movimento legítimo (logo N < 200 s). **Não existe número maior que 83 min e menor que 200 s.** Tempo mede o relógio da sala, não o do mercado.
+- *Decaimento com piso*: para barrar o WINFUT a referência não pode cair abaixo de **75%** do pico; para o motor voltar a falar precisa cair a **16,7%**. Impossível para qualquer velocidade — os dois cenários são o mesmo, escalado por 10.
+- *K maior*: o leilão gera 900 amostras altas; K teria de passar de 900, e a 900-ésima de ~200.000 é corpo da distribuição — o percentil sobre a massa, que é o defeito R3/R4 com outro nome.
+
+**Regressão idêntica à onda 8** (0 espúrios, `mag_rel` plana em 0,450, referência cravada em 9.620 — número a número). **Eixo novo**: com pico de 2×/5×/10×/50×, o tempo de volta é **constante em ~7.300 amostras**, dentro da faixa declarada — assinatura de mecanismo escala-invariante (decaimento daria tempo crescente com o pico). Controle: com a janela desligada, mudo o dia inteiro.
+
+**Ressalva honesta do builder**: na sonda exata do crítico (900 trades após o pico) o motor **continua mudo** — e isso está certo, 900 amostras não são evidência de mudança de patamar.
+
+**Mediu custo em bytecode, não em relógio**: com 6 frentes rodando, o relógio de parede variava 2× entre execuções idênticas. Ele acrescentou **opcodes por evento** — 496,78 → 513,43 (**+3,4%**), reprodutível ao centésimo — e decompôs: +10,65 o mecanismo, +3,00 o rastro, +3,00 a evidência. A primeira versão custava +9,4% e ele refez. Memória: 128 inteiros constantes.
+
+### A 6ª casa fechada — e o teste que a suíte inteira não tinha
+
+| | ANTES | DEPOIS |
+|---|---|---|
+| `Gravador`, retenção | 44,90 B/evento | **806 B, constante** |
+| pregão 6 h a 5.000 ev/s | **4,52 GiB** | **806 B** |
+| `Leitor`, pico para reler | 454,5 B/evento | 2,0 B/evento |
+| pregão 6 h a 5.000 ev/s | **45,7 GiB** | **~642 KB** |
+
+O pico do leitor faz **platô em 642.588 → 642.613 bytes ao dobrar de 160k para 320k eventos** — 25 bytes de diferença. Vazão do gravador: 39.505–42.235 ev/s, ~4× a barra. A correção não custou desempenho.
+
+**O teste central é recursivo, e isso é o ponto.** `test_gravador_retencao_nao_cresce_com_numero_de_eventos` mede o `len` e os bytes de toda coleção **alcançável** do estado de instância, porque o defeito era `dict → list`: o `len` de topo valia 1 com um milhão de timestamps dentro. Um teste ingênuo de `len` teria passado com o defeito presente. Complementado por dois eixos independentes no leitor: pico de `tracemalloc` e "quantas linhas foram lidas quando o 1º evento é publicado".
+
+**M01 e M13 são a prova pedida**: eram exatamente o G01 e o gêmeo que a R5 mostrou serem invisíveis à suíte inteira. Agora morrem. **17 de 17 mutações mortas, zero sobreviventes.**
+
+**Uma divergência deliberada da sugestão do crítico**: `heapq.merge` só está correto se cada arquivo já vier ordenado — mas o `Gravador` escreve na ordem de *publicação* e aceita evento atrasado (a própria suíte tem teste disso). O builder usou janela de reordenação de 64 eventos, que preserva a tolerância sem reintroduzir crescimento, e **desordem maior levanta exceção** em vez de publicar replay fora de ordem em silêncio. Efeito colateral: `parar()` voltou a responder — antes o processo ficava preso montando a lista.
+
+**Durabilidade do meta: feita, e a razão não era OOM.** Sem `meta.json` o `Catalogo` **nem indexa o dia** — um crash às 15h fazia o produto se comportar como se os CSVs no disco não existissem. Checkpoint a cada 5.000 eventos, com quatro decisões acopladas: fsync dos CSVs antes do meta; `n_linhas_hasheadas` por arquivo (o hash cobre um *prefixo*, senão dado intacto seria reprovado como corrompido após crash); escrita atômica; e hasher semeado do conteúdo em disco na retomada.
+
+Removeu uma guarda defensiva inalcançável do `catalogo.py` com a justificativa certa: **linha que nenhuma mutação mata é peso morto**.
 
 ## Onda 8 — correções da R4
 
@@ -583,11 +639,13 @@ O vídeo em que "o fluxo enganou todo mundo" é o teste de estresse mais valioso
 **Transcrições**: 51 de 54 vídeos agora em texto puro (converti os 35 `.vtt` pendentes com `pesquisa/vtt_para_txt.py`, que deduplica a rolagem da legenda automática do YouTube).
 
 ## Suíte de testes — estado real (verificado, não afirmado)
-`python -m pytest tests/ -q` → **94 passed**. Rodei antes de escrever este parágrafo.
+> **Congelado em 2026-08-21, onda 6** — este parágrafo dizia "94 passed" sob o selo *"verificado, não afirmado"* muito depois de o número ter mudado. Um builder da onda 9 apontou, e ele tinha razão: número velho sob selo de verificação é pior que número nenhum, porque convida a confiar. O número corrente vive no topo do arquivo, não aqui.
 
-## O que NÃO está pronto (honestidade > cobertura)
-1. **Interface gráfica**: zero linhas de UI. Todo o trabalho é motor/dados, headless. O benchmark de stack (PyQt6 vs Dear PyGui vs web) começou mas não fechou — os scripts em `design/bench/` são parciais e não têm veredito.
-2. **Núcleo sem crítica adversarial**: os 23 testes originais passam, mas ninguém tentou quebrar por mutação nem mediu throughput real contra o pico de 5-10k eventos/s do WDO. Isso é uma lacuna de confiança, não só de feature.
+`python -m pytest tests/ -q` → **94 passed** *(verdadeiro na onda 6; hoje são 657 — ver o cabeçalho)*.
+
+## O que NÃO estava pronto na onda 6 (histórico — vários itens já fechados)
+1. ~~**Interface gráfica**~~: continua valendo — zero linhas de UI. A decisão de stack fechou na onda 6 (`design/direcao_visual.md`, PySide6 + pyqtgraph com benchmark medido), mas **nenhum painel foi construído**.
+2. ~~**Núcleo sem crítica adversarial**~~ — **fechado**: cinco rodadas de auditoria, centenas de mutações aplicadas, seis casas do defeito de crescimento encontradas e corrigidas.
 3. **Metodologia ASG incompleta**: só 3 dos 54 vídeos foram extraídos e estruturados com citação direta. Termos como "delta", "agressão", "exaustão" (no vocabulário do autor) e a regra de "3 stops seguidos" vêm de vídeos ainda não lidos meticulosamente.
 4. **Execução real de ordem**: não existe NENHUMA integração de envio de ordem a corretora/plataforma. O motor de sinais emite `Sinal`, não ordens. Ligar isso a uma corretora é decisão de risco que não deve ser automatizada sem revisão explícita do usuário.
 5. **Sem UMDF direto**: decisão tomada de ficar em MT5 (grátis, sem identidade de corretora) — UMDF direto custaria ~R$190-290 mil/ano e não entrega identidade de corretora em WDO/WIN de qualquer forma.

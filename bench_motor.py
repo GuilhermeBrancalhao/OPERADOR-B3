@@ -20,6 +20,16 @@ Tres medicoes, nesta ordem:
                            sessao de N, e o tamanho das estruturas de estado no
                            fim. Media global esconde degradacao tardia; um
                            estado que cresce com o dia aparece aqui e so aqui.
+  5. A/B contra o GIT  -> (--ab) roda a versao da ARVORE e a versao COMMITADA
+                           do motor no MESMO processo, alternadas, no MESMO
+                           tape, e compara o MELHOR tempo de cada uma. E o
+                           unico estagio que responde "esta correcao custou
+                           caro?" sem depender do humor da maquina: aqui a
+                           variacao medida entre execucoes identicas passa de
+                           50% (150.759 e 89.746 ev/s no mesmo binario), o que
+                           torna qualquer comparacao entre DUAS execucoes
+                           separadas inutil. Alternar as duas e tomar o minimo
+                           tira o ruido, que e sempre aditivo.
 
 Uso:
     python bench_motor.py                    # completo
@@ -27,6 +37,8 @@ Uso:
     python bench_motor.py --escala-base 2000 --escala-dobras 5
     python bench_motor.py --perfil           # + cProfile do motor isolado
     python bench_motor.py --so-escala        # so a tabela de escalonamento
+    python bench_motor.py --so-ab            # so o A/B contra a versao commitada
+    python bench_motor.py --so-ab --ab-ref f6fe46f --ab-repeticoes 9
 """
 
 from __future__ import annotations
@@ -37,7 +49,10 @@ import gc
 import io
 import pstats
 import random
+import subprocess
+import sys
 import time
+import types
 
 from fluxopro.analytics.agressao import MedidorAgressao
 from fluxopro.analytics.brokers import RankingCorretoras
@@ -214,16 +229,18 @@ def bench_sessao_longa(base: int, dobras: int, amostra: int = 10_000) -> None:
     A media global do estagio 2 dilui um custo que so aparece no fim do dia.
     Aqui o relogio so conta na cauda: se alguma estrutura do motor crescer com
     a duracao da sessao, o us/ev da cauda sobe com N mesmo com o us/ev medio
-    plano. As tres colunas de tamanho sao as estruturas de estado do motor —
+    plano. As quatro colunas de tamanho sao as estruturas de estado do motor —
     todas tem de ser CONSTANTES no eixo N (a janela satura na taxa x janela;
     a cauda de magnitude e o topo-K, de tamanho fixo; o deque de maior qty e
-    monotonico dentro da janela).
+    monotonico dentro da janela; e a janela movel da referencia guarda R blocos
+    de no maximo K inteiros cada, teto R*K = 128 no default, independente de
+    quantas amostras o dia produziu).
     """
     print(f"\n{'=' * 92}")
     print(f"4. SESSAO LONGA — custo dos ULTIMOS {amostra:,} trades de uma sessao de N")
     print(f"{'=' * 92}")
     print(f"  {'N trades':>10}  {'cauda seg':>10}  {'cauda ev/s':>12}  {'cauda us/ev':>12}"
-          f"  {'janela':>10}  {'topo mag':>9}  {'mono qty':>9}")
+          f"  {'janela':>10}  {'topo mag':>9}  {'mono qty':>9}  {'blocos':>7}")
     for i in range(dobras):
         n = base * (2 ** i)
         trades = _tape(n)
@@ -239,12 +256,162 @@ def bench_sessao_longa(base: int, dobras: int, amostra: int = 10_000) -> None:
             motor.ao_trade(t)
         dt = time.perf_counter() - t0
         us = dt * 1e6 / amostra
+        blocos = sum(len(b) for b in motor._blocos) + len(motor._reservatorio)
         print(f"  {n:>10,}  {dt:10.3f}  {amostra / dt:12,.0f}  {us:12.2f}"
               f"  {len(motor._janela_dominancia):>10,}  {len(motor._reservatorio):>9,}"
-              f"  {len(motor._maiores_qty):>9,}   {_veredito(amostra / dt)}")
+              f"  {len(motor._maiores_qty):>9,}  {blocos:>7,}   {_veredito(amostra / dt)}")
         del motor, vp, trades
-    print("\n  PLANO no us/ev da cauda e CONSTANTE nas 3 colunas de tamanho = estado do")
+    print("\n  PLANO no us/ev da cauda e CONSTANTE nas 4 colunas de tamanho = estado do")
     print("  motor nao cresce com a duracao da sessao.")
+
+
+def _carregar_versao_do_git(ref: str):
+    """Le fluxopro/motor/sinais.py COMMITADO em `ref` e o executa como modulo a
+    parte, para as duas versoes coexistirem no mesmo processo.
+
+    Nao mexe na arvore de trabalho (nada de stash) — o repositorio pode ter
+    outras frentes editando outros arquivos ao mesmo tempo.
+    """
+    try:
+        r = subprocess.run(
+            ["git", "show", f"{ref}:fluxopro/motor/sinais.py"],
+            capture_output=True, text=True, encoding="utf-8",
+        )
+    except OSError as e:
+        print(f"  (A/B indisponivel: {e})")
+        return None
+    if r.returncode != 0:
+        print(f"  (A/B indisponivel: git show {ref} falhou)")
+        return None
+    nome = "sinais_git_" + "".join(c if c.isalnum() else "_" for c in ref)
+    mod = types.ModuleType(nome)
+    mod.__file__ = f"<git:{ref}:fluxopro/motor/sinais.py>"
+    # `@dataclass` resolve anotacoes por `sys.modules[cls.__module__]`: sem
+    # registrar o modulo antes do exec, o decorador estoura com NoneType.
+    sys.modules[nome] = mod
+    exec(compile(r.stdout, mod.__file__, "exec"), mod.__dict__)
+    return mod
+
+
+def _rodar_motor_de(mod, trades: list[Trade]) -> float:
+    """Uma passada cronometrada com `perf_counter`.
+
+    NAO use `process_time` aqui: no Windows a granularidade dele e 15,6 ms, e
+    uma passada de 25.000 trades leva ~200 ms — 13 tiques, ou seja ~7% de ruido
+    de quantizacao sozinho, mais do que a diferenca que este estagio existe
+    para medir. `perf_counter` tem resolucao de nanossegundos e paga o preco de
+    contar o tempo fora da CPU; o antidoto para isso e repetir e olhar o
+    MINIMO, que e o que `bench_ab` faz.
+    """
+    vp = VolumeProfile()
+    motor = mod.MotorSinais(SYMBOL, vp, mod.ConfigMotorSinais())
+    gc.collect()
+    t0 = time.perf_counter()
+    for t in trades:
+        vp.registrar_trade(t)
+        motor.ao_trade(t)
+    dt = time.perf_counter() - t0
+    del motor, vp
+    return dt
+
+
+def _bytecode_por_evento(mod, trades: list[Trade]) -> float:
+    """Opcodes executados DENTRO do modulo do motor, por trade.
+
+    Determinista: mesma entrada, mesmo numero. E o unico jeito de responder
+    "esta correcao reintroduziu custo por evento?" numa maquina com outras seis
+    frentes rodando — cronometro nenhum resolve isso (o A/B por relogio mediu
+    razoes pareadas de 0,78x a 1,55x para o MESMO par de versoes).
+
+    Conta so os frames cujo arquivo e o do motor: `VolumeProfile.registrar_trade`
+    e identica nas duas versoes e so diluiria a diferenca.
+    """
+    arquivo = mod.__file__
+    contagem = 0
+
+    def local(frame, evento, arg):
+        nonlocal contagem
+        if evento == "opcode":
+            contagem += 1
+        return local
+
+    def global_(frame, evento, arg):
+        if evento == "call" and frame.f_code.co_filename == arquivo:
+            frame.f_trace_opcodes = True
+            return local
+        return None
+
+    vp = VolumeProfile()
+    motor = mod.MotorSinais(SYMBOL, vp, mod.ConfigMotorSinais())
+    sys.settrace(global_)
+    try:
+        for t in trades:
+            vp.registrar_trade(t)
+            motor.ao_trade(t)
+    finally:
+        sys.settrace(None)
+    return contagem / len(trades)
+
+
+def bench_ab(n: int, repeticoes: int, ref: str) -> None:
+    """A/B da arvore contra a versao commitada, alternadas no mesmo processo."""
+    print(f"\n{'=' * 92}")
+    print(f"5. A/B — arvore x `{ref}`, {repeticoes} repeticoes ALTERNADAS, {n:,} trades cada")
+    print(f"{'=' * 92}")
+    base = _carregar_versao_do_git(ref)
+    if base is None:
+        return
+    import fluxopro.motor.sinais as arvore
+
+    trades = _tape(n)
+    tempos = {"commitada": [], "arvore": []}
+    # ordem ALTERNADA dentro do par: metade das repeticoes comeca pela arvore,
+    # para nenhuma das duas herdar sistematicamente o cache quente da outra.
+    for i in range(repeticoes):
+        if i % 2:
+            tempos["arvore"].append(_rodar_motor_de(arvore, trades))
+            tempos["commitada"].append(_rodar_motor_de(base, trades))
+        else:
+            tempos["commitada"].append(_rodar_motor_de(base, trades))
+            tempos["arvore"].append(_rodar_motor_de(arvore, trades))
+
+    print(f"  {'versao':>10}  {'melhor s':>9}  {'melhor ev/s':>12}  {'melhor us/ev':>12}"
+          f"  {'mediana ev/s':>13}  {'pior ev/s':>11}")
+    melhores = {}
+    for rotulo in ("commitada", "arvore"):
+        v = sorted(tempos[rotulo])
+        melhores[rotulo] = v[0]
+        mediana = v[len(v) // 2]
+        print(f"  {rotulo:>10}  {v[0]:9.3f}  {n / v[0]:12,.0f}  {v[0] * 1e6 / n:12.2f}"
+              f"  {n / mediana:13,.0f}  {n / v[-1]:11,.0f}")
+    razao = melhores["arvore"] / melhores["commitada"]
+    delta_us = (melhores["arvore"] - melhores["commitada"]) * 1e6 / n
+    # Razao PAREADA: cada repeticao roda as duas versoes coladas, entao boa
+    # parte do ruido da maquina cai na divisao. A mediana das razoes pareadas
+    # e o estimador que resiste a uma maquina ocupada; o melhor-a-melhor so
+    # vale quando a maquina esta quieta — e a distancia entre a coluna
+    # `melhor ev/s` e a coluna `pior ev/s` diz qual dos dois casos e este.
+    pares = sorted(a / c for c, a in zip(tempos["commitada"], tempos["arvore"]))
+    razao_par = pares[len(pares) // 2]
+    print()
+    print("  custo por evento da arvore sobre a commitada:")
+    print(f"    melhor x melhor .............. {razao:.3f}x ({delta_us:+.3f} us/ev)")
+    print(f"    mediana das razoes pareadas .. {razao_par:.3f}x "
+          f"(faixa {pares[0]:.3f}x a {pares[-1]:.3f}x)")
+    print("  Criterio: <= 1,05 nos DOIS = sem custo por evento reintroduzido.")
+    print(f"  {'OK' if max(razao, razao_par) <= 1.05 else 'REGRESSAO'}")
+
+    curto = trades[: min(len(trades), 20_000)]
+    ops_base = _bytecode_por_evento(base, curto)
+    ops_arv = _bytecode_por_evento(arvore, curto)
+    print()
+    print(f"  BYTECODE EXECUTADO no motor, por trade ({len(curto):,} trades, determinista):")
+    print(f"    commitada .................... {ops_base:9.2f} opcodes/ev")
+    print(f"    arvore ....................... {ops_arv:9.2f} opcodes/ev")
+    print(f"    razao ........................ {ops_arv / ops_base:9.3f}x "
+          f"({ops_arv - ops_base:+.2f} opcodes/ev)")
+    print("  Este e o numero que nao depende da maquina. Criterio: <= 1,05.")
+    print(f"  {'OK' if ops_arv / ops_base <= 1.05 else 'REGRESSAO'}")
 
 
 def perfil(n: int) -> None:
@@ -272,6 +439,11 @@ def main() -> None:
     ap.add_argument("--so-escala", action="store_true")
     ap.add_argument("--so-isolado", action="store_true")
     ap.add_argument("--so-sessao", action="store_true")
+    ap.add_argument("--ab", action="store_true", help="A/B contra a versao commitada")
+    ap.add_argument("--so-ab", action="store_true")
+    ap.add_argument("--ab-ref", default="HEAD")
+    ap.add_argument("--ab-n", type=int, default=200_000)
+    ap.add_argument("--ab-repeticoes", type=int, default=5)
     ap.add_argument("--sessao-base", type=int, default=50_000)
     ap.add_argument("--sessao-dobras", type=int, default=4)
     args = ap.parse_args()
@@ -286,10 +458,15 @@ def main() -> None:
     if args.so_sessao:
         bench_sessao_longa(args.sessao_base, args.sessao_dobras)
         return
+    if args.so_ab:
+        bench_ab(args.ab_n, args.ab_repeticoes, args.ab_ref)
+        return
     bench_isolado(args.n)
     bench_escalonamento(args.escala_base, args.escala_dobras)
     bench_pipeline(args.pipeline_n, args.taxa)
     bench_sessao_longa(args.sessao_base, args.sessao_dobras)
+    if args.ab:
+        bench_ab(args.ab_n, args.ab_repeticoes, args.ab_ref)
     if args.perfil:
         perfil(min(args.n, 50_000))
 

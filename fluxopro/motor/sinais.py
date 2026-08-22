@@ -69,14 +69,17 @@ Uma razão percentual é cega às duas coisas: 90% de dominância sobre 1925
 contratos e 90% sobre 915 dão o mesmo `0.900`. Por isso este motor aplica:
 
 - **(a) magnitude relativa** — `_magnitude` é o |delta| absoluto da janela de
-  dominância, e ele é comparado com o **pico robusto da própria sessão**: a
-  K-ésima maior magnitude já vista no dia, mantida num min-heap de tamanho
-  fixo K (`tamanho_topo_magnitude`). `magnitude_relativa = magnitude /
-  referencia`. Abaixo de `magnitude_relativa_minima` a condição 1 **não** é
-  dada por confirmada, por mais alto que esteja o percentual. Ver
-  `_magnitude_referencia` para por que a referência é a cauda da sessão e não
-  o percentil de uma amostra — foi o defeito que as auditorias R3 e R4
-  mediram (480 `CONFIRMADO` espúrios com 20.000 trades laterais no meio).
+  dominância, e ele é comparado com o **pico robusto do regime corrente**: a
+  K-ésima maior magnitude (`tamanho_topo_magnitude`) de uma **janela móvel
+  medida em amostras aceitas**, não no relógio e não no dia inteiro.
+  `magnitude_relativa = magnitude / referencia`. Abaixo de
+  `magnitude_relativa_minima` a condição 1 **não** é dada por confirmada, por
+  mais alto que esteja o percentual. Ver `_magnitude_referencia` para os DOIS
+  defeitos espelhados que essa escolha fecha — a referência que esquece o pico
+  (R3/R4: 480 `CONFIRMADO` espúrios com 20.000 laterais no meio) e a que nunca
+  esquece (R5 §A.3.2: mudo o resto do pregão depois de um movimento genuíno de
+  10×) — e para a aritmética de por que janela de tempo, decaimento com piso e
+  K maior não resolvem.
 - **(b) persistência / histerese** — o estágio publicado só sobe depois que a
   condição se sustenta por `persistencia_minima_trades` **e**
   `persistencia_minima_ns`, e só cai depois que a condição falha por
@@ -108,12 +111,14 @@ Tudo o que este motor mede por trade sai de contador incremental:
   `value_area()` DUAS vezes — por trade. A R2 mediu 969,6 µs/trade só nisso
   com 800 níveis, teto de 1.031 trades/s. Ver `_regiao` para a política de
   invalidação do cache.
-- A referência de magnitude é a K-ésima maior do dia num min-heap de tamanho
-  FIXO (`_reservatorio`) mais um deque monotônico do maior negócio da janela
-  (`_maiores_qty`): as duas estruturas são O(1) amortizado por trade e não
-  crescem com a duração da sessão. Ler a referência é `heap[0]` — O(1), sem
-  cache e sem ordenação, ao contrário do percentil que estava aqui antes.
-  Medido em `bench_motor.py` estágio 4, o eixo DURAÇÃO DE SESSÃO.
+- A referência de magnitude são R min-heaps top-K de tamanho FIXO (os blocos
+  da janela móvel, mais `_reservatorio` como cauda da sessão) e um deque
+  monotônico do maior negócio da janela (`_maiores_qty`): todas O(1) amortizado
+  por trade, memória R·K inteiros, nenhuma crescendo com a duração da sessão.
+  Ler a referência é `heap[0]` — O(1), sem cache e sem ordenação, ao contrário
+  do percentil que estava aqui antes; o único trabalho extra é uma varredura de
+  R blocos a cada B amostras aceitas (O(R/B) amortizado). Medido em
+  `bench_motor.py` estágio 4, o eixo DURAÇÃO DE SESSÃO.
 """
 
 from __future__ import annotations
@@ -202,6 +207,22 @@ class ConfigMotorSinais:
     é curta demais para uma cauda e a referência é o **máximo da sessão** (a
     leitura mais conservadora disponível: a razão nunca passa de 1,0). Manter
     igual a K é o natural — é exatamente quando o heap enche.
+    `amostras_por_bloco_referencia` (B) e `blocos_referencia` (R) — a janela
+    móvel da referência, medida em AMOSTRAS ACEITAS (não em trades e não no
+    relógio). A cauda é mantida em R blocos de B amostras cada; a referência é
+    a maior das K-ésimas maiores dos blocos vivos. A janela vale portanto
+    entre (R−1)·B e R·B amostras, e ela é **a fronteira declarada entre
+    episódio e regime**: um episódio que dure menos que (R−1)·B amostras
+    aceitas jamais tira o pico do dia da referência (é a proteção WINFUT das
+    R3/R4); um nível que se sustente por mais que R·B amostras aceitas passa a
+    ser o regime e redefine a referência (é a saída do "mudo o resto do dia"
+    da R5 §A.3.2). Ver `_magnitude_referencia` para por que o eixo é amostra
+    aceita e não relógio, e por que decaimento com piso não resolve.
+    Com `blocos_referencia <= 0` a janela vira INFINITA (nenhum bloco sai
+    dela) e a referência nunca desce — o comportamento da onda 8, mantido como
+    controle executável dos testes. Se `amostras_por_bloco_referencia` for
+    menor que K nenhum bloco chega a fechar, e a referência degrada para o
+    MÁXIMO da sessão: conservador e monótono, nunca permissivo.
 
     Condição 2 — região de interesse:
     `margem_regiao_ticks` — tolerância em ticks para considerar o preço
@@ -233,6 +254,8 @@ class ConfigMotorSinais:
     tamanho_topo_magnitude: int = 32
     fator_dominio_trade_unico: float = 2.0
     minimo_amostras_referencia: int = 32
+    amostras_por_bloco_referencia: int = 2_048
+    blocos_referencia: int = 4
 
     margem_regiao_ticks: int = 2
     cache_regiao_max_trades: int = 200
@@ -312,12 +335,23 @@ class MotorSinais:
         self._vol_sell = 0
         self._vol_unknown = 0
 
-        # --- condição 1 (b): cauda da magnitude da sessão ---
-        # min-heap com as K MAIORES magnitudes do dia (`_reservatorio[0]` é a
-        # K-ésima maior). O nome é histórico — ver `_amostrar_magnitude`.
+        # --- condição 1 (b): cauda da magnitude, em janela móvel ---
+        # A janela é medida em AMOSTRAS ACEITAS e vive em R blocos de B
+        # amostras, cada bloco com seu próprio min-heap top-K (`[0]` = K-ésima
+        # maior DAQUELE bloco). `_reservatorio` é o bloco CORRENTE — o nome é
+        # histórico, duas ondas atrás ele era um reservoir sampling do dia — e
+        # `_blocos` guarda os R−1 blocos já fechados que ainda estão na janela.
+        # `_ref_janela` é a maior das K-ésimas maiores dos blocos vivos,
+        # mantida incrementalmente; `_resta_bloco` conta para BAIXO até fechar
+        # o bloco corrente, para o caminho quente não ler config por amostra.
+        # Memória: R·K inteiros — constante, não cresce com a duração do dia.
         self._reservatorio: list[int] = []
+        self._blocos: deque[list[int]] = deque()
+        self._resta_bloco = max(1, self.config.amostras_por_bloco_referencia)
+        self._ref_janela = 0
         self._n_visto = 0
         self._max_sessao = 0
+        self._fonte_referencia = "nenhuma"
 
         # --- condição 2: cache de VAL/VAH ---
         self._cache_regiao: tuple[int, int] | None = None
@@ -429,72 +463,190 @@ class MotorSinais:
         self._n_visto += 1
         if magnitude > self._max_sessao:
             self._max_sessao = magnitude
-        topo = self._reservatorio
-        if len(topo) < capacidade:
-            heapq.heappush(topo, magnitude)
-        elif capacidade > 0 and magnitude > topo[0]:
-            heapq.heapreplace(topo, magnitude)
 
-    def _magnitude_referencia(self, timestamp_ns: int) -> float | None:
-        """Pico ROBUSTO da sessão — a K-ésima maior magnitude do dia.
+        # A janela só anda AQUI — depois do filtro de negócio único. É o que a
+        # torna cega a tape morno: 50.000 laterais miúdos não produzem UMA
+        # amostra, e por isso lateralização não mexe na referência (era por
+        # onde o defeito R3/R4 entrava). Ver `_magnitude_referencia`.
+        bloco = self._reservatorio
+        if len(bloco) < capacidade:
+            heapq.heappush(bloco, magnitude)
+            if len(bloco) == capacidade and bloco[0] > self._ref_janela:
+                self._ref_janela = bloco[0]
+        elif capacidade > 0 and magnitude > bloco[0]:
+            heapq.heapreplace(bloco, magnitude)
+            if bloco[0] > self._ref_janela:
+                self._ref_janela = bloco[0]
+        # conta para BAIXO e testa contra zero: um LOAD_ATTR e um COMPARE_OP a
+        # menos por amostra do que reler `cfg.amostras_por_bloco_referencia`.
+        # `_resta_bloco` e sempre reposto com um inteiro >= 1 (ver `_rolar_bloco`
+        # e `__init__`), entao ele passa exatamente por zero.
+        self._resta_bloco -= 1
+        if not self._resta_bloco:
+            self._rolar_bloco()
 
-        ## Por que não é mais o percentil de um reservoir (o defeito R3/R4)
+    def _rolar_bloco(self) -> None:
+        """Fecha o bloco corrente e aposenta o mais antigo que sair da janela.
 
-        A versão anterior normalizava pelo percentil 0,95 de uma amostra de
-        *reservoir sampling* uniforme do dia. Uniforme é justamente o
-        problema: o reservoir representa a distribuição **em massa**, e o que
-        a fonte pede é comparar com o **pico** ("o pico comprador nunca
-        igualou a magnitude dos picos vendedores"). Com um pico de manhã e
-        depois 20.000 trades laterais, a massa vira lateral, o p95 desce até o
-        regime morno e um repique de 45% do pico real do dia passa a parecer
-        grande. As auditorias R3 e R4 mediram isso duas vezes, idêntico: 480
-        `CONFIRMADO` de compra espúrios, `magnitude_relativa` 0,920. O pico do
-        dia não desceu — a estrutura é que esqueceu. Um percentil sobre
-        amostra uniforme depende da FRAÇÃO do dia que o pico ocupa, e essa
-        fração não é uma propriedade do mercado; é uma propriedade de quanto
-        tempo o pregão ficou parado depois.
+        Roda uma vez a cada B amostras aceitas — o único ponto do motor em que
+        a referência pode DESCER, e ele custa O(R) com R fixo (4 no default),
+        amortizado em O(R/B) por amostra. A recomputação é exata: `_ref_janela`
+        volta a ser o máximo das K-ésimas maiores dos blocos que sobraram.
+        (Só o caminho de controle `blocos_referencia <= 0` foge disso: lá nada
+        é aposentado, então a lista de blocos cresce com o dia e este laço
+        deixa de ser O(1) amortizado. É o preço de reproduzir a onda 8 sem
+        manter o código dela vivo, e não roda em nenhuma config de fábrica.)
 
-        ## Por que a K-ésima maior, e não as outras opções
-
-        - **`max` da sessão** resolve o esquecimento (é O(1) e não desce), mas
-          um único trade absurdo — leilão de abertura, fat finger, erro de
-          feed — trava a referência lá em cima e o motor não confirma mais
-          nada no dia. É um modo de falha pior que o original, porque é
-          silencioso. A K-ésima maior é o mesmo `max` "com anticorpo": para
-          levantar a referência é preciso que **K** eventos concordem.
-        - **Reservoir ponderado por magnitude** preserva a cauda em
-          probabilidade, não em garantia: continua sendo aleatório, continua
-          podendo perder o pico, e reintroduz RNG num motor que precisa ser
-          reproduzível no replay. Troca um esquecimento determinístico por um
-          esquecimento raro — pior de auditar, porque falha em 1 dia de 50.
-        - **Dois reservoirs (sessão + recente), usando o maior p95** é o mesmo
-          top-K com mais estado e mais custo: se o de sessão nunca esquece a
-          cauda, é ele quem manda sempre, e o recente é peso morto.
-        - **Histerese/decaimento lento na referência** trata o sintoma. Aqui
-          ela é desnecessária: a K-ésima maior é **monótona não-decrescente
-          dentro da sessão por construção** (o heap só troca por valores
-          maiores). Não existe "descer de uma vez" para amortecer. O único
-          degrau para baixo de todo o dia é a transição de `max` para
-          K-ésima maior quando o heap enche — que é a REMOÇÃO deliberada do
-          outlier de abertura, não um esquecimento.
-
-        Enquanto a sessão tem menos de `minimo_amostras_referencia` trades a
-        referência é `_max_sessao`: com amostra curta não há cauda para falar,
-        e o máximo é a leitura mais conservadora possível (a razão nunca passa
-        de 1,0). É por isso que um fat finger na abertura fecha o gate por
-        alguns trades e **não** pelo dia inteiro.
-
-        O parâmetro `timestamp_ns` sobrou da versão com cache por tempo e é
-        mantido na assinatura de propósito: a resposta agora é O(1) (leitura
-        de `heap[0]`), não precisa mais de cache nenhum, e nenhum chamador
-        precisou mudar.
+        Bloco com menos de K amostras não vota. É o análogo por bloco do
+        `minimo_amostras_referencia`: o `[0]` de um heap com 3 elementos é o
+        MENOR dos três, e deixar isso virar referência abriria o gate de par em
+        par a cada troca de bloco — a razão nasceria em 1,0 a cada B amostras.
+        Enquanto nenhum bloco votar, `_magnitude_referencia` devolve o MÁXIMO
+        da sessão, que é a leitura conservadora (a razão não passa de 1,0).
         """
         cfg = self.config
+        capacidade = cfg.tamanho_topo_magnitude
+        self._blocos.append(self._reservatorio)
+        # `blocos_referencia <= 0` = JANELA INFINITA: nenhum bloco sai, a
+        # referência nunca desce, e sobra exatamente o comportamento da onda 8
+        # (a cauda do dia inteiro). É o controle executável dos testes.
+        if cfg.blocos_referencia > 0:
+            while len(self._blocos) > cfg.blocos_referencia - 1:
+                self._blocos.popleft()
+        self._reservatorio = []
+        self._resta_bloco = max(1, cfg.amostras_por_bloco_referencia)
+        ref = 0
+        for antigo in self._blocos:
+            if len(antigo) == capacidade and antigo[0] > ref:
+                ref = antigo[0]
+        self._ref_janela = ref
+
+    def _magnitude_referencia(self, timestamp_ns: int) -> float | None:
+        """Pico ROBUSTO do REGIME corrente — K-ésima maior de uma janela móvel
+        medida em AMOSTRAS ACEITAS, não no relógio e não no dia inteiro.
+
+        ## Os dois defeitos, que são o mesmo erro espelhado
+
+        Ancorar a referência no DIA INTEIRO falha nas duas pontas, e as duas
+        pontas já foram medidas neste repositório:
+
+        - **Referência que ESQUECE o pico** (percentil 0,95 de um reservoir
+          uniforme do dia, até a onda 8). O reservoir representa a massa, não a
+          cauda: com um pico de manhã e 20.000 trades laterais depois, a massa
+          vira lateral, o p95 desce ao regime morno e um repique de 45% do pico
+          real passa. R3 e R4 mediram idêntico: 480 `CONFIRMADO` de compra
+          espúrios, `magnitude_relativa` 0,920.
+        - **Referência que NUNCA esquece o pico** (K-ésima maior da SESSÃO, a
+          correção da onda 8). Consertou o WINFUT — a R5 §A.3.2 confirmou a
+          varredura inteira com `mag_rel` plana em 0,450 — e abriu o espelho:
+          um movimento GENUÍNO de 10× (leilão de fechamento, rolagem de
+          vencimento, programa institucional) leva a referência de 9.620 para
+          96.200 e o motor fica **mudo pelo resto do pregão**, com `mag_rel`
+          0,100. Não é o fat finger, que `fator_dominio_trade_unico` filtra: um
+          movimento de 900 negócios não é explicado por nenhum deles sozinho.
+
+        O modo de falha novo é PIOR que o que substituiu: o antigo exigia 33
+        minutos de tape morno para aparecer, o novo exige UM evento grande — e
+        o WDO tem pelo menos um por dia. E ele é silencioso, porque ausência de
+        sinal não parece defeito.
+
+        ## Por que o eixo da janela é a AMOSTRA ACEITA
+
+        Este é o ponto que faz a correção funcionar sem reabrir o WINFUT.
+        Amostra só entra na cauda depois do filtro de negócio único
+        (`_amostrar_magnitude`), e tape lateral miúdo **não produz nenhuma**:
+        na varredura da R5, `_n_visto` fica cravado em 2.390 tanto com 1.000
+        quanto com 50.000 laterais. Os 49.000 laterais a mais são 82 minutos de
+        relógio e ZERO amostras. Logo:
+
+        - uma janela em amostras não anda durante lateralização — o defeito da
+          R3/R4 não pode voltar por essa porta, e não volta nem com 50.000 nem
+          com 5 milhões de laterais, porque o eixo simplesmente não se move;
+        - ela anda quando o mercado PRODUZ evidência de magnitude — que é
+          exatamente a condição sob a qual faz sentido dizer "o patamar mudou".
+
+        A janela vale entre (R−1)·B e R·B amostras aceitas
+        (`blocos_referencia` × `amostras_por_bloco_referencia`), e essa é a
+        **fronteira declarada entre evento e regime**: episódio mais curto que
+        (R−1)·B amostras é julgado contra o pico do dia; nível sustentado por
+        mais que R·B amostras vira o novo regime. É a única coisa que separa os
+        dois casos, porque eles são localmente indistinguíveis (ver abaixo).
+
+        ## Por que as alternativas perdem — a aritmética de cada uma
+
+        - **Janela móvel de TEMPO** (a sugestão literal do item 9 da R3): não
+          funciona, e dá para provar com os dois cenários lado a lado. A
+          regressão obrigatória varre até 50.000 laterais, que a 100 ms/trade
+          são ~83 minutos entre o pico e o repique: a janela precisaria ser
+          MAIOR que 83 min para o WINFUT continuar barrado. O ataque B da R5
+          põe ~200 s entre o pico gigante e o movimento legítimo: a janela
+          precisaria ser MENOR que isso para o motor voltar a falar. Um número
+          maior que 83 min e menor que 200 s não existe. E qualquer N acima da
+          duração do pregão é, por definição, o comportamento de hoje. O tempo
+          é o eixo errado porque mede o relógio da SALA; a amostra aceita mede
+          o do mercado.
+        - **Decaimento lento com piso**: aritmeticamente impossível. Para o
+          WINFUT continuar barrado a referência não pode cair abaixo de
+          4.329/0,60 = 7.215 — ou seja **75%** do pico do dia (9.620). Para o
+          motor voltar a falar depois do leilão ela precisa cair a
+          9.620/0,60 = 16.033 — ou seja **16,7%** do pico do dia (96.200).
+          Qualquer piso ancorado no pico da sessão teria de ser ao mesmo tempo
+          ≥ 0,75 e ≤ 0,167 desse pico. Não existe. E vale para decaimento de
+          QUALQUER velocidade: a velocidade muda quando se chega lá, não o fato
+          de o caminho passar pelo ponto que reabre o WINFUT. Decaimento é uma
+          função monótona do pico da sessão, e os dois cenários são o MESMO
+          cenário escalado por 10 — o que muda é só a razão (45% × 10%).
+        - **K maior** (para um evento sozinho não encher o topo): o leilão gera
+          900 amostras altas; para K−1 outliers não levantarem a referência, K
+          teria de passar de 900. Mas a K-ésima maior com K ≈ 1.000 num dia de
+          ~200.000 amostras não é cauda: é corpo da distribuição — é o
+          percentil sobre a massa, que é literalmente o defeito R3/R4 com outro
+          nome. K grande é a mesma doença. Aqui K continua 32, só que POR
+          BLOCO: dentro de cada bloco continuam sendo precisos K eventos
+          concordando para levantar a referência, e a robustez a outlier fica
+          intacta.
+        - **Dois reservoirs (sessão + recente), o maior deles**: o de sessão
+          nunca esquece, logo manda sempre, e o recente é peso morto. É o
+          estado de hoje com o dobro do custo.
+        - **Distinguir regime de evento pela FORMA do sinal** (contiguidade,
+          número de rajadas, duração do episódio): os dois cenários são um pico
+          contíguo seguido de um movimento menor, idênticos a menos da escala.
+          Nenhuma função só da sequência de magnitudes os separa — separar por
+          razão exigiria PASSAR 10% e BARRAR 45%, que é o gate ao contrário. O
+          único separador honesto é QUANTA evidência o mercado produziu depois,
+          e é isso que a janela em amostras conta.
+
+        ## O que muda e o que não muda
+
+        Dentro da janela a referência continua **monótona não-decrescente** (o
+        heap de cada bloco só troca por valores maiores). Ela só desce em
+        `_rolar_bloco`, e só depois de (R−1)·B amostras aceitas de evidência
+        abaixo do pico. Enquanto a sessão tem menos de
+        `minimo_amostras_referencia` amostras — ou enquanto nenhum bloco
+        fechou K amostras, o que inclui a config degenerada B < K — a
+        referência é `_max_sessao`, a leitura mais conservadora (a razão nunca
+        passa de 1,0). Toda degradação aponta para o lado RESTRITIVO; nenhuma
+        para o permissivo. Com `blocos_referencia <= 0` a janela vira INFINITA
+        (nenhum bloco é aposentado, a referência nunca desce) e sobra o
+        comportamento da onda 8 — é o controle executável dos testes.
+
+        Custo: O(1) por amostra (uma comparação no caso comum, O(log K) quando
+        entra no topo) mais O(R) a cada B amostras. Memória R·K inteiros,
+        constante na duração da sessão — medido em `bench_motor.py` estágio 4.
+
+        O parâmetro `timestamp_ns` sobrou da versão com cache por tempo e é
+        mantido na assinatura de propósito: a resposta é O(1) e a janela não é
+        temporal — nenhum chamador precisou mudar em nenhuma das duas ondas.
+        """
+        ref = self._ref_janela
+        if ref and self._n_visto >= self.config.minimo_amostras_referencia:
+            self._fonte_referencia = "janela"
+            return float(ref)
         if self._n_visto == 0:
+            self._fonte_referencia = "nenhuma"
             return None
-        if self._n_visto < cfg.minimo_amostras_referencia or not self._reservatorio:
-            return float(self._max_sessao)
-        return float(self._reservatorio[0])
+        self._fonte_referencia = "max_sessao"
+        return float(self._max_sessao)
 
     def iniciar_nova_sessao(self) -> None:
         """Virada de pregão — zera a referência de magnitude e o estágio.
@@ -506,8 +658,10 @@ class MotorSinais:
         este método ela deixa de precisar, e quem usa o motor solto passa a
         ter como virar o dia.
 
-        Zera o que é "do dia": cauda de magnitude, janelas de dominância e
-        micro, caches e a máquina de histerese. A config, não — ela é do
+        Zera o que é "do dia": cauda de magnitude (a da sessão E a janela
+        móvel em blocos — a R5 §A.3.2 ataque D checou a primeira; a segunda
+        entrou depois e é zerada aqui pelo mesmo motivo), janelas de dominância
+        e micro, caches e a máquina de histerese. A config, não — ela é do
         usuário, não da sessão.
         """
         self._janela_dominancia.clear()
@@ -516,6 +670,10 @@ class MotorSinais:
         self._reservatorio = []
         self._n_visto = 0
         self._max_sessao = 0
+        self._blocos.clear()
+        self._resta_bloco = max(1, self.config.amostras_por_bloco_referencia)
+        self._ref_janela = 0
+        self._fonte_referencia = "nenhuma"
         self._cache_regiao = None
         self._cache_regiao_ts_ns = None
         self._cache_regiao_n = 0
@@ -726,6 +884,7 @@ class MotorSinais:
             "faixa": faixa.value,
             "magnitude": magnitude,
             "magnitude_referencia": referencia,
+            "magnitude_referencia_fonte": self._fonte_referencia,
             "magnitude_pico_sessao": self._max_sessao,
             "magnitude_relativa": magnitude_relativa,
             "volume_nao_atribuido": self._vol_unknown,

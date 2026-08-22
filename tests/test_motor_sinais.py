@@ -525,6 +525,379 @@ def test_iniciar_nova_sessao_zera_a_referencia_de_magnitude():
 
 
 # ---------------------------------------------------------------------------
+# DEFEITO R5 §A.3.2 — o ESPELHO do WINFUT: a referência que nunca esquece
+#
+# A onda 8 trocou "a referência esquece o pico" (percentil sobre reservoir do
+# dia; 480 espúrios com 20.000 laterais) por "a referência nunca esquece o
+# pico" (K-ésima maior da sessão). Consertou o WINFUT — e abriu o espelho: um
+# movimento GENUÍNO de 10× (leilão de fechamento, rolagem, programa
+# institucional) leva a referência de 9.620 a 96.200, e o motor fica MUDO pelo
+# resto do pregão com `mag_rel` 0,100. Não é fat finger — 900 negócios não são
+# explicados por nenhum deles sozinho, e o `fator_dominio_trade_unico` não pega.
+#
+# A correção é a janela móvel em AMOSTRAS ACEITAS (`blocos_referencia` ×
+# `amostras_por_bloco_referencia`). O eixo é amostra e não relógio porque tape
+# lateral miúdo NÃO produz amostra nenhuma (`test_janela_nao_anda_com_tape
+# _lateral` mede isso): a janela é cega à lateralização, que é justamente onde
+# o defeito R3/R4 morava, e anda só quando o mercado produz evidência.
+#
+# Os testes abaixo cobrem os DOIS lados de propósito: o cenário novo, o
+# controle que prova que ele é real, a varredura do eixo novo, e a regressão
+# da varredura de laterais da onda 8 — que é obrigatória, porque qualquer
+# referência que desça pode reabrir o WINFUT.
+# ---------------------------------------------------------------------------
+
+MULTIPLICADORES_DO_PICO = (2, 5, 10, 50)
+
+
+def _tape_pico_genuino_no_fim(mult=10, n_normal=9_000, n_lateral_antes=2_000):
+    """Manhã lateral, um pico GENUÍNO de `mult`× o tape normal, e depois um
+    movimento comprador legítimo de tamanho NORMAL que dura o resto do dia.
+
+    É o ataque B da R5 §A.3.2 com uma diferença: a sonda do crítico parava o
+    movimento legítimo em 900 trades, e por isso só conseguia mostrar o motor
+    mudo. Aqui o pregão CONTINUA depois — que é o que permite medir a outra
+    metade da pergunta: quanto tempo o motor leva para voltar a falar.
+    """
+    trades = []
+    ts = 0
+    for i in range(n_lateral_antes):
+        lado = AgressorSide.BUY if i % 2 == 0 else AgressorSide.SELL
+        trades.append(_trade(ts, 5000, 2, lado))
+        ts += 100_000_000
+    for i in range(900):  # o pico genuíno: 90 s de fluxo vendedor mult× maior
+        lado = AgressorSide.BUY if i % 10 == 0 else AgressorSide.SELL
+        trades.append(_trade(ts, 5000, 20 * mult, lado))
+        ts += 100_000_000
+    for i in range(n_normal):  # o resto do pregão: movimento comprador NORMAL
+        lado = AgressorSide.SELL if i % 10 == 0 else AgressorSide.BUY
+        trades.append(_trade(ts, 5000, 20, lado))
+        ts += 100_000_000
+    return trades, n_lateral_antes + 900
+
+
+def _rodar_pico_genuino(cfg, mult=10, n_normal=9_000):
+    """Devolve (sinais do movimento legítimo, motor, amostras aceitas até a
+    primeira confirmação de compra ou None)."""
+    trades, corte = _tape_pico_genuino_no_fim(mult, n_normal)
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg)
+    for t in trades[:corte]:
+        motor.ao_trade(t)
+    amostras_no_pico = motor._n_visto
+    sinais = []
+    amostras_ate = None
+    for t in trades[corte:]:
+        s = motor.ao_trade(t)
+        sinais.append(s)
+        if (
+            amostras_ate is None
+            and s.estagio is EstagioSinal.CONFIRMADO
+            and s.direcao is Side.BUY
+        ):
+            amostras_ate = motor._n_visto - amostras_no_pico
+    return sinais, motor, amostras_ate
+
+
+def test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao():
+    """O cenário novo: R5 §A.3.2, ataque B.
+
+    Um movimento real de dez vezes o tape normal eleva a referência de 9.620
+    para 96.200. O motor CALA na hora — e isso está certo, porque enquanto o
+    leilão é o regime corrente o fluxo normal é mesmo pequeno perto dele. O
+    que não pode é ele calar para sempre: passada a janela, o pregão volta a
+    ser o regime, a referência volta a 9.620 e o movimento legítimo confirma.
+    """
+    cfg = _config_winfut()
+    sinais, motor, amostras_ate = _rodar_pico_genuino(cfg, mult=10)
+
+    # 1. logo depois do pico o motor está mudo, e é o gate de magnitude que cala
+    cedo = sinais[800]
+    assert cedo.evidencia["magnitude_relativa"] == pytest.approx(0.100, abs=0.005)
+    assert cedo.evidencia["bloqueio"] == "magnitude_relativa"
+    assert _compras_confirmadas(sinais[:900]) == []
+    # a dominância percentual é altíssima: não é ela que barra
+    assert cedo.evidencia["dominancia"] >= 0.85
+
+    # 2. mas ele VOLTA a falar — e dentro do prazo declarado pela janela
+    assert _compras_confirmadas(sinais) != []
+    assert amostras_ate is not None
+    janela_min = (cfg.blocos_referencia - 1) * cfg.amostras_por_bloco_referencia
+    janela_max = cfg.blocos_referencia * cfg.amostras_por_bloco_referencia
+    # o prazo é a JANELA, nos dois sentidos: o pico não pode ser esquecido
+    # antes de (R−1)·B amostras (senão é o WINFUT de volta) nem sobreviver
+    # depois de R·B (senão é o defeito da R5 de volta).
+    assert janela_min <= amostras_ate <= janela_max
+
+    # 3. e a referência voltou a ser a do regime normal, vinda da JANELA
+    fim = sinais[-1]
+    assert fim.evidencia["magnitude_referencia_fonte"] == "janela"
+    assert fim.evidencia["magnitude_referencia"] == pytest.approx(9_620, rel=0.05)
+    # o pico da SESSÃO continua registrado — quem mudou foi a referência, não
+    # a memória do dia
+    assert fim.evidencia["magnitude_pico_sessao"] >= 96_000
+
+
+def test_pico_genuino_controle_com_a_janela_desligada_o_motor_fica_mudo():
+    """Controle do cenário acima: com `blocos_referencia=0` a janela é
+    INFINITA — nenhum bloco sai dela, a referência nunca desce, e sobra
+    exatamente a referência da onda 8 (a cauda do dia inteiro). Com ela o motor
+    não emite NADA no resto do pregão.
+
+    É o que prova que o cenário é real e que é a janela — não outro efeito do
+    tape — que o resolve no teste anterior."""
+    cfg = _config_winfut(blocos_referencia=0)
+    sinais, motor, amostras_ate = _rodar_pico_genuino(cfg, mult=10)
+    assert _compras_confirmadas(sinais) == []
+    assert amostras_ate is None
+    fim = sinais[-1]
+    assert fim.evidencia["magnitude_relativa"] < 0.60
+    assert fim.evidencia["magnitude_referencia"] >= 96_000
+    # e nenhum bloco foi aposentado: a janela infinita guarda o dia inteiro
+    assert len(motor._blocos) >= 4
+
+
+@pytest.mark.parametrize("mult", MULTIPLICADORES_DO_PICO)
+def test_varredura_do_tamanho_do_pico_genuino(mult):
+    """O eixo novo: 2×, 5×, 10×, 50× o tape normal.
+
+    O tempo de volta é uma propriedade da JANELA, não do tamanho do pico — a
+    janela conta amostras, e o pico de 50× não gera mais amostras que o de 2×,
+    só amostras maiores. Por isso a contagem tem de ser a MESMA nos quatro
+    pontos: é a assinatura de um mecanismo escala-invariante, e é o que
+    diferencia esta correção de um decaimento (onde o tempo de volta cresceria
+    com o tamanho do pico, e para 50× seria o pregão inteiro)."""
+    cfg = _config_winfut()
+    sinais, _, amostras_ate = _rodar_pico_genuino(cfg, mult=mult)
+    janela_min = (cfg.blocos_referencia - 1) * cfg.amostras_por_bloco_referencia
+    janela_max = cfg.blocos_referencia * cfg.amostras_por_bloco_referencia
+    # calou (o pico é grande o bastante para o gate morder)
+    assert _compras_confirmadas(sinais[:900]) == []
+    # e voltou, dentro da mesma janela
+    assert amostras_ate is not None
+    assert janela_min <= amostras_ate <= janela_max
+
+
+def test_tempo_de_volta_nao_depende_do_tamanho_do_pico():
+    """O mesmo eixo, mas comparando os pontos entre si — a asserção que a
+    varredura parametrizada não consegue fazer."""
+    cfg = _config_winfut()
+    voltas = {
+        mult: _rodar_pico_genuino(cfg, mult=mult)[2]
+        for mult in MULTIPLICADORES_DO_PICO
+    }
+    assert None not in voltas.values()
+    assert max(voltas.values()) - min(voltas.values()) <= 10, voltas
+
+
+def test_regime_alto_que_se_repete_mantem_a_referencia_alta():
+    """A outra metade da distincao evento x regime — e a que impede a correcao
+    de virar "esquece tudo depois de N amostras".
+
+    Aqui o patamar alto NAO e um episodio: ele volta a cada ~2.000 amostras, o
+    que poe pelo menos uma rajada grande dentro de CADA bloco vivo. Enquanto
+    isso acontecer a referencia continua alta e o fluxo de tamanho normal
+    continua barrado — que e a leitura certa, porque nesse dia o normal e o
+    patamar alto. A janela esquece EVENTO, nao REGIME."""
+    cfg = _config_winfut()
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg)
+    ts = 0
+    for i in range(900):  # o pico de 10x que abre o regime
+        lado = AgressorSide.BUY if i % 10 == 0 else AgressorSide.SELL
+        motor.ao_trade(_trade(ts, 5000, 200, lado))
+        ts += 100_000_000
+
+    sinais = []
+    for ciclo in range(6):
+        for i in range(300):  # a rajada grande volta
+            lado = AgressorSide.BUY if i % 10 == 0 else AgressorSide.SELL
+            motor.ao_trade(_trade(ts, 5000, 200, lado))
+            ts += 100_000_000
+        for i in range(1_700):  # e o fluxo de tamanho normal no meio
+            lado = AgressorSide.SELL if i % 10 == 0 else AgressorSide.BUY
+            sinais.append(motor.ao_trade(_trade(ts, 5000, 20, lado)))
+            ts += 100_000_000
+
+    # mais de 10.000 trades depois do pico — bem além da janela (6.144 a 8.192
+    # amostras) — e o motor continua barrando o fluxo pequeno, porque o
+    # patamar alto nunca saiu da janela.
+    assert _compras_confirmadas(sinais) == []
+    assert sinais[-1].evidencia["bloqueio"] == "magnitude_relativa"
+    assert sinais[-1].evidencia["magnitude_referencia"] > 30_000
+    # e quem esta segurando e a JANELA, nao o `max` da sessao caindo de
+    # para-quedas: se `_rolar_bloco` largasse a referencia no chao a cada
+    # rolamento, a leitura viria de `max_sessao` e este teste passaria pelo
+    # motivo errado.
+    fontes = {s.evidencia["magnitude_referencia_fonte"] for s in sinais}
+    assert fontes == {"janela"}
+
+
+def test_janela_nao_anda_com_tape_lateral():
+    """O MECANISMO que faz a correção não reabrir o WINFUT.
+
+    A janela é medida em AMOSTRAS ACEITAS, e tape lateral miúdo não produz
+    amostra nenhuma: ele não passa do filtro de negócio único. Medido pela R5
+    §A.3.2: `_n_visto` cravado em 2.390 tanto com 1.000 quanto com 50.000
+    laterais. Aqui a asserção é direta — 49.000 trades a mais, 82 minutos a
+    mais de relógio, e NENHUM movimento na janela.
+
+    É por isso que uma janela de TEMPO não serviria: ela andaria 82 minutos
+    onde o mercado não deu um pingo de evidência nova."""
+    estados = {}
+    for n_lateral in (1_000, 50_000):
+        _, motor = _rodar_winfut(_config_winfut(), n_lateral=n_lateral)
+        estados[n_lateral] = (
+            motor._n_visto,
+            motor._ref_janela,
+            len(motor._blocos),
+            motor._resta_bloco,
+        )
+    assert estados[1_000] == estados[50_000]
+
+
+@pytest.mark.parametrize("n_lateral", N_LATERAIS_VARREDURA)
+def test_winfut_varredura_mag_rel_plana_e_referencia_cravada(n_lateral):
+    """Regressão da onda 8, na forma forte que a R5 §A.3.2 usou para confirmá-la.
+
+    Não basta "zero espúrios": o que prova que a razão voltou a ser propriedade
+    do MERCADO — e não do tempo que o pregão ficou parado — é `mag_rel` PLANA e
+    a referência CRAVADA no eixo inteiro. Se a janela móvel deixasse a
+    referência escorregar com a lateralização, este teste cairia antes de a
+    contagem de espúrios mudar."""
+    sinais, motor = _rodar_winfut(_config_winfut(), n_lateral=n_lateral)
+    fim = sinais[-1]
+    assert fim.evidencia["magnitude_relativa"] == pytest.approx(0.450, abs=0.001)
+    assert fim.evidencia["magnitude_referencia"] == 9_620.0
+    assert _compras_confirmadas(sinais) == []
+
+
+def test_janela_curta_demais_reabre_o_winfut():
+    """O controle INVERSO da janela: ela não é enfeite, e o tamanho dela é a
+    grandeza que segura o WINFUT.
+
+    Com blocos de 256 amostras (janela de 768 a 1.024) o repique — que tem
+    ~900 amostras — consegue empurrar o pico do dia para fora da janela
+    sozinho, e o modo de falha da R3/R4 volta. É o piso concreto do parâmetro:
+    a janela tem de ser maior que o episódio que ela precisa julgar. O default
+    (6.144 a 8.192) fica 6,8× acima do episódio do WINFUT."""
+    cfg = _config_winfut(amostras_por_bloco_referencia=256)
+    sinais, _ = _rodar_winfut(cfg, n_lateral=20_000)
+    assert _compras_confirmadas(sinais) != []
+
+
+def test_defaults_da_janela_de_referencia():
+    """Os defaults de fábrica — que são o que roda em produção — e as duas
+    relações de que a correção depende."""
+    cfg = ConfigMotorSinais()
+    # a janela precisa existir (com R<=0 a referência é a da onda 8: muda o dia)
+    assert cfg.blocos_referencia >= 2
+    # bloco menor que K nunca fecha, e a janela degradaria para a cauda da sessão
+    assert cfg.amostras_por_bloco_referencia >= cfg.tamanho_topo_magnitude
+    # e a janela mínima tem de ser bem maior que um episódio típico (as fases
+    # direcionais dos tapes de teste têm 900 trades)
+    assert (cfg.blocos_referencia - 1) * cfg.amostras_por_bloco_referencia >= 4_096
+
+
+def test_bloco_com_menos_de_k_amostras_nao_vota_na_referencia():
+    """Um bloco só entra na referência depois de ter K amostras.
+
+    O `[0]` de um heap com 3 elementos é o MENOR dos três: deixá-lo votar
+    abriria o gate de par em par a cada troca de bloco — um bloco recém-aberto
+    normalizaria a referência pela primeira magnitude que chegasse, e a razão
+    nasceria em 1,0. Config degenerada (bloco menor que K) tem de degradar para
+    o MÁXIMO da sessão, que é a leitura conservadora, e nunca para o `[0]` de
+    um heap pela metade."""
+    cfg = _config_winfut(amostras_por_bloco_referencia=8, tamanho_topo_magnitude=32)
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg)
+    ts = 0
+    sinais = []
+    # a asserção varre a passada INTEIRA de propósito: com blocos de 8 o bloco
+    # corrente esvazia a cada 8 amostras, e olhar só o último trade pode cair
+    # justo num bloco recém-zerado — um ponto cego que deixou passar a mutação
+    # "bloco pela metade vota" na primeira rodada.
+    for i in range(900):
+        lado = AgressorSide.BUY if i % 10 == 0 else AgressorSide.SELL
+        sinais.append(motor.ao_trade(_trade(ts, 5000, 20, lado)))
+        assert motor._ref_janela == 0
+        if motor._n_visto:
+            assert motor._magnitude_referencia(ts) == float(motor._max_sessao)
+        ts += 100_000_000
+    # blocos de 8 amostras nunca chegam a K=32 => nenhum vota, em trade nenhum
+    fontes = {s.evidencia["magnitude_referencia_fonte"] for s in sinais}
+    assert fontes <= {"nenhuma", "max_sessao"}
+    # e o gate degrada para o lado CONSERVADOR: a razão não passa de 1,0
+    assert max(s.evidencia["magnitude_relativa"] for s in sinais) <= 1.0
+
+
+def test_referencia_e_monotona_dentro_da_janela():
+    """Dentro da janela a referência não desce — é a propriedade que a onda 8
+    tinha para a sessão inteira, preservada no escopo que passou a valer.
+
+    O tape do WINFUT cabe inteiro numa janela (2.390 amostras contra 6.144),
+    então a sequência de referências dele tem de ser não-decrescente enquanto
+    a janela responde. O único degrau para baixo do dia continua sendo a
+    passada do `max` da sessão para a K-ésima maior quando o topo enche — a
+    REMOÇÃO deliberada do outlier de abertura, não um esquecimento — e por
+    isso o filtro é pela fonte da leitura."""
+    sinais, _ = _rodar_winfut(_config_winfut(), n_lateral=5_000)
+    refs = [
+        s.evidencia["magnitude_referencia"]
+        for s in sinais
+        if s.evidencia["magnitude_referencia_fonte"] == "janela"
+    ]
+    assert len(refs) > 1_000
+    assert all(b >= a for a, b in zip(refs, refs[1:]))
+    # e o degrau para baixo existe UMA vez só, na saída do `max` da sessão
+    fontes = [s.evidencia["magnitude_referencia_fonte"] for s in sinais]
+    assert fontes.count("max_sessao") > 0
+    assert fontes.index("janela") > fontes.index("max_sessao")
+
+
+def test_iniciar_nova_sessao_zera_a_janela_de_blocos():
+    """A R5 §A.3.2 ataque D verificou que `iniciar_nova_sessao` zerava a cauda
+    de sessão. A janela em blocos entrou depois e precisa do mesmo tratamento:
+    senão o dia 2 nasce com os blocos do dia 1 na janela."""
+    cfg = _config_winfut()
+    sinais, motor, _ = _rodar_pico_genuino(cfg, mult=10)
+    assert len(motor._blocos) > 0
+    assert motor._ref_janela > 0
+
+    motor.iniciar_nova_sessao()
+
+    assert list(motor._blocos) == []
+    assert motor._reservatorio == []
+    assert motor._resta_bloco == cfg.amostras_por_bloco_referencia
+    assert motor._ref_janela == 0
+    assert motor._magnitude_referencia(0) is None
+    assert motor._fonte_referencia == "nenhuma"
+
+
+def test_fonte_da_referencia_e_auditavel_na_evidencia():
+    """Qual das três leituras respondeu tem de aparecer na evidência — foi a
+    falta disso que fez as auditorias R3, R4 e R5 terem de instrumentar o motor
+    por fora para descobrir de onde vinha a referência."""
+    cfg = _config_winfut()
+    vp = VolumeProfile()
+    _encher_perfil(vp)
+    motor = MotorSinais("WDOV26", vp, cfg)
+    ts = 0
+    fontes = []
+    for i in range(3_000):
+        lado = AgressorSide.BUY if i % 10 == 0 else AgressorSide.SELL
+        s = motor.ao_trade(_trade(ts, 5000, 20, lado))
+        ts += 100_000_000
+        fontes.append(s.evidencia["magnitude_referencia_fonte"])
+    assert fontes[0] == "nenhuma"
+    assert "max_sessao" in fontes
+    assert fontes[-1] == "janela"
+
+
+# ---------------------------------------------------------------------------
 # DEFEITO 3 (b) — histerese
 # ---------------------------------------------------------------------------
 

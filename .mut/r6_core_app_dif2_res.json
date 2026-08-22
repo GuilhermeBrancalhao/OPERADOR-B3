@@ -1,0 +1,26 @@
+[
+  {
+    "id": "MB4",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: desassinar diz que removeu mesmo quando nao removeu nada",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [
+      "tests/test_barramento.py::test_desassinar_de_callback_que_nao_esta_inscrito_devolve_False"
+    ],
+    "passaram_no_baseline": 655,
+    "passaram_com_mutante": 654
+  },
+  {
+    "id": "MM2",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "MINHA: a gravacao de QUALQUER simbolo serve (o filtro por simbolo cai)",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [
+      "tests/test_app_montagem.py::test_replay_de_gravacao_sem_o_simbolo_diz_o_que_existe"
+    ],
+    "passaram_no_baseline": 655,
+    "passaram_com_mutante": 654
+  }
+]

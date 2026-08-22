@@ -1,0 +1,26 @@
+[
+  {
+    "id": "MO5",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: o aviso de passada vazia nunca dispara",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [
+      "tests/test_app_cli.py::test_passada_com_zero_eventos_avisa_em_vez_de_ficar_calada"
+    ],
+    "passaram_no_baseline": 657,
+    "passaram_com_mutante": 656
+  },
+  {
+    "id": "MO6",
+    "arquivo": "scripts/operar.py",
+    "desc": "MINHA: o aviso de passada vazia dispara SEMPRE (vira ruido)",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [
+      "tests/test_app_cli.py::test_passada_com_eventos_nao_avisa"
+    ],
+    "passaram_no_baseline": 657,
+    "passaram_com_mutante": 656
+  }
+]

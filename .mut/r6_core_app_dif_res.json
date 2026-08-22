@@ -1,0 +1,128 @@
+[
+  {
+    "id": "N03",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R2/N03 (viva 5 rodadas): buyer_broker e seller_broker trocados na leitura do CSV",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [
+      "tests/test_replay_determinismo.py::test_replay_le_todos_os_campos_do_trade_sem_permutar",
+      "tests/test_replay_determinismo.py::test_replay_nao_troca_comprador_por_vendedor"
+    ],
+    "passaram_no_baseline": 651,
+    "passaram_com_mutante": 650
+  },
+  {
+    "id": "P01",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "R5/P01 (=R2/N02): trade e delta trocam a prioridade no empate de timestamp",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [
+      "tests/test_motor_sinais.py::test_janela_nao_anda_com_tape_lateral",
+      "tests/test_motor_sinais.py::test_winfut_com_20000_laterais_nao_emite_confirmado_de_compra",
+      "tests/test_motor_sinais.py::test_winfut_varredura_de_laterais_zero_confirmado_espurio[20000]",
+      "tests/test_motor_sinais.py::test_winfut_varredura_de_laterais_zero_confirmado_espurio[50000]",
+      "tests/test_motor_sinais.py::test_winfut_varredura_mag_rel_plana_e_referencia_cravada[20000]",
+      "tests/test_motor_sinais.py::test_winfut_varredura_mag_rel_plana_e_referencia_cravada[50000]"
+    ],
+    "novas_falhas": [
+      "tests/test_replay_determinismo.py::test_replay_ordena_por_timestamp_trade_antes_de_delta_em_empate"
+    ],
+    "passaram_no_baseline": 646,
+    "passaram_com_mutante": 651
+  },
+  {
+    "id": "MP1",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: a guarda de monotonicidade nao roda (arquivo fora de ordem embaralha em silencio)",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [
+      "tests/test_replay_determinismo.py::test_arquivo_com_timestamp_regredindo_e_recusado_com_o_ponto_exato",
+      "tests/test_replay_determinismo.py::test_deltas_fora_de_ordem_tambem_sao_recusados"
+    ],
+    "passaram_no_baseline": 652,
+    "passaram_com_mutante": 650
+  },
+  {
+    "id": "MP2",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: a guarda recusa timestamp IGUAL (empate no mesmo ns e comum e valido)",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [
+      "tests/test_replay_determinismo.py::test_replay_e_deterministico",
+      "tests/test_replay_determinismo.py::test_replay_nao_troca_comprador_por_vendedor",
+      "tests/test_replay_determinismo.py::test_replay_ordena_por_timestamp_trade_antes_de_delta_em_empate",
+      "tests/test_replay_determinismo.py::test_replay_sem_deltas_publica_so_trades",
+      "tests/test_replay_determinismo.py::test_timestamp_repetido_nao_e_fora_de_ordem"
+    ],
+    "passaram_no_baseline": 652,
+    "passaram_com_mutante": 647
+  },
+  {
+    "id": "MP3",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: o replay volta a MATERIALIZAR o arquivo inteiro (a 7a casa reintroduzida)",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [
+      "tests/test_replay_determinismo.py::test_arquivo_com_timestamp_regredindo_e_recusado_com_o_ponto_exato",
+      "tests/test_replay_determinismo.py::test_memoria_do_replay_nao_cresce_com_o_tamanho_do_arquivo[5000-40000]"
+    ],
+    "passaram_no_baseline": 652,
+    "passaram_com_mutante": 650
+  },
+  {
+    "id": "MP4",
+    "arquivo": "fluxopro/dados/replay.py",
+    "desc": "MINHA: a guarda de monotonicidade so vale para o arquivo de trades",
+    "veredito": "MORTA",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [
+      "tests/test_replay_determinismo.py::test_deltas_fora_de_ordem_tambem_sao_recusados"
+    ],
+    "passaram_no_baseline": 652,
+    "passaram_com_mutante": 651
+  },
+  {
+    "id": "B01",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "R5/B01: publicar itera uma COPIA (a correcao de reentrancia aplicada por fora)",
+    "veredito": "SOBREVIVEU",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [],
+    "passaram_no_baseline": 652,
+    "passaram_com_mutante": 652
+  },
+  {
+    "id": "MB4",
+    "arquivo": "fluxopro/core/barramento.py",
+    "desc": "MINHA: desassinar diz que removeu mesmo quando nao removeu nada",
+    "veredito": "SOBREVIVEU",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [],
+    "passaram_no_baseline": 652,
+    "passaram_com_mutante": 652
+  },
+  {
+    "id": "MM2",
+    "arquivo": "fluxopro/app/montagem.py",
+    "desc": "MINHA: a gravacao de QUALQUER simbolo serve (o filtro por simbolo cai)",
+    "veredito": "SOBREVIVEU",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [],
+    "passaram_no_baseline": 652,
+    "passaram_com_mutante": 652
+  },
+  {
+    "id": "MC2",
+    "arquivo": "fluxopro/app/config.py",
+    "desc": "MINHA: perfil de sessao e micro empatam (a ordem vira acidente de construcao)",
+    "veredito": "SOBREVIVEU",
+    "falhas_alheias_no_baseline": [],
+    "novas_falhas": [],
+    "passaram_no_baseline": 652,
+    "passaram_com_mutante": 652
+  }
+]

@@ -2,9 +2,20 @@
 """CLI de operação: liga o pipeline INTEIRO e imprime o que está acontecendo.
 
     python scripts/operar.py --fonte simulador --simbolo WDOV26 --seed 42 --duracao 60
-    python scripts/operar.py --fonte replay --arquivo dados/ --simbolo WDOV26 --de 09:00 --ate 10:30 --velocidade 10
+    python scripts/operar.py --fonte replay --arquivo dados/ --simbolo WDOV26 --de 12:00 --ate 13:30 --velocidade 10
     python scripts/operar.py --fonte replay --arquivo dados/trades.csv --simbolo WDOV26
     python scripts/operar.py --fonte mt5 --simbolo WDOV26
+
+ATENCAO ao fuso de `--de/--ate`: o recorte e resolvido em **UTC** por
+`gravacao/catalogo.py`, e nada no caminho converte de horario de Brasilia.
+O exemplo acima pede 12:00-13:30 UTC = 09:00-10:30 BRT, que e a primeira hora
+e meia do WDO. Escrever `--de 09:00` pediria 06:00 BRT, uma janela inteira
+ANTES da abertura, e o replay devolveria zero eventos. (Este exemplo dizia
+`--de 09:00` ate a onda 9; `criticas/nucleo_r5.md` §B.2 mostrou que a
+documentacao e a convencao se contradiziam e nenhuma das duas podia notar.
+A convencao em si — UTC ou BRT — e decisao de `catalogo.py`, nao deste CLI;
+o que se corrigiu aqui foi o exemplo mentiroso e o silencio no fim da
+passada.)
 
 `--fonte simulador` roda **sem MT5 instalado e sem corretora conectada** — é
 como o dono vê o sistema funcionando hoje, sem depender de pregão ao vivo nem
@@ -108,8 +119,14 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     g_rep.add_argument("--arquivo-deltas", dest="arquivo_deltas", help="(CSV) deltas de book")
     g_rep.add_argument("--data", type=_data, help="(gravacao) dia; padrao = o mais recente")
-    g_rep.add_argument("--de", type=_hora, help="(gravacao) inicio do recorte, HH:MM")
-    g_rep.add_argument("--ate", type=_hora, help="(gravacao) fim do recorte, HH:MM")
+    g_rep.add_argument(
+        "--de", type=_hora,
+        help="(gravacao) inicio do recorte, HH:MM em UTC (WDO abre 12:00 UTC)",
+    )
+    g_rep.add_argument(
+        "--ate", type=_hora,
+        help="(gravacao) fim do recorte, HH:MM em UTC (WDO fecha 21:00 UTC)",
+    )
     g_rep.add_argument("--velocidade", type=_velocidade, default="max")
     g_rep.add_argument(
         "--sem-verificar-hash", action="store_true", dest="sem_verificar_hash",
@@ -217,7 +234,13 @@ def main(argv: list[str] | None = None) -> int:
 
     config = config_de_args(args)
     console = ConsoleFluxo(
-        config.price_grid(), mostrar_estagio_nenhum=args.mostrar_nenhum
+        config.price_grid(),
+        mostrar_estagio_nenhum=args.mostrar_nenhum,
+        # O CLI nunca lê `console.linhas` — o consumidor aqui é o stdout.
+        # Guardar era reter uma cópia do pregão inteiro em RAM para ninguém:
+        # 0,44 GB num pregão de 6 h a 5.000 ev/s (medido; ver "Critério de
+        # crescimento" em `fluxopro/app/saida.py`).
+        guardar_linhas=False,
     )
 
     try:
@@ -291,6 +314,20 @@ def main(argv: list[str] | None = None) -> int:
         montagem.sessao.finalizar()
         if gravador is not None:
             gravador.parar()
+        # Passada que não processou NADA é um resultado suspeito, não um
+        # resultado. `criticas/nucleo_r5.md` §B.2: o exemplo publicado no
+        # cabeçalho deste módulo (`--de 09:00 --ate 10:30`) devolve zero
+        # eventos, porque o recorte é interpretado em UTC e a janela cai
+        # inteira antes da abertura do WDO — "sem erro, sem aviso, sem log".
+        # O aviso não conserta a convenção (isso é decisão de `catalogo.py`),
+        # mas troca um silêncio por uma pergunta, que é o que faz o dono
+        # olhar em vez de concluir que o pregão foi parado.
+        if montagem.sessao.contadores.n_eventos_bus == 0 and codigo == 0:
+            _logger.warning(
+                "NENHUM evento foi processado. Se a fonte e replay com "
+                "--de/--ate, note que o recorte e interpretado em UTC: a "
+                "abertura do WDO (09:00 de Brasilia) e 12:00 UTC."
+            )
         console.resumo(montagem.sessao)
         _logger.info("encerrado em %.2fs de relogio de parede", time.perf_counter() - inicio)
         sys.stdout.flush()

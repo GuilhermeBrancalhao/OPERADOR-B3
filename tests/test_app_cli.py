@@ -96,6 +96,52 @@ def test_hora_invalida_e_recusada():
         operar._hora("nove horas")
 
 
+def test_opcoes_de_replay_chegam_TODAS_da_linha_de_comando():
+    """Cada campo de `OpcoesReplay` vem de uma flag distinta, e um repasse
+    trocado (ou trocado por um literal) some com a opção em silêncio — o
+    recorte pedido vira o dia inteiro, ou a verificação de integridade sai do
+    ar sem ninguém pedir. Os valores abaixo são todos diferentes entre si de
+    propósito: qualquer permutação quebra pelo menos uma asserção.
+    """
+    from datetime import date
+
+    args = operar.construir_parser().parse_args(
+        [
+            "--arquivo", "dados",
+            "--arquivo-deltas", "deltas.csv",
+            "--data", "2026-08-20",
+            "--de", "09:15",
+            "--ate", "10:45",
+            "--velocidade", "7",
+        ]
+    )
+    op = operar.opcoes_replay_de_args(args)
+    assert op.caminho == Path("dados")
+    assert op.caminho_deltas == Path("deltas.csv")
+    assert op.data == date(2026, 8, 20)
+    assert op.de == hora_do_dia(9, 15)
+    assert op.ate == hora_do_dia(10, 45)
+    assert op.velocidade == 7.0
+
+
+def test_verificacao_de_integridade_e_ligada_por_padrao_e_so_o_usuario_desliga():
+    """A verificação de hash é a única defesa contra gravação corrompida
+    (`criticas/nucleo_r4.md` Y07 a desligava em silêncio e a suíte ficava
+    verde). As duas direções: sem a flag ela está LIGADA; com a flag, e só
+    com ela, desligada."""
+    padrao = operar.opcoes_replay_de_args(
+        operar.construir_parser().parse_args(["--arquivo", "dados"])
+    )
+    assert padrao.verificar_hash is True
+
+    pedido = operar.opcoes_replay_de_args(
+        operar.construir_parser().parse_args(
+            ["--arquivo", "dados", "--sem-verificar-hash"]
+        )
+    )
+    assert pedido.verificar_hash is False
+
+
 def test_velocidade_aceita_max_e_numero_e_recusa_o_resto():
     import argparse
 
@@ -225,6 +271,64 @@ def test_replay_de_csv_pelo_cli(tmp_path: Path, capsys):
     )
     assert codigo == 0
     assert "eventos processados : 40" in capsys.readouterr().out
+
+
+def test_passada_com_zero_eventos_avisa_em_vez_de_ficar_calada(
+    tmp_path: Path, caplog, capsys
+):
+    """`criticas/nucleo_r5.md` §B.2: o recorte `--de/--ate` é lido em UTC, e o
+    exemplo publicado no cabeçalho do próprio script pedia a abertura do WDO
+    em horário de Brasília — uma janela inteira antes do tape. O replay
+    devolvia zero eventos "sem erro, sem aviso, sem log".
+
+    Este teste não decide o fuso (isso é de `gravacao/catalogo.py`). Ele
+    prende a outra metade: uma passada que não processou nada tem de DIZER
+    isso, e dizer o suficiente para o dono desconfiar do recorte.
+    """
+    import logging
+
+    caminho = tmp_path / "trades.csv"
+    with caminho.open("w", encoding="utf-8", newline="") as arq:
+        w = csv.writer(arq)
+        w.writerow(["timestamp_ns", "symbol", "price", "qty", "side_agressor", "trade_id"])
+        # tape de OUTRO símbolo: o pipeline não conta nada para WDOV26
+        for i in range(5):
+            w.writerow([i * 1_000_000_000, "XXXX", 10_000, 5, "BUY", f"t{i}"])
+
+    with caplog.at_level(logging.WARNING):
+        codigo = operar.main(
+            ["--fonte", "replay", "--arquivo", str(caminho),
+             "--simbolo", "WDOV26", "--status-a-cada", "0"]
+        )
+
+    assert codigo == 0
+    # o cenário de fato produziu uma passada vazia (senão o teste não testa nada)
+    assert "eventos processados : 0" in capsys.readouterr().out
+
+    avisos = "\n".join(r.getMessage() for r in caplog.records)
+    assert "NENHUM evento" in avisos
+    assert "UTC" in avisos, "o aviso nao aponta o suspeito mais provavel (o fuso)"
+
+
+def test_passada_com_eventos_nao_avisa(tmp_path: Path, caplog):
+    """CONTROLE: o aviso não pode virar ruído em toda execução normal."""
+    import logging
+
+    caminho = tmp_path / "trades.csv"
+    with caminho.open("w", encoding="utf-8", newline="") as arq:
+        w = csv.writer(arq)
+        w.writerow(["timestamp_ns", "symbol", "price", "qty", "side_agressor", "trade_id"])
+        for i in range(5):
+            w.writerow([i * 1_000_000_000, "WDOV26", 10_000, 5, "BUY", f"t{i}"])
+
+    with caplog.at_level(logging.WARNING):
+        codigo = operar.main(
+            ["--fonte", "replay", "--arquivo", str(caminho),
+             "--simbolo", "WDOV26", "--status-a-cada", "0"]
+        )
+
+    assert codigo == 0
+    assert "NENHUM evento" not in "\n".join(r.getMessage() for r in caplog.records)
 
 
 def test_duracao_encerra_sozinha(capsys):

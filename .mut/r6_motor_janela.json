@@ -1,0 +1,122 @@
+[
+  {
+    "id": "MJ01",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "desliga a janela: blocos_referencia=0 (janela INFINITA = referencia da onda 8)",
+    "de": "    blocos_referencia: int = 4\n",
+    "para": "    blocos_referencia: int = 0\n",
+    "espera_morrer_em": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao"
+  },
+  {
+    "id": "MJ02",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "janela = so o bloco corrente (blocos_referencia=1): a referencia desce sem limite",
+    "de": "    blocos_referencia: int = 4\n",
+    "para": "    blocos_referencia: int = 1\n",
+    "espera_morrer_em": "test_winfut_varredura_de_laterais_zero_confirmado_espurio"
+  },
+  {
+    "id": "MJ03",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "bloco curto demais (B=256): o proprio repique empurra o pico do dia para fora",
+    "de": "    amostras_por_bloco_referencia: int = 2_048\n",
+    "para": "    amostras_por_bloco_referencia: int = 256\n",
+    "espera_morrer_em": "test_winfut_varredura_de_laterais_zero_confirmado_espurio"
+  },
+  {
+    "id": "MJ04",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "bloco gigante (B=10.000.000): janela maior que o pregao = o comportamento de hoje",
+    "de": "    amostras_por_bloco_referencia: int = 2_048\n",
+    "para": "    amostras_por_bloco_referencia: int = 10_000_000\n",
+    "espera_morrer_em": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao"
+  },
+  {
+    "id": "MJ05",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "off-by-one na aposentadoria: a janela guarda um bloco a mais que o declarado",
+    "de": "            while len(self._blocos) > cfg.blocos_referencia - 1:",
+    "para": "            while len(self._blocos) > cfg.blocos_referencia:",
+    "espera_morrer_em": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao"
+  },
+  {
+    "id": "MJ06",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "a janela passa a andar com tape lateral (relogio do TAPE em vez da evidencia)",
+    "de": "        if magnitude <= cfg.fator_dominio_trade_unico * maior_negocio:\n            return\n",
+    "para": "        if magnitude <= cfg.fator_dominio_trade_unico * maior_negocio:\n            self._resta_bloco -= 1\n            if not self._resta_bloco:\n                self._rolar_bloco()\n            return\n",
+    "espera_morrer_em": "test_janela_nao_anda_com_tape_lateral"
+  },
+  {
+    "id": "MJ07",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "rolar_bloco nunca recomputa para baixo: a referencia so sobe (defeito da onda 8)",
+    "de": "        ref = 0\n        for antigo in self._blocos:",
+    "para": "        ref = self._ref_janela\n        for antigo in self._blocos:",
+    "espera_morrer_em": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao"
+  },
+  {
+    "id": "MJ08",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "bloco pela metade vota: a referencia vira o [0] de um heap incompleto",
+    "de": "        self._fonte_referencia = \"max_sessao\"\n        return float(self._max_sessao)",
+    "para": "        self._fonte_referencia = \"max_sessao\"\n        if self._reservatorio and self._n_visto >= self.config.minimo_amostras_referencia:\n            return float(self._reservatorio[0])\n        return float(self._max_sessao)",
+    "espera_morrer_em": "test_bloco_com_menos_de_k_amostras_nao_vota_na_referencia"
+  },
+  {
+    "id": "MJ09",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "iniciar_nova_sessao esquece os blocos: o dia 2 nasce com a janela do dia 1",
+    "de": "        self._blocos.clear()\n        self._resta_bloco = max(1, self.config.amostras_por_bloco_referencia)",
+    "para": "        self._resta_bloco = max(1, self.config.amostras_por_bloco_referencia)",
+    "espera_morrer_em": "test_iniciar_nova_sessao_zera_a_janela_de_blocos"
+  },
+  {
+    "id": "MJ10",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "o bloco nunca fecha (o gatilho do rolamento nunca dispara)",
+    "de": "        self._resta_bloco -= 1\n        if not self._resta_bloco:\n            self._rolar_bloco()",
+    "para": "        self._resta_bloco -= 1\n        if False:\n            self._rolar_bloco()",
+    "espera_morrer_em": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao"
+  },
+  {
+    "id": "MJ11",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "REGRESSAO onda 8: desliga o filtro de negocio unico (fat finger volta a entrar)",
+    "de": "    fator_dominio_trade_unico: float = 2.0\n",
+    "para": "    fator_dominio_trade_unico: float = 1.0\n",
+    "espera_morrer_em": "test_outlier_de_abertura_nao_trava_o_motor_pelo_resto_do_dia"
+  },
+  {
+    "id": "MJ12",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "REGRESSAO onda 8: referencia volta a ser o MAX da sessao (sem o anticorpo do top-K)",
+    "de": "        ref = self._ref_janela\n        if ref and self._n_visto >= self.config.minimo_amostras_referencia:\n            self._fonte_referencia = \"janela\"\n            return float(ref)",
+    "para": "        ref = self._max_sessao\n        if ref and self._n_visto >= self.config.minimo_amostras_referencia:\n            self._fonte_referencia = \"janela\"\n            return float(ref)",
+    "espera_morrer_em": "test_referencia_e_a_kesima_maior_e_nao_o_maximo_da_sessao"
+  },
+  {
+    "id": "MJ13",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "bloco pela metade vota JA no caminho quente (heap incompleto vira referencia)",
+    "de": "            if len(bloco) == capacidade and bloco[0] > self._ref_janela:",
+    "para": "            if bloco[0] > self._ref_janela:",
+    "espera_morrer_em": "test_bloco_com_menos_de_k_amostras_nao_vota_na_referencia"
+  },
+  {
+    "id": "MJ14",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "rolar_bloco larga a referencia no chao: nao recomputa nada dos blocos vivos",
+    "de": "        ref = 0\n        for antigo in self._blocos:\n            if len(antigo) == capacidade and antigo[0] > ref:\n                ref = antigo[0]\n        self._ref_janela = ref",
+    "para": "        self._ref_janela = 0",
+    "espera_morrer_em": "test_pico_genuino_de_10x_no_fim_do_dia_nao_cala_o_motor_pelo_resto_do_pregao"
+  },
+  {
+    "id": "MJ15",
+    "arquivo": "fluxopro/motor/sinais.py",
+    "desc": "so o bloco fechado MAIS RECENTE vota (a janela vira memoria de um bloco so)",
+    "de": "        for antigo in self._blocos:\n            if len(antigo) == capacidade and antigo[0] > ref:",
+    "para": "        for antigo in list(self._blocos)[-1:]:\n            if len(antigo) == capacidade and antigo[0] > ref:",
+    "espera_morrer_em": "test_winfut_varredura_de_laterais_zero_confirmado_espurio"
+  }
+]

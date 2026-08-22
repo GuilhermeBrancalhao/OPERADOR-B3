@@ -191,7 +191,7 @@ def _severar(barramento, tipo, nome_metodo: str) -> None:
     lista = barramento._assinantes[tipo]
     restantes = [a for a in lista if a.callback.__name__ != nome_metodo]
     assert len(restantes) < len(lista), f"nao havia assinatura {nome_metodo} em {tipo}"
-    barramento._assinantes[tipo] = restantes
+    barramento._assinantes[tipo] = tuple(restantes)
 
 
 @pytest.mark.parametrize(
@@ -455,25 +455,146 @@ def test_o_pipeline_continua_inteiro_depois_da_virada():
     assert tipos & TIPOS_DE_LIVRO, "a ponte MBP->MBO nao voltou depois da virada"
 
 
-def test_componentes_sem_reset_estao_declarados():
-    """O único que esta camada NÃO consegue resetar por troca de instância
-    está nomeado no código, não escondido — `Barramento` não tem
-    `desassinar`, então trocar a instância dobraria a contagem.
-    `RankingCorretoras` ganhou `iniciar_nova_sessao()` (fluxopro/analytics/
-    brokers.py) e saiu desta lista: não precisa mais de troca de instância,
-    é zerado igual aos demais do grupo (a)."""
-    assert SessaoFluxo.SEM_RESET_POSSIVEL == ("FootprintPorTimeframe",)
-    montagem = montar(config(n=10))
-    for nome in SessaoFluxo.SEM_RESET_POSSIVEL:
-        peca = {
-            "FootprintPorTimeframe": montagem.sessao.footprint,
-        }[nome]
-        assert peca is not None
-        assert not hasattr(peca, "iniciar_nova_sessao")
-        assert not hasattr(peca, "nova_sessao")
-    assert not hasattr(montagem.barramento, "desassinar")
+def test_nao_ha_mais_componente_sem_reset():
+    """A lista de exceções ficou VAZIA, e é isso que este teste guarda.
 
+    Ela existiu enquanto `Barramento` não tinha `desassinar`: sem ele, trocar
+    a instância de um componente que se inscreve no próprio construtor
+    deixava a antiga assinada e dobrava a contagem. `criticas/nucleo_r5.md`
+    §C.2 mediu a consequência — o `FootprintPorTimeframe`, último nome da
+    lista, era o ÚNICO dos doze campos observados que carregava o dia
+    anterior (199 candles fechados do dia 1 aparecendo no dia 2).
+
+    A constante permanece, vazia, como o lugar declarado para o próximo caso;
+    esta asserção faz de reintroduzir um deles um teste vermelho em vez de
+    uma sobra silenciosa de estado.
+    """
+    assert SessaoFluxo.SEM_RESET_POSSIVEL == ()
+    montagem = montar(config(n=10))
+    assert hasattr(montagem.barramento, "desassinar")
+    assert hasattr(montagem.barramento, "desassinar_objeto")
     assert hasattr(montagem.sessao.brokers, "iniciar_nova_sessao")
+
+
+def test_a_virada_de_sessao_zera_o_historico_de_footprint():
+    """O último campo que sobrevivia à virada, agora medido pelos dois lados.
+
+    O footprint fecha um candle por bucket de `timeframe_ns`. O teste força
+    vários buckets, confere que o histórico existe, vira a sessão e exige que
+    ele tenha ido embora — uma consulta de histórico no dia 2 não pode
+    devolver candles do dia 1 misturados e sem marca de sessão.
+    """
+    montagem = montar(config(n=1))
+    footprint = montagem.sessao.footprint
+    assert footprint is not None
+
+    timeframe = montagem.sessao.config.timeframe_ns
+    for i in range(5):
+        montagem.barramento.publicar(
+            Trade(
+                timestamp_ns=i * timeframe,
+                symbol=SYMBOL,
+                price=100 + i,
+                qty=1,
+                side_agressor=AgressorSide.BUY,
+                trade_id=f"fp{i}",
+                buyer_broker="XP",
+                seller_broker="BTG",
+            )
+        )
+    assert len(footprint.footprints_fechados) == 4
+    assert footprint.footprint_atual is not None
+
+    montagem.sessao.iniciar_nova_sessao(timestamp_ns=10**18)
+
+    novo = montagem.sessao.footprint
+    assert novo is not None
+    assert novo is not footprint, "a instancia de footprint nao foi trocada"
+    assert novo.footprints_fechados == ()
+    assert novo.footprint_atual is None
+
+
+def test_o_footprint_recriado_continua_ligado_e_conta_UMA_vez():
+    """As duas metades do perigo que a ausência de `desassinar` criava.
+
+    Sem desassinar a instância velha, ela continuaria recebendo e a contagem
+    dobraria; desassinando na ordem errada (depois de construir a nova),
+    quem sai do barramento é a NOVA e o componente fica mudo em silêncio —
+    que é o modo de falha mais caro, porque nada acusa. O teste exige um e
+    exatamente um consumidor vivo.
+    """
+    montagem = montar(config(n=1))
+    velho = montagem.sessao.footprint
+    assert velho is not None
+
+    montagem.sessao.iniciar_nova_sessao(timestamp_ns=0)
+    novo = montagem.sessao.footprint
+    assert novo is not None
+
+    montagem.barramento.publicar(
+        Trade(
+            timestamp_ns=1,
+            symbol=SYMBOL,
+            price=100,
+            qty=7,
+            side_agressor=AgressorSide.BUY,
+            trade_id="depois-da-virada",
+            buyer_broker="XP",
+            seller_broker="BTG",
+        )
+    )
+
+    # (a) o novo está ligado — nada de componente mudo
+    assert novo.footprint_atual is not None, "o footprint recriado ficou mudo"
+    # (b) o velho saiu — nada de contagem dobrada
+    assert velho.footprint_atual is None, "a instancia velha continuou assinada"
+    # (c) e há exatamente UM footprint assinado no barramento
+    assinantes_footprint = [
+        a
+        for a in montagem.barramento._assinantes[Trade]
+        if type(getattr(a.callback, "__self__", None)).__name__
+        == "FootprintPorTimeframe"
+    ]
+    assert len(assinantes_footprint) == 1
+
+
+def test_viradas_repetidas_nao_incham_o_barramento():
+    """Critério de crescimento na virada de sessão: 30 viradas não podem
+    deixar o barramento maior que 0 viradas. Um vazamento aqui é pior que
+    memória — cada instância órfã continuaria consumindo cada trade."""
+    montagem = montar(config(n=1))
+    antes = len(montagem.barramento._assinantes[Trade])
+
+    for i in range(30):
+        montagem.sessao.iniciar_nova_sessao(timestamp_ns=i * 10**15)
+
+    assert len(montagem.barramento._assinantes[Trade]) == antes
+
+
+def test_a_virada_preserva_a_ordem_ENTRE_faixas_de_prioridade():
+    """O que a recriação PODE mexer e o que não pode.
+
+    O footprint recriado volta ao fim da faixa 0 (atrás dos outros
+    analytics), e isso é inócuo — a faixa 0 é feita de acumuladores
+    mutuamente independentes. O que não pode mudar são as setas
+    load-bearing de `app/config.py`: perfil de sessão antes do motor,
+    microestrutura antes do motor, contagem por último.
+    """
+    montagem = montar(config(n=10))
+    montagem.sessao.iniciar_nova_sessao(timestamp_ns=10**18)
+
+    nomes = [
+        a.callback.__name__ for a in montagem.barramento._assinantes[Trade]
+    ]
+    posicao = {nome: i for i, nome in enumerate(nomes)}
+
+    assert posicao["_ao_trade_perfil_sessao"] < posicao["_ao_trade_motor"]
+    assert posicao["_ao_trade_micro"] < posicao["_ao_trade_motor"]
+    assert posicao["_ao_trade_detectores_tape"] < posicao["_ao_trade_motor"]
+    assert posicao["_contar_trade"] == len(nomes) - 1
+    # e o footprint continua na faixa 0, ou seja, antes de tudo que a
+    # montagem controla por prioridade explícita
+    assert posicao["_ao_trade"] < posicao["_ao_trade_perfil_sessao"]
 
 
 def test_iniciar_nova_sessao_zera_o_ranking_de_corretoras():

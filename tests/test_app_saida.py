@@ -114,6 +114,33 @@ def test_marca_de_confianca_separa_fato_de_hipotese():
     assert marca_confianca(0.999) == "[INF 1.00]"
 
 
+def test_a_marca_e_uma_funcao_TOTAL_e_nao_ha_terceiro_estado():
+    """A promessa central do produto é a distinção observado × inferido, e ela
+    tem de estar presa nas DUAS direções — `criticas/nucleo_r5.md` mediu S01
+    (`>` no lugar de `>=`, que faria 1.0 imprimir como inferida) e Y08
+    (tudo impresso como observada) como duas mutações distintas do mesmo
+    ponto. Uma varredura sobre a faixa inteira prende as duas de uma vez:
+    exatamente 1.0 é `[OBS]`, qualquer valor abaixo é `[INF ...]`, e não há
+    terceira marca nem faixa cinza.
+    """
+    from fluxopro.microestrutura.eventos_mbo import CONFIANCA_OBSERVADO
+
+    assert CONFIANCA_OBSERVADO == 1.0
+
+    abaixo = [0.0, 0.01, 0.3, 0.5, 0.55, 0.85, 0.9999, 1.0 - 1e-9]
+    for c in abaixo:
+        marca = marca_confianca(c)
+        assert marca.startswith("[INF "), f"confianca {c} nao foi marcada como inferida"
+        assert marca != "[OBS]"
+
+    assert marca_confianca(1.0) == "[OBS]"
+    # a fronteira é o valor, não o texto: o maior float estritamente menor que
+    # 1.0 continua do lado inferido
+    import math
+
+    assert marca_confianca(math.nextafter(1.0, 0.0)) != "[OBS]"
+
+
 # ---------------------------------------------------------------------------
 # A linha de sinal
 # ---------------------------------------------------------------------------
@@ -172,7 +199,22 @@ def test_a_linha_do_sinal_mostra_o_bloqueio_quando_ha_um():
 def test_estagio_nenhum_e_omitido_por_padrao():
     c = console()
     c.ao_sinal(Sinal(0, SYMBOL, EstagioSinal.NENHUM, None, {"faixa": "LATERAL"}))
-    assert c.linhas == []
+    assert list(c.linhas) == []
+
+
+def test_a_direcao_do_sinal_aparece_na_linha():
+    """`criticas/nucleo_r4.md` Y09: imprimir sempre `-` some com o lado do
+    sinal. Um alerta que não diz se é compra ou venda não é alerta."""
+    c = console()
+    c.ao_sinal(sinal_confirmado())
+    assert "COMPRA" in c.linhas[-1]
+
+    c_venda = console()
+    c_venda.ao_sinal(
+        Sinal(0, SYMBOL, EstagioSinal.CONFIRMADO, Side.SELL, {"faixa": "LATERAL"})
+    )
+    assert "VENDA" in c_venda.linhas[-1]
+    assert "COMPRA" not in c_venda.linhas[-1]
 
 
 # ---------------------------------------------------------------------------
@@ -283,3 +325,93 @@ def test_resumo_de_sessao_vazia_nao_quebra():
     sessao = montar(cfg).sessao
     c.resumo(sessao)
     assert "eventos processados : 0" in "\n".join(c.linhas)
+
+
+# ---------------------------------------------------------------------------
+# Critério de crescimento aplicado a `ConsoleFluxo.linhas`
+#
+# "Qual grandeza limita o `len` disto, e ela para de crescer enquanto o pregão
+# continua?" A resposta era "o número de detecções e sinais do pregão" — e o
+# comentário de `_escrever` justificava o custo dizendo que são "eventos raros
+# (dezenas por sessão)", quando `criticas/nucleo_r5.md` §C.3 mediu 11.054
+# detecções em 500.000 eventos. Medido: 184 B/linha, 0,44 GB num pregão de 6 h
+# a 5.000 ev/s — e o CLI nunca lia o buffer.
+# ---------------------------------------------------------------------------
+
+
+def test_o_buffer_de_linhas_e_um_anel_limitado():
+    c = console(guardar_linhas=True, limite_linhas=10)
+    for i in range(1_000):
+        c._escrever(f"linha {i}")
+
+    assert len(c.linhas) == 10, (
+        "o buffer de linhas voltou a crescer com o numero de eventos"
+    )
+    # e o que sobra são as ÚLTIMAS, que é o que um painel de log quer
+    assert c.linhas[-1] == "linha 999"
+    assert c.linhas[0] == "linha 990"
+
+
+def test_o_teto_do_anel_nao_depende_do_volume_do_pregao():
+    """A forma do critério, e não um número: dobrar o tape não pode dobrar o
+    `len`. Duas cargas dez vezes diferentes têm de dar o mesmo tamanho."""
+    pequeno = console(guardar_linhas=True, limite_linhas=50)
+    grande = console(guardar_linhas=True, limite_linhas=50)
+    for i in range(500):
+        pequeno._escrever(f"x{i}")
+    for i in range(5_000):
+        grande._escrever(f"x{i}")
+
+    assert len(pequeno.linhas) == len(grande.linhas) == 50
+
+
+def test_guardar_linhas_desligado_nao_retem_nada_e_ainda_imprime():
+    """O modo do CLI: o consumidor é o `stream`, não o buffer. Se
+    `guardar_linhas=False` ainda retivesse, a correção seria decorativa."""
+    fluxo = io.StringIO()
+    c = ConsoleFluxo(WDO_GRID, stream=fluxo, guardar_linhas=False)
+    for i in range(1_000):
+        c._escrever(f"linha {i}")
+
+    assert len(c.linhas) == 0
+    assert fluxo.getvalue().count("\n") == 1_000
+
+
+def test_o_CLI_nao_retem_o_pregao_inteiro_em_memoria():
+    """`scripts/operar.py` monta o `ConsoleFluxo` sem buffer — nada no CLI lê
+    `console.linhas`, e reter era meio giga por pregão para ninguém.
+
+    O teste roda o CLI de verdade (não inspeciona a linha de construção) e
+    confere que a sessão imprimiu bastante E não guardou nada.
+    """
+    import importlib.util
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parent.parent
+    spec = importlib.util.spec_from_file_location(
+        "operar_cli_saida", raiz / "scripts" / "operar.py"
+    )
+    assert spec is not None and spec.loader is not None
+    operar = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(operar)
+
+    consoles: list[ConsoleFluxo] = []
+    original = operar.ConsoleFluxo
+
+    def espiao(*args, **kwargs):
+        c = original(*args, **kwargs)
+        consoles.append(c)
+        return c
+
+    operar.ConsoleFluxo = espiao  # type: ignore[assignment]
+    try:
+        codigo = operar.main(
+            ["--simbolo", SYMBOL, "--n-eventos", "800", "--status-a-cada", "0"]
+        )
+    finally:
+        operar.ConsoleFluxo = original  # type: ignore[assignment]
+
+    assert codigo == 0
+    (console_do_cli,) = consoles
+    assert console_do_cli.guardar_linhas is False
+    assert len(console_do_cli.linhas) == 0

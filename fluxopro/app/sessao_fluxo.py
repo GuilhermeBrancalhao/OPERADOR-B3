@@ -509,15 +509,24 @@ class SessaoFluxo:
     # ciclo de vida
     # ------------------------------------------------------------------
     #: Componentes que assinam o `Barramento` sozinhos, não têm método de
-    #: reset e, por isso, NÃO podem ser zerados por esta camada. Trocar a
-    #: instância deixaria a antiga assinada (contagem dobrada) e a nova no fim
-    #: da faixa de prioridade — `Barramento` não tem `desassinar`.
+    #: reset e, por isso, NÃO podem ser zerados por esta camada.
     #:
-    #: `RankingCorretoras` ganhou `iniciar_nova_sessao()` (fecha o gap
-    #: apontado em `criticas/nucleo_r3.md`/`nucleo_r4.md`: `janela_ns=None`
-    #: de fábrica acumulava para sempre) e saiu desta lista — não precisa
-    #: mais trocar de instância, só zera o estado interno.
-    SEM_RESET_POSSIVEL = ("FootprintPorTimeframe",)
+    #: **Hoje: vazia.** Ela existiu enquanto `Barramento` não tinha
+    #: `desassinar` — sem ele, trocar a instância de um componente que se
+    #: inscreve no próprio construtor deixava a antiga assinada e dobrava a
+    #: contagem. `criticas/nucleo_r5.md` §C.2 mediu a consequência: dos doze
+    #: campos observados na virada de sessão, **um** carregava o dia
+    #: anterior — os 199 candles fechados do `FootprintPorTimeframe`, o
+    #: único nome que restava aqui. Com `Barramento.desassinar_objeto` o
+    #: componente entra no grupo (b) (recriado com a mesma config) e a lista
+    #: fica vazia.
+    #:
+    #: A constante permanece — vazia — de propósito: é o lugar declarado
+    #: para o próximo componente que assinar a si mesmo sem API de reset, e
+    #: `tests/test_app_pipeline.py::test_componentes_sem_reset_estao_declarados`
+    #: exige que ela continue vazia, de modo que reintroduzir um o torne um
+    #: teste vermelho em vez de uma sobra silenciosa de estado.
+    SEM_RESET_POSSIVEL: tuple[str, ...] = ()
 
     def iniciar_nova_sessao(self, timestamp_ns: int | None = None) -> None:
         """Virada de pregão — **explícita**, chamada por quem sabe o calendário.
@@ -561,13 +570,25 @@ class SessaoFluxo:
         de uma escora de ontem. O `InferidorMBP` vai junto porque a linha de
         base dele (`_qty_por_nivel`) é o book de ontem.
 
-        **(c) Não tem API de reset e assina sozinho** — `FootprintPorTimeframe`
-        (ver `SEM_RESET_POSSIVEL`). Continua carregando o dia anterior e esta
-        camada não tem como consertar: `Barramento` não expõe `desassinar`,
-        então trocar a instância dobraria a contagem. Fica declarado em vez de
-        silenciado. É o menos grave dos dois que já estiveram aqui — ele fecha
-        por bucket de tempo, então só o candle corrente vira, o histórico
-        fechado não mistura sessões.
+        **(c) Não tem API de reset e assina sozinho** — grupo VAZIO hoje
+        (`SEM_RESET_POSSIVEL == ()`). `FootprintPorTimeframe` morava aqui e
+        era, na medição de `criticas/nucleo_r5.md` §C.2, o **único** dos doze
+        campos observados que sobrevivia à virada: 199 candles fechados do
+        dia 1 apareciam numa consulta de histórico do dia 2, sem marca de
+        sessão. A causa era a ausência de `desassinar` no `Barramento`; ela
+        foi fechada, e o componente passou para o grupo (b) — desassinado por
+        `desassinar_objeto` e recriado com a mesma config.
+
+        Uma consequência a dizer em vez de esconder: o footprint recriado
+        volta ao barramento no **fim** da faixa de prioridade 0, atrás dos
+        outros analytics, em vez do slot que ocupava na montagem inicial.
+        Isso é inócuo porque a faixa 0 é composta de acumuladores mutuamente
+        independentes — nenhum analytics lê outro nem lê `EstadoMercado` (ver
+        `app/config.py`, "a terceira seta"). O que **não** pode mudar é a
+        posição relativa às faixas seguintes, e não muda: 0 continua antes de
+        `PRIORIDADE_PERFIL_SESSAO`, `PRIORIDADE_MICRO`, `PRIORIDADE_MOTOR` e
+        `PRIORIDADE_SAIDA`. `tests/test_app_pipeline.py` prende as duas
+        metades dessa frase.
 
         `RankingCorretoras` tinha o mesmo problema (`janela_ns=None` de
         fábrica acumulava para sempre, e era o que de fato misturava
@@ -591,6 +612,20 @@ class SessaoFluxo:
             self.brokers.iniciar_nova_sessao()
 
         # (b) quem esta classe chama — recriado com a mesma config
+        if self.footprint is not None:
+            # Desassinar ANTES de construir o substituto: o construtor de
+            # `FootprintPorTimeframe` se inscreve sozinho, e inverter a ordem
+            # deixaria as duas instâncias assinadas por um instante — o que a
+            # antiga lista `SEM_RESET_POSSIVEL` chamava de "dobrar a
+            # contagem". `assert` porque 0 removidas significaria que o
+            # componente nunca esteve ligado neste barramento, e seguir daí
+            # produziria um footprint mudo em silêncio.
+            removidas = self.barramento.desassinar_objeto(self.footprint)
+            assert removidas > 0, "footprint nao estava assinado no barramento"
+            self.footprint = FootprintPorTimeframe(
+                self.barramento, symbol, cfg.timeframe_ns, cfg.footprint
+            )
+
         self.perfil_sessao = VolumeProfile(config=cfg.volume_profile)
         if self.motor is not None:
             self.motor = MotorSinais(symbol, self.perfil_sessao, cfg.motor)

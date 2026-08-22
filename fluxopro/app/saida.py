@@ -24,11 +24,38 @@ decisão.
 real); `[INF 0.85]` quando é hipótese. A distinção é a virtude declarada do
 projeto e um `[INF]` que só aparecesse num log de debug não seria distinção
 nenhuma. Não há terceira marca: ou o número é 1.0, ou não é.
+
+## Critério de crescimento aplicado a `ConsoleFluxo.linhas`
+
+*"Qual grandeza limita o `len` disto, e ela para de crescer enquanto o pregão
+continua?"* — o critério do docstring de `_registrar_preco`
+(`microestrutura/inferencia_mbp.py`).
+
+`self.linhas` era uma `list` sem teto, alimentada uma vez por sinal e uma vez
+por detecção. A resposta ao critério era **"o número de detecções e sinais do
+pregão"**, e ela não para de crescer. O comentário de `_escrever` dizia
+"eventos raros (dezenas por sessão, não por segundo)" e isso **está errado
+como ordem de grandeza**: `criticas/nucleo_r5.md` §C.3 mediu 11.054 detecções
+em 500.000 eventos — 2,2% dos eventos, não dezenas por sessão. Medido
+(`.mut/sonda_r6b_crescimento.py`, `tracemalloc`):
+
+    184 B/linha  ->  pregao 6 h a  5.000 ev/s = 2,39 M linhas = 0,44 GB
+                     pregao 6 h a 10.000 ev/s = 4,78 M linhas = 0,88 GB
+
+E `scripts/operar.py` **nunca lia `linhas`**: era meio giga de retenção para
+ninguém. Duas correções, porque o buraco tinha duas metades:
+
+* aqui, `linhas` virou um **anel limitado** (`deque(maxlen=...)`): a resposta
+  ao critério passa a ser a constante `LIMITE_LINHAS_GUARDADAS`. O buffer
+  responde "as últimas N linhas", que é o que um painel de log de UI quer —
+  ninguém rola até a linha 2.000.000;
+* no CLI, `guardar_linhas=False`, porque lá o consumidor real é o `stream`.
 """
 
 from __future__ import annotations
 
 import sys
+from collections import deque
 from typing import IO, Iterable, Mapping
 
 from fluxopro.app.sessao_fluxo import DeteccaoAnotada, SessaoFluxo
@@ -37,6 +64,13 @@ from fluxopro.microestrutura.eventos_mbo import CONFIANCA_OBSERVADO
 from fluxopro.motor.sinais import EstagioSinal, Sinal
 
 NS_POR_SEGUNDO = 1_000_000_000
+
+LIMITE_LINHAS_GUARDADAS = 5_000
+"""Teto do anel de `ConsoleFluxo.linhas` (ver "Critério de crescimento").
+
+Não é calibração de produto — é a grandeza que substitui "número de eventos"
+como limite do `len`. 5.000 linhas ≈ 0,9 MB e cobre com folga qualquer teste e
+qualquer painel de log que se role à mão."""
 
 # Campos da evidência mostrados em linha, por tipo de evento, na ordem de
 # leitura da decisão. Campo ausente é simplesmente pulado (nem todo estágio
@@ -136,9 +170,13 @@ def marca_confianca(confianca: float) -> str:
 class ConsoleFluxo:
     """Consumidor de sinais e detecções que imprime linhas auditáveis.
 
-    Guarda as linhas em `linhas` além de escrever no `stream` — assim o teste
-    verifica o formato sem capturar stdout, e uma UI futura pode reusar o
-    mesmo formatador para o painel de log.
+    Guarda as últimas `limite_linhas` linhas em `linhas` além de escrever no
+    `stream` — assim o teste verifica o formato sem capturar stdout, e uma UI
+    futura pode reusar o mesmo formatador para o painel de log.
+
+    `linhas` é um anel (`deque` com `maxlen`), não uma lista sem fim: ver
+    "Critério de crescimento" na docstring do módulo. Quem não vai ler o
+    buffer — o CLI é o caso — passa `guardar_linhas=False` e não paga nada.
     """
 
     def __init__(
@@ -147,12 +185,13 @@ class ConsoleFluxo:
         stream: IO[str] | None = None,
         guardar_linhas: bool = True,
         mostrar_estagio_nenhum: bool = False,
+        limite_linhas: int = LIMITE_LINHAS_GUARDADAS,
     ) -> None:
         self.grid = grid
         self.stream = stream if stream is not None else sys.stdout
         self.guardar_linhas = guardar_linhas
         self.mostrar_estagio_nenhum = mostrar_estagio_nenhum
-        self.linhas: list[str] = []
+        self.linhas: deque[str] = deque(maxlen=limite_linhas)
 
     # ------------------------------------------------------------------
     def ao_sinal(self, sinal: Sinal) -> None:
@@ -294,7 +333,13 @@ class ConsoleFluxo:
         # `flush=True` não é zelo: com stdout redirecionado (`| tee`, `> log`)
         # o Python usa buffer de bloco, e sem flush TODAS as linhas apareciam
         # só no fim da execução — num programa que acompanha o pregão ao vivo
-        # isso é a diferença entre um monitor e um relatório. Sinal e detecção
-        # são eventos raros (dezenas por sessão, não por segundo), então o
-        # custo do flush não entra no caminho quente.
+        # isso é a diferença entre um monitor e um relatório.
+        #
+        # Correção de uma frase que estava aqui e era falsa: "sinal e detecção
+        # são eventos raros (dezenas por sessão, não por segundo)". A medição
+        # de `criticas/nucleo_r5.md` §C.3 dá 11.054 detecções em 500.000
+        # eventos — milhares por sessão, ~110/s a 5.000 ev/s. O flush continua
+        # justificável nessa taxa (não é caminho por tick), mas a frase era o
+        # apoio de "guardar toda linha em memória não tem custo", e não era.
+        # Ver "Critério de crescimento" na docstring do módulo.
         print(linha, file=self.stream, flush=True)

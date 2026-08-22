@@ -23,6 +23,39 @@ Política de flush/fsync (decisão e porquê):
     barato (poucas linhas por pregão) e o mais importante de não perder,
     porque é ele que prova que um buraco existe.
 
+Retenção em memória (a 6a CASA do defeito de crescimento — auditoria R5):
+  Até a R5 este módulo guardava `self._horarios[(symbol, dia)] -> list[int]`,
+  um `int` de nanossegundos POR EVENTO, do primeiro ao último do pregão,
+  para no fim produzir DOIS ESCALARES (`min` e `max`). Medido no objeto de
+  produção: 44,9 B/evento -> **4,85 GB** num pregão de 6 h a 5.000 ev/s
+  (9,70 GB a 10.000 ev/s). Não havia versão do requisito em que isso fosse
+  necessário: `min`/`max` de um fluxo são O(1) de memória.
+
+  O agravante era de DURABILIDADE, não só de RAM: o `meta.json` — que é onde
+  moram os hashes de integridade e sem o qual o `Catalogo` sequer INDEXA o
+  dia — só era escrito em `_fechar_dia`, e `_fechar_dia` só tem dois
+  chamadores (virada de dia UTC e `parar()`), nenhum periódico. Um OOM às
+  15h perdia a gravação do dia inteiro, e não existe segunda cópia
+  (ver o parágrafo acima sobre fonte externa).
+
+  Hoje:
+  - `_hora_inicio_ns` / `_hora_fim_ns`: dois `int` por (símbolo, dia) aberto,
+    atualizados incrementalmente. O `len` de toda coleção de instância deste
+    módulo é limitado por SÍMBOLOS × DIAS ABERTOS — uma grandeza que para de
+    crescer enquanto o pregão continua. Nenhuma é limitada por número de
+    eventos.
+  - `meta_a_cada` (padrão 5.000 eventos): checkpoint periódico do
+    `meta.json`, com fsync dos CSVs ANTES da escrita e troca atômica do
+    `meta.json` (tmp + `os.replace`). Ver `_checkpoint_meta`.
+
+  O critério, que vale para qualquer estrutura nova aqui dentro (é o mesmo
+  do docstring de `_registrar_preco` em `microestrutura/inferencia_mbp.py`):
+  **"qual grandeza limita o `len` disto, e ela para de crescer enquanto o
+  pregão continua?"**. Se a resposta contiver "número de eventos", é a mesma
+  casa. `tests/test_gravacao_retencao.py` transforma esse critério em
+  asserção — a auditoria R5 provou (mutação G01) que, sem ele, a suíte
+  inteira é INCAPAZ de distinguir a versão O(eventos) da versão O(1).
+
 Formato: ver `fluxopro/gravacao/formato.py` para a decisão CSV vs Parquet
 (CSV ao vivo, comprimido para `.csv.gz` na rotação) e o schema versionado.
 """
@@ -85,10 +118,12 @@ class Gravador:
         barramento: Barramento,
         saida_dir: str | Path,
         fsync_a_cada: int = 200,
+        meta_a_cada: int = 5_000,
     ) -> None:
         self._barramento = barramento
         self._saida = Path(saida_dir)
         self._fsync_a_cada = fsync_a_cada
+        self._meta_a_cada = meta_a_cada
         self._lock = threading.Lock()
 
         # (symbol, data) -> dia atualmente aberto para escrita
@@ -96,7 +131,11 @@ class Gravador:
         # (symbol, data, tipo) -> _ArquivoAberto
         self._arquivos: dict[tuple[str, date, type], _ArquivoAberto] = {}
         self._contagens: dict[tuple[str, date], dict[str, int]] = {}
-        self._horarios: dict[tuple[str, date], list[int]] = {}
+        # DOIS escalares por (symbol, dia) — nunca a lista de timestamps.
+        # Ver "Retenção em memória" no docstring do módulo.
+        self._hora_inicio_ns: dict[tuple[str, date], int] = {}
+        self._hora_fim_ns: dict[tuple[str, date], int] = {}
+        self._desde_meta: dict[tuple[str, date], int] = {}
 
     # ------------------------------------------------------------------
     def iniciar(self) -> None:
@@ -144,25 +183,128 @@ class Gravador:
             os.fsync(arq.handle.fileno())
             arq.n_desde_fsync = 0
 
-        contagens = self._contagens.setdefault((symbol, dia), {})
+        chave_dia = (symbol, dia)
+        contagens = self._contagens.setdefault(chave_dia, {})
         contagens[tipo.__name__] = contagens.get(tipo.__name__, 0) + 1
-        self._horarios.setdefault((symbol, dia), []).append(evento.timestamp_ns)
+
+        # min/max INCREMENTAIS. Dois `int` por dia aberto, não um por evento.
+        ts = evento.timestamp_ns
+        inicio = self._hora_inicio_ns.get(chave_dia)
+        if inicio is None or ts < inicio:
+            self._hora_inicio_ns[chave_dia] = ts
+        fim = self._hora_fim_ns.get(chave_dia)
+        if fim is None or ts > fim:
+            self._hora_fim_ns[chave_dia] = ts
+
+        self._desde_meta[chave_dia] = self._desde_meta.get(chave_dia, 0) + 1
+        if self._meta_a_cada > 0 and self._desde_meta[chave_dia] >= self._meta_a_cada:
+            self._checkpoint_meta(symbol, dia)
 
     def _abrir_arquivo(self, symbol: str, dia: date, tipo: type) -> _ArquivoAberto:
         diretorio = self._saida / symbol / dia.isoformat()
         diretorio.mkdir(parents=True, exist_ok=True)
         caminho = diretorio / formato.NOMES_ARQUIVO[tipo]
         novo = not caminho.exists()
+        # Retomada depois de um crash: o arquivo ja tem linhas de dados. O
+        # hasher precisa comecar do CONTEUDO QUE JA ESTA LA, senao o
+        # `meta.json` final descreve so o pedaco novo e a verificacao de
+        # integridade reprova o dia inteiro como corrompido — que e
+        # exatamente o oposto do que o checkpoint existe para conseguir.
+        hasher = hashlib.sha256()
+        n_linhas = 0
+        if not novo:
+            hasher, n_linhas = _hash_e_contar_existente(caminho)
         handle = caminho.open("a", newline="", encoding="utf-8")
         writer = csv.writer(handle)
         if novo:
             writer.writerow(_CABECALHOS[tipo])
             handle.flush()
-        return _ArquivoAberto(caminho=caminho, handle=handle, writer=writer, hasher=hashlib.sha256())
+        return _ArquivoAberto(
+            caminho=caminho, handle=handle, writer=writer,
+            hasher=hasher, n_linhas=n_linhas,
+        )
 
     # ------------------------------------------------------------------
+    def _checkpoint_meta(self, symbol: str, dia: date) -> None:
+        """`meta.json` PARCIAL, escrito no meio do pregao sem fechar o dia.
+
+        Decisao de durabilidade (auditoria R5). Sem isto, `_fechar_dia` e o
+        unico escritor do `meta.json` e nao ha chamador periodico: qualquer
+        morte do processo — OOM, queda de energia, Ctrl+C bruto, disco cheio
+        — deixa os CSVs em disco SEM `meta.json`, e sem `meta.json` o
+        `Catalogo` nem enxerga o dia (`escanear` pula o diretorio). Ou seja:
+        o dado existe no disco e o produto se comporta como se nao
+        existisse. Nao ha segunda copia de pregao de WDO/WIN.
+
+        Ordem das operacoes, e ela importa:
+          1. `flush` + `fsync` de CADA arquivo aberto do dia — assim o
+             prefixo que o meta vai descrever esta DURAVEL antes de ser
+             descrito. A ordem inversa produziria um meta que aponta para
+             bytes que o disco ainda nao tem.
+          2. `hasher.hexdigest()` do prefixo escrito ate aqui (hexdigest nao
+             consome o hasher; ele segue acumulando as linhas seguintes).
+          3. `n_linhas_hasheadas` por arquivo — sem isso o hash de prefixo
+             seria inverificavel, porque depois do crash o arquivo tende a
+             ter MAIS linhas do que o checkpoint cobriu (as que o `flush`
+             levou ao SO entre o checkpoint e a morte). Ver
+             `Catalogo.verificar_integridade`.
+          4. escrita ATOMICA do `meta.json` (tmp + `os.replace`): um
+             `meta.json` truncado no meio e indistinguivel de um corrompido
+             para `_ler_meta`, e derrubaria o dia do indice — o proprio mal
+             que o checkpoint existe para evitar.
+
+        Cadencia por CONTAGEM DE EVENTOS, nao por tempo: a unidade da perda
+        e o evento, a contagem e deterministica (logo, testavel) e nao
+        precisa de relogio. O custo e desprezivel — a 44.000 ev/s medidos, o
+        padrao de 5.000 eventos da um checkpoint a cada ~0,11 s, e ele so
+        acrescenta um `hexdigest` por arquivo a um `fsync` que a politica de
+        `fsync_a_cada=200` ja faria 25 vezes no mesmo intervalo.
+        """
+        hashes: dict[str, str] = {}
+        n_linhas: dict[str, int] = {}
+        for tipo in _TIPOS_GRAVADOS:
+            arq = self._arquivos.get((symbol, dia, tipo))
+            if arq is None:
+                continue
+            arq.handle.flush()
+            os.fsync(arq.handle.fileno())
+            arq.n_desde_fsync = 0
+            nome = formato.NOMES_ARQUIVO[tipo]
+            hashes[nome] = arq.hasher.hexdigest()
+            n_linhas[nome] = arq.n_linhas
+
+        self._gravar_meta(symbol, dia, hashes, n_linhas, parcial=True)
+        self._desde_meta[(symbol, dia)] = 0
+
+    def _gravar_meta(
+        self,
+        symbol: str,
+        dia: date,
+        hashes: dict[str, str],
+        n_linhas: dict[str, int],
+        parcial: bool,
+    ) -> None:
+        contagens = dict(self._contagens.get((symbol, dia), {}))
+        meta = {
+            "symbol": symbol,
+            "data": dia.isoformat(),
+            "schema_versao": formato.SCHEMA_VERSAO,
+            "contagens": contagens,
+            "n_eventos_total": sum(contagens.values()),
+            "hora_inicio_ns": self._hora_inicio_ns.get((symbol, dia)),
+            "hora_fim_ns": self._hora_fim_ns.get((symbol, dia)),
+            "hashes_sha256": hashes,
+            "n_linhas_hasheadas": n_linhas,
+            "parcial": parcial,
+            "gerado_em_utc": datetime.now(tz=timezone.utc).isoformat(),
+        }
+        diretorio = self._saida / symbol / dia.isoformat()
+        diretorio.mkdir(parents=True, exist_ok=True)
+        _escrever_json_atomico(diretorio / "meta.json", meta)
+
     def _fechar_dia(self, symbol: str, dia: date) -> None:
         hashes: dict[str, str] = {}
+        n_linhas: dict[str, int] = {}
         for tipo in _TIPOS_GRAVADOS:
             chave = (symbol, dia, tipo)
             arq = self._arquivos.pop(chave, None)
@@ -171,31 +313,49 @@ class Gravador:
             arq.handle.flush()
             os.fsync(arq.handle.fileno())
             arq.handle.close()
-            hashes[formato.NOMES_ARQUIVO[tipo]] = arq.hasher.hexdigest()
+            nome = formato.NOMES_ARQUIVO[tipo]
+            hashes[nome] = arq.hasher.hexdigest()
+            n_linhas[nome] = arq.n_linhas
             _comprimir_e_remover(arq.caminho)
 
+        self._gravar_meta(symbol, dia, hashes, n_linhas, parcial=False)
+
         contagens = self._contagens.pop((symbol, dia), {})
-        horarios = self._horarios.pop((symbol, dia), [])
-        meta = {
-            "symbol": symbol,
-            "data": dia.isoformat(),
-            "schema_versao": formato.SCHEMA_VERSAO,
-            "contagens": contagens,
-            "n_eventos_total": sum(contagens.values()),
-            "hora_inicio_ns": min(horarios) if horarios else None,
-            "hora_fim_ns": max(horarios) if horarios else None,
-            "hashes_sha256": hashes,
-            "gerado_em_utc": datetime.now(tz=timezone.utc).isoformat(),
-        }
-        diretorio = self._saida / symbol / dia.isoformat()
-        (diretorio / "meta.json").write_text(
-            json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        self._hora_inicio_ns.pop((symbol, dia), None)
+        self._hora_fim_ns.pop((symbol, dia), None)
+        self._desde_meta.pop((symbol, dia), None)
         self._dia_aberto.pop(symbol, None)
         _logger.info(
             "dia fechado: %s %s — %d eventos (%s)",
-            symbol, dia.isoformat(), meta["n_eventos_total"], contagens,
+            symbol, dia.isoformat(), sum(contagens.values()), contagens,
         )
+
+
+def _escrever_json_atomico(caminho: Path, dados: dict) -> None:
+    """Escreve em `<nome>.tmp` e troca com `os.replace` — atomico no mesmo
+    volume, tanto em POSIX quanto em Windows. Um `meta.json` truncado por
+    crash no meio da escrita e lido como corrompido por `_ler_meta`, que
+    devolve `None`, e o dia SOME do catalogo; a troca atomica garante que o
+    que estiver la seja sempre um meta inteiro — o anterior ou o novo."""
+    tmp = caminho.parent / (caminho.name + ".tmp")
+    tmp.write_text(json.dumps(dados, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, caminho)
+
+
+def _hash_e_contar_existente(caminho: Path) -> tuple["hashlib._Hash", int]:
+    """Reconstroi o hasher a partir das linhas de dados ja presentes no CSV,
+    no MESMO formato tab-separado que `_escrever` usa, e devolve quantas
+    sao. Chamado so quando o gravador reabre um arquivo que ja existe
+    (retomada depois de crash)."""
+    hasher = hashlib.sha256()
+    n = 0
+    with caminho.open("r", newline="", encoding="utf-8") as arquivo:
+        leitor = csv.reader(arquivo)
+        next(leitor, None)  # cabecalho nao entra no hash
+        for linha in leitor:
+            hasher.update(("\t".join(linha) + "\n").encode("utf-8"))
+            n += 1
+    return hasher, n
 
 
 def _comprimir_e_remover(caminho: Path) -> None:

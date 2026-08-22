@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timezone
 from pathlib import Path
 
@@ -29,6 +29,13 @@ class EntradaCatalogo:
     hora_inicio_ns: int | None
     hora_fim_ns: int | None
     hashes_sha256: dict[str, str]
+    # Quantas linhas de DADOS cada hash cobre. Presente nos metas escritos a
+    # partir da correcao de durabilidade da R5 (checkpoint parcial); ausente
+    # — dict vazio — nos metas antigos, e nesse caso o hash cobre o arquivo
+    # inteiro. Ver `verificar_integridade` e `Gravador._checkpoint_meta`.
+    n_linhas_hasheadas: dict[str, int] = field(default_factory=dict)
+    # True enquanto o dia ainda esta sendo gravado (meta de checkpoint).
+    parcial: bool = False
 
     def arquivo(self, nome_base: str) -> Path | None:
         """Caminho do arquivo (aceita comprimido `.gz` ou não) para um dos
@@ -108,6 +115,16 @@ class Catalogo:
         compara com o que está no `meta.json`. Detecta arquivo truncado,
         editado à mão ou corrompido em transporte.
 
+        Metas de CHECKPOINT (`parcial=True`, escritos durante o pregao) e
+        metas de dia retomado depois de crash trazem `n_linhas_hasheadas`:
+        o hash cobre as N PRIMEIRAS linhas de dados, nao o arquivo todo.
+        Isso e o que torna o checkpoint verificavel — depois de um crash o
+        CSV costuma ter MAIS linhas do que o ultimo checkpoint descreveu (as
+        que o `flush` levou ao SO entre o checkpoint e a morte do processo),
+        e comparar o hash do arquivo inteiro contra o hash de um prefixo
+        reprovaria um dado intacto. Arquivo com MENOS linhas que o meta
+        declara continua reprovando: isso e truncamento.
+
         Contrato: este método NUNCA deixa uma exceção de leitura escapar —
         gzip truncado, EOF inesperado, byte inválido etc. contam como
         integridade invalida (`False`), não como crash. Isso importa porque
@@ -125,7 +142,9 @@ class Catalogo:
                 resultado[nome_base] = False
                 continue
             try:
-                hash_real = _hash_arquivo(caminho)
+                hash_real = _hash_arquivo(
+                    caminho, entrada.n_linhas_hasheadas.get(nome_base)
+                )
             except (OSError, EOFError, UnicodeDecodeError, ValueError):
                 _logger.warning(
                     "falha ao ler %s para verificacao de integridade "
@@ -138,17 +157,29 @@ class Catalogo:
         return resultado
 
 
-def _hash_arquivo(caminho: Path) -> str:
+def _hash_arquivo(caminho: Path, n_linhas: int | None = None) -> str:
+    """Hash das linhas de dados; com `n_linhas`, so das N primeiras.
+
+    Nao ha guarda separada para "o arquivo tem MENOS linhas que N": ela seria
+    inalcancavel na pratica, porque o sha256 de um prefixo de M linhas so
+    coincide com o de um prefixo de N linhas quando M == N — truncamento ja
+    reprova pela comparacao de hash. Linha defensiva que nenhuma mutacao
+    consegue matar e peso morto, e este projeto ja aprendeu (R5, mutantes
+    O01/O03/O08) que o que nao tem assercao nao esta decidido."""
     import csv
     import gzip
 
     abrir = gzip.open if caminho.suffix == ".gz" else open
     hasher = hashlib.sha256()
+    lidas = 0
     with abrir(caminho, "rt", newline="", encoding="utf-8") as arquivo:
         leitor = csv.reader(arquivo)
         next(leitor, None)  # cabecalho nao entra no hash (Gravador so hasheia dados)
         for linha in leitor:
+            if n_linhas is not None and lidas >= n_linhas:
+                break
             hasher.update(("\t".join(linha) + "\n").encode("utf-8"))
+            lidas += 1
     return hasher.hexdigest()
 
 
@@ -165,6 +196,8 @@ def _ler_meta(meta_path: Path, diretorio: Path) -> EntradaCatalogo | None:
             hora_inicio_ns=bruto["hora_inicio_ns"],
             hora_fim_ns=bruto["hora_fim_ns"],
             hashes_sha256=bruto["hashes_sha256"],
+            n_linhas_hasheadas=bruto.get("n_linhas_hasheadas") or {},
+            parcial=bool(bruto.get("parcial", False)),
         )
     except (json.JSONDecodeError, KeyError, ValueError):
         return None
