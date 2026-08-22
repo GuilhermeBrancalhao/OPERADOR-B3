@@ -2,3 +2,20 @@
 # leitura sequencial de linhas, entao pandas/pyarrow ficam de fora (ver
 # justificativa em fluxopro/dados/replay.py).
 pytest>=8.0
+
+# Interface grafica. OPCIONAL: o nucleo inteiro (dominio, microestrutura,
+# motor, gravacao, replay) roda sem Qt, e `conftest.py` pula a suite de UI
+# se PySide6 nao estiver instalado. Quem so quer o CLI (`scripts/operar.py`)
+# nao precisa instalar nada disto.
+#
+# A escolha do par esta medida em `design/direcao_visual.md` §2 — e o achado
+# que decide a arquitetura NAO e o toolkit: e a estrategia de desenho
+# (13,3 fps repintando tudo contra 560 fps repintando so o que mudou).
+PySide6>=6.9
+
+# pyqtgraph NAO entra ainda. A fase 1 (DOM, tape, strips) e desenho direto
+# em `QPainter` sobre backing store, e nenhuma linha do codigo o importa —
+# listar uma dependencia que ninguem usa e mentir sobre o que o projeto
+# precisa para rodar. Ele entra na fase 2, com o grafico de delta acumulado
+# e o heatmap (`ImageItem`, 195 fps medidos em §2).
+# pyqtgraph>=0.13

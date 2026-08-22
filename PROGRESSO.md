@@ -8,6 +8,12 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
+> **Estado corrente — 22/08/2026, onda 10.** `python -m pytest tests/ -q` → **796 passed**.
+> Fundação de UI + DOM + tape + strips entregues; footprint em diante são fases 2–5.
+> **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
+> *(Este é o único lugar do arquivo onde o número de testes é mantido. Número velho sob selo
+> de verificação é pior que número nenhum, porque convida a confiar.)*
+
 ## Barra de qualidade
 1. **UI**: screenshots reais do Profit Pro (armazenados em `bar/`) — comparação cega lado a lado.
 2. **Motor**: replay determinístico (mesmo input → mesmo output), suíte de testes verde,
@@ -235,6 +241,49 @@ Zero bytes de mercado em disco, `MetaTrader5` não instalado. Das 536 funções 
 
 ### O crítico registrou contra si mesmo
 Que um dos seus ataques falhou (virou evidência **a favor** do desenho); que corrigiu uma afirmação absoluta própria após contra-leitura; e que **o próprio harness dele restaurou conteúdo certo com bytes errados** (LF vs CRLF), precisando de `git checkout` — com a lição de que sha256 normalizado e `git status` são complementares, não alternativos. Repassei esse aviso aos 3 builders da onda 9.
+
+## Onda 10 — FASE 1 DA INTERFACE: a primeira tela (22/08)
+
+**Escolha do dono**, contra "fechar a metodologia" e "rodada 6 de crítica": construir o painel. Entregue: `fluxopro/ui/` (fundação + 3 painéis), `scripts/painel.py`, **139 testes novos** (657 → **796**, todos verdes), e dois retratos PNG em `design/`.
+
+**A fundação (`ui/base/painel_denso.py`)** é o ativo. §2 mediu que o mesmo footprint vai de 13,3 fps repintando tudo a 560 fps repintando só o que mudou — fator 40, e a causa não é o toolkit: 7.200 chamadas a uma função **vazia** através da fronteira Python↔C++ já custam 1,04 ms. Medido no MEU código, não herdado do bench:
+
+| painel | quadro cheio p50 | incremental p50 | ganho |
+|---|---|---|---|
+| DOM 40 níveis @420×760 | 4,413 ms | 0,327 ms | **13,5×** |
+| Tape @380×760 | 5,407 ms | 0,163 ms (rolagem) | **33,3×** |
+| quadro **ocioso** | — | **1,00 µs** | o `if` que retorna sem abrir `QPainter` |
+
+**O portão de CI tem duas formas, e a segunda é a que vale.** §6 pede "falhar acima de 4 ms p95". Limite absoluto sozinho é frágil: numa máquina rápida passaria mesmo com a incrementalidade removida. Então há também a **razão cheio/incremental ≥ 5×**, que não mede velocidade — mede se a fundação ainda funciona — e sobrevive a trocar de máquina, porque as duas medidas sofrem juntas.
+
+### O defeito que só apareceu sob carga real
+Todos os números acima são com o painel **sozinho no processo**. Com a fonte na thread dela, o quadro do DOM foi de sub-milissegundo para **12 ms**, e a tela caiu a 15 fps. O que denunciou foi separar `thread_time` de `perf_counter`: o custo de CPU era sub-ms, os 12 ms eram **espera de GIL** contra um produtor que nunca faz I/O. (Cheguei a ler errado antes, com `process_time`, que soma a CPU de todas as threads e escondia a espera.) É um dial, não um bug — fluidez de tela contra vazão de ingestão:
+
+| troca de GIL | ingestão | quadros/6s | DOM p95 |
+|---|---|---|---|
+| 5 ms (padrão CPython) | 2.462 ev/s | 90 (15 fps) | 34,5 ms |
+| **1 ms** (adotado no painel) | **1.320 ev/s** | **230 (38 fps)** | **15,7 ms** |
+| 0,5 ms | 938 ev/s | 360 (60 fps) | 9,3 ms |
+
+Fica em `scripts/painel.py` e **não** no núcleo: `operar.py` é headless e existe para vazão. É a lição do próprio projeto — *medir o CONJUNTO, não cada fix isolado* — valendo para a interface.
+
+### Três defeitos que só o RETRATO mostrou
+Renderizar a janela em PNG achou o que 136 testes de comportamento não viam, porque em todos os três **os dados estavam certos**:
+
+1. **Texto azul sobre barra azul** (e vermelho sobre vermelho): a quantidade sumia dentro da barra que existe para representá-la. Número sobre barra passou a ser `--text-primary` — a direção já está na barra, na posição e na coluna.
+2. **Preço ancorado na borda direita da coluna**, não no meio: colidia com a quantidade de venda, dois números impressos um por cima do outro.
+3. **A faixa suja caía 24px acima da linha real** — `marcar_linha` assumia origem em y=0 e o DOM começa sob o cabeçalho. A linha era redesenhada pela metade e a outra metade guardava o valor antigo, o que na tela virava **um dígito cortado ao meio, parecendo um tracinho**. `len` certo, contagem de retângulos certa, dados certos. Fixado com asserção sobre GEOMETRIA, não sobre contagem.
+
+### E um que o teste achou primeiro, maior que o teste
+Qualquer novo máximo no book forçava repintura total. Num book vivo o máximo muda quase todo snapshot ⇒ o ganho da região suja iria embora, **com todos os testes de correção passando**, porque a tela fica certa. A escala passou a andar em degraus 1‑2‑5 por década com histerese de ¼.
+
+### Contra o próprio documento de design
+§3.2 pede opacidade até **0,72** E "≥4,8:1 mesmo sobre o degrau mais saturado". As duas não são verdadeiras juntas: a 0,72 o contraste cai para **3,85:1**, abaixo do mínimo AA. A 0,60 dá 4,79:1. Ficou a promessa de legibilidade. Só apareceu porque `test_ui_tokens.py` **recalcula** o contraste do token em vez de conferir a tabela publicada contra ela mesma.
+
+### O que a fase 1 NÃO tem
+Footprint, volume profile, delta acumulado, docking, workspaces, sala de controle, ranking de corretoras, bookmap, replay com tarja — fases 2 a 5. E `pyqtgraph` **não** está em `requirements.txt`: nenhuma linha o importa ainda, e listar dependência que ninguém usa é mentir sobre o que o projeto precisa.
+
+**O gargalo não mudou**: os dois retratos são do SIMULADOR. Nenhum byte de mercado real existe em disco.
 
 ## Onda 9 — correções da R5
 
@@ -641,7 +690,7 @@ O vídeo em que "o fluxo enganou todo mundo" é o teste de estresse mais valioso
 ## Suíte de testes — estado real (verificado, não afirmado)
 > **Congelado em 2026-08-21, onda 6** — este parágrafo dizia "94 passed" sob o selo *"verificado, não afirmado"* muito depois de o número ter mudado. Um builder da onda 9 apontou, e ele tinha razão: número velho sob selo de verificação é pior que número nenhum, porque convida a confiar. O número corrente vive no topo do arquivo, não aqui.
 
-`python -m pytest tests/ -q` → **94 passed** *(verdadeiro na onda 6; hoje são 657 — ver o cabeçalho)*.
+`python -m pytest tests/ -q` → **94 passed** *(verdadeiro na onda 6; o número corrente vive no cabeçalho deste arquivo — em 22/08 são 796)*.
 
 ## O que NÃO estava pronto na onda 6 (histórico — vários itens já fechados)
 1. ~~**Interface gráfica**~~: continua valendo — zero linhas de UI. A decisão de stack fechou na onda 6 (`design/direcao_visual.md`, PySide6 + pyqtgraph com benchmark medido), mas **nenhum painel foi construído**.
