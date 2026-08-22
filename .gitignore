@@ -9,3 +9,20 @@ __pycache__/
 # cego a esses arquivos — as provas de "arvore limpa" das auditorias R1 e R2
 # passavam por cima deles sem enxergar nada.
 /dados/
+
+# Andaimes do gauntlet: `design/_ab*/` sao copias efemeras montadas para cada
+# rodada de critica em A/B cego — a nossa saida e um recorte da barra, com
+# nomes neutros e ordem sorteada. 10 MB de duplicata de coisas que ja estao em
+# `bar/` e em `design/`, com valor zero depois que o veredito saiu.
+/design/_ab*/
+/design/_bar_*
+
+# Derivados de medicao. `*_transmissao.*` sai de `scripts/transmissao.py` e
+# `*_retencao.*` de `scripts/retencao.py`, os dois em um comando sobre o
+# retrato correspondente — que ESTE esta versionado. Versionar o derivado
+# junto convida a que ele envelheca em relacao a origem e passe a ser lido
+# como evidencia de um retrato que nao existe mais.
+*_transmissao.png
+*_transmissao.jpg
+*_retencao.png
+*_retencao.jpg

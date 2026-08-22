@@ -39,7 +39,9 @@ import pytest
 pytest.importorskip("PySide6.QtWidgets", reason="PySide6 nao instalado")
 
 from fluxopro.core.eventos import WDO_GRID, BookLevel, BookSnapshot  # noqa: E402
+from fluxopro.motor.sinais import EstagioSinal, FaixaConviccao  # noqa: E402
 from fluxopro.ui.paineis.dom import PainelDOM  # noqa: E402
+from fluxopro.ui.paineis.matriz import LeituraMotor, PainelMatriz  # noqa: E402
 from fluxopro.ui.paineis.tape import PainelTape  # noqa: E402
 from fluxopro.ui.ponte import ItemTape  # noqa: E402
 
@@ -274,3 +276,97 @@ class TestQuadroOcioso:
         # nao piscar em CI compartilhada e ainda assim acusar se alguem
         # colocar trabalho antes da checagem de sujeira.
         assert por_quadro_us < 50.0, f"{por_quadro_us:.1f} us por quadro ocioso"
+
+
+class TestPortaoDaMatriz:
+    """O portao vigiava DOM e tape, e a matriz nao aparecia em linha nenhuma
+    deste arquivo — metade do comando que se rodava nao exercitava a peca.
+
+    A matriz e o caso em que a incrementalidade e mais facil de perder: ela
+    le a evidencia de TODO trade, entao um `desenhar` que ignore a regiao
+    suja repintaria as sete bandas a cada tick sem que a tela ficasse errada.
+    E o modo de falha que so a RAZAO acusa.
+    """
+
+    @staticmethod
+    def _leitura(dominancia: float) -> LeituraMotor:
+        return LeituraMotor(
+            estagio=EstagioSinal.PRE_SINAL,
+            direcao=1,
+            direcao_dominante=1,
+            faixa=FaixaConviccao.DIRECIONAL,
+            dominancia=dominancia,
+            magnitude=9_620,
+            magnitude_referencia=11_400.0,
+            magnitude_relativa=0.84,
+            magnitude_fonte="janela",
+            na_regiao=True,
+            persistencia_trades=3,
+            delta_sessao=12_480,
+            delta_micro_antigo=-120,
+            delta_micro_recente=340,
+            agressao_saldo=820,
+            agressao_taxa_compra=0.62,
+            agressao_trades_s=41.0,
+            volume_sem_lado=1_204,
+            volume_total=25_000,
+        )
+
+    @pytest.fixture
+    def matriz(self, qapp):
+        painel = PainelMatriz(WDO_GRID)
+        painel.resize(620, 460)
+        painel.show()
+        painel.ao_redimensionar(620, 460)
+        painel._recriar_backing()
+        painel.aplicar(self._leitura(0.72))
+        painel.marcar_tudo_sujo()
+        painel._quadro()
+        # Aquecimento: o primeiro desenho de cada par fonte/tamanho paga a
+        # rasterizacao dos glifos, e com poucas amostras esse custo unico
+        # vira o p95 de uma serie cujo p50 e uma ordem de grandeza menor.
+        for _ in range(10):
+            painel.marcar_tudo_sujo()
+            painel._quadro()
+        return painel
+
+    def _medir(self, matriz):
+        cheio: list[float] = []
+        for _ in range(N_AMOSTRAS // 4):
+            matriz.marcar_tudo_sujo()
+            cheio.append(_cronometrar(matriz))
+
+        incremental: list[float] = []
+        for i in range(N_AMOSTRAS):
+            # So a dominancia muda: uma banda de 40px, nao as sete.
+            matriz.aplicar(self._leitura(0.70 + (i % 25) / 100.0))
+            if not matriz.tem_sujeira:
+                continue
+            incremental.append(_cronometrar(matriz))
+        return cheio, incremental
+
+    def test_p95_incremental_abaixo_do_limite(self, matriz):
+        _, incremental = self._medir(matriz)
+        assert incremental, "nenhum quadro incremental foi medido"
+        p95 = _p95(incremental)
+        assert p95 < LIMITE_P95_MS, f"quadro incremental da matriz a {p95:.3f} ms p95"
+
+    def test_a_incrementalidade_ainda_existe(self, matriz):
+        cheio, incremental = self._medir(matriz)
+        razao = statistics.median(cheio) / statistics.median(incremental)
+        assert razao >= RAZAO_MINIMA, (
+            f"razao cheio/incremental da matriz caiu para {razao:.1f}x "
+            f"(cheio {statistics.median(cheio):.3f} ms, "
+            f"incremental {statistics.median(incremental):.3f} ms)"
+        )
+
+    def test_quadro_cheio_cabe_no_orcamento_de_60hz(self, matriz):
+        cheio, _ = self._medir(matriz)
+        assert _p95(cheio) < 16.0
+
+    def test_painel_parado_nao_desenha_nada(self, matriz):
+        matriz.zerar_medicao()
+        for _ in range(5_000):
+            matriz._quadro()
+        assert matriz.quadros_desenhados == 0
+        assert matriz.quadros_vazios == 5_000
