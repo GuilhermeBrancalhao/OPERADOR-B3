@@ -10,11 +10,20 @@ extraída de fonte pública com citação e rótulo de confiança.
 
 ## O estado, em uma linha
 
-`python -m pytest tests/ -q` → **1.321 passed, 1 xfailed**
+`python -m pytest tests/ -q` → **1.334 passed, 3 skipped**
 · ~29 mil linhas de produção, ~25 mil de teste
-· **nenhum byte de mercado real em disco** — todo retrato é do simulador, com carimbo na imagem.
+· **o tape é de mercado real**; o livro ainda não.
 
-Esse último ponto é o gargalo real do projeto e o único que não se resolve escrevendo código.
+O gargalo mudou de tamanho em 23/08/2026. `scripts/importar_mt5.py` puxa o histórico de tick
+que o terminal MetaTrader 5 guarda e grava no formato do `Gravador`, então um pregão fechado
+vira replay sem precisar de ninguém na frente da máquina durante o mercado. Medido no primeiro
+uso, WDOU26 em 21/08/2026: **200.899 negócios**, 09:00→18:29, com 86,8% carregando o lado do
+agressor.
+
+O que **não** se resolve assim é o livro: `market_book_get` só existe com o mercado aberto, e o
+MT5 não guarda histórico de book. Numa gravação importada o DOM e o bookmap ficam vazios — e a
+gravação é honesta sobre isso, ela simplesmente não tem `snapshots.csv`. Para as duas metades,
+o caminho continua sendo o pregão ao vivo.
 
 ---
 
@@ -35,7 +44,7 @@ python scripts/operar.py --fonte simulador --simbolo WDOV26
 python scripts/operar.py --fonte mt5 --simbolo WDOFUT --gravar dados/
 
 # reviver o que foi gravado, determinístico
-python scripts/painel.py --fonte replay --arquivo dados/ --simbolo WDOFUT
+python scripts/painel.py --fonte replay --arquivo dados/ --simbolo WDOU26
 ```
 
 O núcleo roda **sem Qt**. Quem só quer o CLI não instala PySide6, e a suíte de interface se pula
@@ -151,8 +160,9 @@ cheio — razão de 13×, e o portão de CI reprova abaixo de 5×.
 
 ## O que falta
 
-1. **Dados reais.** Nenhum byte de mercado em disco. Só se resolve instalando o MetaTrader5 numa
-   conta de corretora e rodando `scripts/operar.py --gravar` num pregão.
+1. **O livro.** O tape real já entra por `scripts/importar_mt5.py`; o book não, porque o MT5 não
+   guarda histórico dele. DOM, bookmap e tudo que depende de liquidez parada só se enchem com
+   `scripts/operar.py --fonte mt5 --gravar` durante o pregão aberto.
 2. **Componentes da fonte cujo mecanismo não é público** — o "Maker" está classificado
    `NÃO REPLICÁVEL`, e construir a caixa visual dele seria dar aparência de autoridade a algo que
    o sistema não consegue calcular.

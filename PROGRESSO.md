@@ -8,7 +8,7 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
-> **Estado corrente — 22/08/2026.** `python -m pytest tests/ -q` → **1.321 passed, 1 xfailed**.
+> **Estado corrente — 23/08/2026.** `python -m pytest tests/ -q` → **1.334 passed, 3 skipped**.
 > Fases 1, 2, 3 e 5 do plano de UI entregues e montadas numa janela só; `fluxopro/metodologia/`
 > ligado ao pipeline vivo. Detalhe do ciclo em `GAUNTLET_ASG.md`.
 > **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
@@ -362,6 +362,84 @@ cheio custa ~4 ms. É o mesmo "25 ms" que a docstring da matriz cita, mesma
 causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
 
 Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
+
+## Onda 12 — o primeiro pregão real em disco (23/08)
+
+O `README.md` abria, desde sempre, dizendo **"nenhum byte de mercado real em
+disco"** e chamando isso de o único gargalo que não se resolve escrevendo
+código. A frase estava certa sobre metade do problema e errada sobre a outra.
+
+O dono ligou o MetaTrader 5 (Genial, conta 1953458) num **domingo**, com o
+mercado fechado. Medido na hora:
+
+| | |
+|---|---|
+| `initialize()` | `True` — terminal build 6140, 118.570 símbolos |
+| `market_book_get` | **0 níveis** — o livro só existe com pregão aberto |
+| `copy_ticks_from` | **200.914 ticks** do pregão de sexta |
+| lado do agressor | **86,8%** dos negócios |
+
+Ou seja: o terminal guarda histórico de **tick**, e não de **book**. O tape —
+que é o insumo de delta, agressão, footprint, exaustão e absorção — estava
+disponível o tempo todo, a uma chamada de distância, e o projeto não tinha
+caminho para importá-lo porque o adaptador MT5 é um streamer que lê do agora em
+diante.
+
+`scripts/importar_mt5.py` fecha isso. Não inventa formato: publica `Trade` no
+`Barramento` com o `Gravador` assinado, igual ao pipeline ao vivo, e o
+resultado é lido por `--fonte replay` sem caminho especial. A conversão de tick
+para `Trade` foi **extraída** para `dados.mt5.trade_de_tick`, usada agora pelos
+dois — se cada um convertesse do seu jeito, a gravação ao vivo e a importada do
+mesmo pregão divergiriam, e a divergência só apareceria ao comparar as duas.
+
+### O resultado, sobre o pregão de 21/08/2026 (WDOU26)
+
+```
+eventos          : 200.899   (9,49 h de tape em 38,6 s → 5.202 ev/s)
+sinais emitidos  : 141       (39 CONFIRMADO, 40 PRÉ-SINAL)
+detecções        : 9.661     — todas OBSERVADAS, nenhuma inferida
+                   EXAUSTÃO 7.421 · ABSORÇÃO 1.332 · CLIP INSTITUCIONAL 908
+mercado          : máx 5194,5  mín 5142,5  vwap 5170
+volume           : 2.362.146  (compr 1.092.391 · vend 1.181.864 · s/lado 87.891)
+perfil de sessão : VAL 5143 · POC 5152 · VAH 5181,5
+```
+
+### Dois erros meus no caminho, e os dois eram de RELÓGIO
+
+1. **Importei 45% do pregão e não percebi.** A janela padrão que escrevi era
+   `09:00–18:30`, pensando na B3. Mas o `copy_ticks_from` interpreta o horário
+   no fuso do **servidor da corretora**: os cinco pregões de 17 a 21/08 aparecem
+   começando entre 03:00 e 04:07. Peguei 90.459 dos 200.914 ticks, e o script
+   relatou "90.459 trades gravados" — número grande, que parece bom até você
+   saber qual era o total.
+
+   Conserto: o script passou a **relatar a cobertura** (primeiro → último), não
+   só a contagem. *Contagem sem intervalo não diz se faltou pedaço.*
+
+2. **Três relógios no mesmo fluxo.** Pedia ticks num `datetime` ingênuo (lido no
+   fuso do servidor), filtrava o fim em hora **local**, e relatava cobertura numa
+   terceira conversão — enquanto o `Gravador` particiona a pasta do dia por
+   **UTC**. Unificado em UTC, que é o relógio que a gravação já usava, a pergunta
+   virou uma só e sem fuso: *este tick cai no dia UTC pedido?* A cobertura foi de
+   `06:00→15:29` para `09:00:38→18:29:59`, que é o pregão inteiro da B3.
+
+### Um teste que dependia do ambiente
+
+Instalar o pacote `MetaTrader5` derrubou
+`test_importar_mt5_sem_pacote_instalado_da_erro_claro`. Ele passava por
+**ausência da dependência**, não por comportamento do código. A ausência virou
+simulada (`monkeypatch` no `__import__`), e ganhou o par que faltava: um teste
+que prova que `_importar_mt5` **devolve** o pacote quando ele existe — sem o
+qual a versão que levantasse sempre passaria igual.
+
+### O que continua faltando
+
+O **livro**. Não há histórico de book no MT5, e fabricar um a partir de bid/ask
+seria pior que não ter: pareceria leitura de fluxo e seria desenho. DOM e
+bookmap só se enchem com `scripts/operar.py --fonte mt5 --gravar` durante o
+pregão aberto.
+
+---
 
 ### 9. A varredura de retenção que faltava na interface
 

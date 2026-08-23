@@ -809,9 +809,43 @@ def test_adaptador_nao_republica_o_historico_na_partida():
 # ======================================================================
 
 
-def test_importar_mt5_sem_pacote_instalado_da_erro_claro():
+def test_importar_mt5_sem_pacote_instalado_da_erro_claro(monkeypatch):
+    """A ausencia do pacote e SIMULADA, e nao herdada da maquina.
+
+    Este teste passava por acidente: ele so verificava a mensagem porque o
+    `MetaTrader5` nao estava instalado aqui. No dia em que o pacote entrou — e
+    entrou, para ligar o terminal de verdade — ele virou vermelho sem que nada
+    do produto tivesse mudado.
+
+    Um teste cujo resultado depende do que ESTA instalado na maquina nao mede o
+    codigo, mede o ambiente. Aqui o `ImportError` e forcado, entao a mensagem
+    de erro continua sendo verificada nas duas maquinas: na que tem o pacote e
+    na que nao tem.
+    """
+    import builtins
+
+    real = builtins.__import__
+
+    def sem_mt5(nome, *args, **kwargs):
+        if nome == "MetaTrader5":
+            raise ImportError("simulado: pacote ausente")
+        return real(nome, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", sem_mt5)
     with pytest.raises(RuntimeError, match="MetaTrader5"):
         _importar_mt5()
+
+
+def test_importar_mt5_devolve_o_pacote_quando_ele_existe():
+    """A outra metade, que faltava.
+
+    Sem ela, o teste acima passaria numa versao de `_importar_mt5` que
+    levantasse SEMPRE — e a suite ficaria verde com o adaptador ao vivo
+    quebrado.
+    """
+    pytest.importorskip("MetaTrader5", reason="pacote nao instalado nesta maquina")
+    modulo = _importar_mt5()
+    assert modulo.__name__ == "MetaTrader5"
 
 
 def test_derivar_deltas_add_update_delete():

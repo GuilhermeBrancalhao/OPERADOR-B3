@@ -552,6 +552,76 @@ def _primeiro_do_ms(ticks, time_msc: int) -> int:
     return baixo
 
 
+def inferir_agressor(mt5: ModuleType, tick) -> AgressorSide:
+    """Quem AGREDIU neste negocio, pelas flags e, na falta delas, pelo preco.
+
+    Funcao de MODULO, e nao metodo, porque ha dois consumidores: o adaptador ao
+    vivo e `scripts/importar_mt5.py`, que le o mesmo `copy_ticks_from` sobre um
+    pregao ja fechado. Se cada um inferisse do seu jeito, a gravacao feita ao
+    vivo e a importada do mesmo dia divergiriam — e a divergencia so apareceria
+    ao comparar duas leituras do mesmo pregao, que e o momento em que ninguem
+    espera diferenca.
+
+    A B3 marca `TICK_FLAG_BUY`/`TICK_FLAG_SELL` na maioria dos negocios (medido
+    em WDOU26, pregao de 21/08/2026: 86,8% de 90.459). O resto cai na
+    comparacao com bid/ask, e o que nao decide vira `UNKNOWN` — que o produto
+    trata como volume sem lado, nao como zero.
+    """
+    flags = int(tick["flags"]) if "flags" in tick.dtype.names else 0
+    flag_buy = getattr(mt5, "TICK_FLAG_BUY", 1 << 5)
+    flag_sell = getattr(mt5, "TICK_FLAG_SELL", 1 << 6)
+    tem_buy = bool(flags & flag_buy)
+    tem_sell = bool(flags & flag_sell)
+    if tem_buy and not tem_sell:
+        return AgressorSide.BUY
+    if tem_sell and not tem_buy:
+        return AgressorSide.SELL
+
+    # Sem flag conclusiva: compara preço do trade com bid/ask vigentes.
+    preco = float(tick["last"]) if tick["last"] else None
+    bid = float(tick["bid"]) if tick["bid"] else None
+    ask = float(tick["ask"]) if tick["ask"] else None
+    if preco is not None and ask is not None and preco >= ask:
+        return AgressorSide.BUY
+    if preco is not None and bid is not None and preco <= bid:
+        return AgressorSide.SELL
+    return AgressorSide.UNKNOWN
+
+
+def trade_de_tick(
+    mt5: ModuleType, tick, symbol: str, grid: PriceGrid, ordem: int
+) -> Trade | None:
+    """Um tick do MT5 vira um `Trade`, ou `None` se nao for negocio utilizavel.
+
+    `None` para preco zerado ou fora da grade — os dois casos existem no dado
+    de verdade (tick de atualizacao de book sem negocio, e preco que nao cai
+    num multiplo do tick). Quem chama e responsavel por avancar o cursor
+    MESMO assim: prender o cursor num tick invalido foi um defeito real deste
+    adaptador.
+
+    O `trade_id` carrega a ordem dentro do milissegundo. Sem ela, negocios do
+    mesmo ms com as mesmas flags teriam id igual — e o dedupe da gravacao
+    apagaria negocio de verdade.
+    """
+    preco_bruto = float(tick["last"]) if tick["last"] else float(tick["bid"])
+    if preco_bruto <= 0:
+        return None
+    try:
+        preco_ticks = grid.to_ticks(preco_bruto)
+    except ValueError:
+        return None
+
+    time_msc = int(tick["time_msc"])
+    return Trade(
+        timestamp_ns=time_msc * 1_000_000,
+        symbol=symbol,
+        price=preco_ticks,
+        qty=int(tick["volume"]) if tick["volume"] else int(tick["volume_real"]),
+        side_agressor=inferir_agressor(mt5, tick),
+        trade_id=f"MT5-{time_msc}-{ordem}-{int(tick['flags'])}",
+    )
+
+
 class AdaptadorMT5(AdaptadorDados):
     def __init__(
         self,
@@ -839,27 +909,10 @@ class AdaptadorMT5(AdaptadorDados):
             elif time_msc == novo.time_msc and ordem + 1 > novo.ordem_no_ms:
                 novo = _CursorTick(time_msc, ordem + 1)
 
-            preco_bruto = float(tick["last"]) if tick["last"] else float(tick["bid"])
-            if preco_bruto <= 0:
+            trade = trade_de_tick(mt5, tick, self._symbol, self._grid, ordem)
+            if trade is None:
                 continue
-            try:
-                preco_ticks = self._grid.to_ticks(preco_bruto)
-            except ValueError:
-                continue
-
-            agressor = self._inferir_agressor(mt5, tick)
-            trades.append(
-                Trade(
-                    timestamp_ns=time_msc * 1_000_000,
-                    symbol=self._symbol,
-                    price=preco_ticks,
-                    qty=int(tick["volume"]) if tick["volume"] else int(tick["volume_real"]),
-                    side_agressor=agressor,
-                    # a ordem no ms entra no id: sem ela, negócios do mesmo
-                    # milissegundo com as mesmas flags teriam id igual.
-                    trade_id=f"MT5-{time_msc}-{ordem}-{int(tick['flags'])}",
-                )
-            )
+            trades.append(trade)
 
         # o tempo do servidor vem do tick mais novo do lote (crescente).
         recuo_ns = self._relogio.observar(
@@ -914,25 +967,8 @@ class AdaptadorMT5(AdaptadorDados):
         return trades, novo, falhas
 
     def _inferir_agressor(self, mt5: ModuleType, tick) -> AgressorSide:
-        flags = int(tick["flags"]) if "flags" in tick.dtype.names else 0
-        flag_buy = getattr(mt5, "TICK_FLAG_BUY", 1 << 5)
-        flag_sell = getattr(mt5, "TICK_FLAG_SELL", 1 << 6)
-        tem_buy = bool(flags & flag_buy)
-        tem_sell = bool(flags & flag_sell)
-        if tem_buy and not tem_sell:
-            return AgressorSide.BUY
-        if tem_sell and not tem_buy:
-            return AgressorSide.SELL
-
-        # Sem flag conclusiva: compara preço do trade com bid/ask vigentes.
-        preco = float(tick["last"]) if tick["last"] else None
-        bid = float(tick["bid"]) if tick["bid"] else None
-        ask = float(tick["ask"]) if tick["ask"] else None
-        if preco is not None and ask is not None and preco >= ask:
-            return AgressorSide.BUY
-        if preco is not None and bid is not None and preco <= bid:
-            return AgressorSide.SELL
-        return AgressorSide.UNKNOWN
+        """Delega para a funcao de modulo. Ver `inferir_agressor`."""
+        return inferir_agressor(mt5, tick)
 
     def _puxar_book(self, mt5: ModuleType) -> BookSnapshot | None:
         book = mt5.market_book_get(self._symbol)
