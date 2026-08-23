@@ -129,7 +129,9 @@ E o critério que atravessa o código todo, de cinco auditorias do núcleo: **es
 com o estado acumulado e é varrida tarde demais.** Foi encontrada em oito arquivos diferentes.
 O critério de reconhecimento está no docstring de `fluxopro/gravacao/gravador.py`, e todo
 acumulador novo passa por um teste de retenção que roda 1.000 e 20.000 eventos e exige o mesmo
-tamanho em toda coleção alcançável.
+tamanho em toda coleção alcançável — no núcleo (`tests/test_metodologia.py`) e, desde a onda 11,
+também na interface inteira (`tests/test_ui_retencao.py`), que enumera os catorze painéis a
+partir da própria janela em vez de uma lista digitada.
 
 ---
 

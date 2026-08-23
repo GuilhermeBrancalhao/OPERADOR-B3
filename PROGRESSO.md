@@ -363,6 +363,47 @@ causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
 
 Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
 
+### 9. A varredura de retenção que faltava na interface
+
+O núcleo tinha varredura para o defeito assinatura do projeto — 1.000 contra
+20.000 eventos, mesmo `len` em toda coleção. A interface **não tinha**: tinha
+prova painel a painel, escrita quando alguém lembrou, cobrindo cinco dos
+catorze. Ficavam de fora tape, footprint, perfil, delta, matriz, HUD, método,
+regras e trilha.
+
+Mesma forma do item 4 desta onda, e por isso mesmo vale registrar: a lei do
+canal também estava verificada três vezes e tinha duas violações vivas.
+
+`tests/test_ui_retencao.py` enumera `JanelaFluxo._paineis` — não uma lista
+digitada —, publica no barramento de verdade e drena pelo `_tick`. Painel novo
+entra na varredura no dia em que entra na janela. Resultado: **66 coleções
+vigiadas em 14 painéis**, e nenhuma cresce.
+
+Três coisas só a mutação mostrou, e as três eram o teste, não o código:
+
+1. **Sem sessão, dois painéis mediam zero nas duas pontas.** `perfil` e
+   `players` são alimentados pelo retrato da sessão; a janela nua não lhes dá
+   nada, e "não cresceu" virava verdade por ausência de dado — o mesmo defeito
+   do teste da matriz a 262 px, fora da janela alcançável.
+2. **Sem corretora, `players` continuava vazio.** O passeio não preenchia
+   `buyer_broker`/`seller_broker`, então o ranking não tinha o que rankear.
+   Oitenta identidades distintas, e não uma por trade: o índice é POR
+   CORRETORA, e inventar identidade nova a cada evento reprovaria um
+   dicionário que está certo.
+3. **O passeio não andava no relógio.** Com 1 ms por evento, 1.000 e 20.000
+   eventos cobrem 1 s e 20 s — e uma mutação que enfiava um `set` de inícios de
+   candle dentro do `EixoTempo` **sobreviveu**, porque nesse intervalo não há
+   candle novo. Com 1 s por evento a varredura cobre 17 min contra 5h30, e a
+   mesma mutação passou a reprovar em dois painéis, porque o eixo é
+   compartilhado.
+
+> Um teste de retenção que não anda no relógio só vigia as coleções indexadas
+> por evento, e deixa de fora justamente as que guardam histórico.
+
+Prova final: 3 mutações em 3 lugares diferentes (lista sem teto no tape, dict
+por trade dentro do `PainelPlayers`, acumulador um nível abaixo no eixo), 3
+reprovações.
+
 ### 8. O instrumento lia memória liberada
 
 Os dois testes de geometria do canal no HUD reprovavam com a máquina ocupada,
