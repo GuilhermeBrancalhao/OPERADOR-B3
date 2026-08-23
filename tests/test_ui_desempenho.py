@@ -31,6 +31,7 @@ portao que passa raspando vira ruido de CI e ensina todo mundo a ignora-lo.
 
 from __future__ import annotations
 
+import pathlib
 import statistics
 import time
 
@@ -44,6 +45,12 @@ from fluxopro.ui.paineis.dom import PainelDOM  # noqa: E402
 from fluxopro.ui.paineis.matriz import LeituraMotor, PainelMatriz  # noqa: E402
 from fluxopro.ui.paineis.tape import PainelTape  # noqa: E402
 from fluxopro.ui.ponte import ItemTape  # noqa: E402
+from tests.medicao import (  # noqa: E402
+    Serie,
+    Vigia,
+    custo_representativo,
+    p95,
+)
 
 T0 = 1_700_000_000_000_000_000
 BASE = WDO_GRID.to_ticks(5086.5)
@@ -68,15 +75,40 @@ def _livro(offset: int = 0, n: int = 20) -> BookSnapshot:
     )
 
 
-def _p95(amostras: list[float]) -> float:
-    ordenadas = sorted(amostras)
-    return ordenadas[min(len(ordenadas) - 1, int(len(ordenadas) * 0.95))]
+def _afirmar_orcamento(serie: Serie, limite_ms: float, o_que: str) -> None:
+    """As duas afirmacoes de `tests/medicao.py`, na ordem certa.
+
+    Julga `serie.limpas()`, e nao a serie crua, porque a segunda afirmacao —
+    a do p95 — nao e decidivel no nivel da JANELA: o p95 de 200 amostras e o
+    decimo quadro mais caro, e dez retiradas do escalonador num laco de meio
+    segundo nao movem a razao parede/CPU que o `Vigia` julga. O portao entao
+    reprovava dentro de uma janela que o vigia considerava, com razao, quieta.
+
+    O que sai da conta sao os quadros em que o processo NAO ESTAVA RODANDO —
+    esses nunca foram medicoes do desenho. O limite e o percentil continuam os
+    mesmos, e um quadro caro de verdade queima CPU e permanece na serie. Ver
+    `medicao.Serie`.
+
+    Ver a docstring de `tests/medicao.py` para o porque de nao ser um limite
+    unico e inflado.
+    """
+    amostras = serie.limpas(o_que)
+    custo = custo_representativo(amostras)
+    assert custo < limite_ms, f"{o_que} a {custo:.3f} ms (p10) contra {limite_ms} ms"
+    pior = p95(amostras)
+    assert pior < limite_ms, f"{o_que} a {pior:.3f} ms p95 contra {limite_ms} ms"
 
 
 def _cronometrar(painel) -> float:
     inicio = time.perf_counter()
     painel._quadro()
     return (time.perf_counter() - inicio) * 1000.0
+
+
+# Os lacos dos PORTOES colhem numa `Serie`, e nao numa lista: ela guarda, ao
+# lado da parede, a CPU que cada quadro consumiu. E o unico dado que separa
+# "o desenho ficou caro" de "o escalonador entrou no meio", e ele nao existe
+# no nivel da janela. Ver `medicao.Serie`.
 
 
 @pytest.fixture
@@ -104,32 +136,49 @@ def tape(qapp):
     return painel
 
 
-def _medir_dom(dom) -> tuple[list[float], list[float]]:
-    cheio: list[float] = []
-    for _ in range(N_AMOSTRAS // 2):
-        dom.marcar_tudo_sujo()
-        cheio.append(_cronometrar(dom))
+def _medir_dom(dom) -> tuple[Serie, Serie, Vigia]:
+    """Devolve tambem o VIGIA do intervalo. Ver `tests/medicao.py`: quem julga
+    se a medicao vale e o proprio intervalo em que ela foi colhida, nao uma
+    sonda avulsa disparada em outro instante."""
+    with Vigia() as vigia:
+        cheio = Serie()
+        for _ in range(N_AMOSTRAS // 2):
+            dom.marcar_tudo_sujo()
+            cheio.cronometrar(dom)
 
-    incremental: list[float] = []
-    base = _livro()
-    bids = list(base.bids)
+        incremental = Serie()
+        base = _livro()
+        bids = list(base.bids)
+        for i in range(N_AMOSTRAS):
+            # UM nivel muda, e abaixo do degrau de escala corrente para nao
+            # disparar reescala (que e um quadro cheio legitimo).
+            bids[3] = BookLevel(bids[3].price, 100 + (i % 97), 2)
+            dom.aplicar(BookSnapshot(T0 + i, "WDOV26", tuple(bids), base.asks), BASE)
+            if not dom.tem_sujeira:
+                continue
+            incremental.cronometrar(dom)
+    return cheio, incremental, vigia
+
+
+def _rolagem_do_tape(tape) -> Serie:
+    rolagem = Serie()
     for i in range(N_AMOSTRAS):
-        # UM nivel muda, e abaixo do degrau de escala corrente para nao
-        # disparar reescala (que e um quadro cheio legitimo).
-        bids[3] = BookLevel(bids[3].price, 100 + (i % 97), 2)
-        dom.aplicar(BookSnapshot(T0 + i, "WDOV26", tuple(bids), base.asks), BASE)
-        if not dom.tem_sujeira:
+        tape.aplicar(
+            (ItemTape(T0 + i, BASE + (i % 5), 10 + i % 50, 1 if i % 2 else -1),)
+        )
+        if not tape.tem_sujeira:
             continue
-        incremental.append(_cronometrar(dom))
-    return cheio, incremental
+        rolagem.cronometrar(tape)
+    return rolagem
 
 
 class TestPortaoDoDOM:
     def test_p95_incremental_abaixo_do_limite(self, dom):
-        _, incremental = _medir_dom(dom)
-        assert incremental, "nenhum quadro incremental foi medido"
-        p95 = _p95(incremental)
-        assert p95 < LIMITE_P95_MS, f"quadro incremental do DOM a {p95:.3f} ms p95"
+        # `serie.limpas` ja reprova com "nao mediu nada" se a serie vier
+        # vazia, entao nao ha o que conferir antes.
+        _afirmar_orcamento(
+            _medir_dom(dom)[1], LIMITE_P95_MS, "quadro incremental do DOM"
+        )
 
     def test_a_incrementalidade_ainda_existe(self, dom):
         """O teste que sobrevive a troca de maquina.
@@ -140,7 +189,11 @@ class TestPortaoDoDOM:
         limite absoluto pode continuar passando numa maquina rapida, e este
         aqui reprova.
         """
-        cheio, incremental = _medir_dom(dom)
+        serie_cheio, serie_incremental, vigia = _medir_dom(dom)
+        vigia.exigir_quieta("a razao do DOM")
+        # A razao compara MEDIANAS, que a cauda nao move — aqui a serie crua
+        # serve, e filtrar so um dos lados compararia dois recortes diferentes.
+        cheio, incremental = serie_cheio.parede, serie_incremental.parede
         razao = statistics.median(cheio) / statistics.median(incremental)
         assert razao >= RAZAO_MINIMA, (
             f"razao cheio/incremental caiu para {razao:.1f}x "
@@ -154,27 +207,24 @@ class TestPortaoDoDOM:
         Nao precisa ser barato como o incremental, mas nao pode estourar os
         16 ms — senao arrastar a divisoria da janela engasga a tela.
         """
-        cheio, _ = _medir_dom(dom)
-        assert _p95(cheio) < 16.0
+        _afirmar_orcamento(_medir_dom(dom)[0], 16.0, "quadro cheio do DOM")
 
 
 class TestPortaoDoTape:
     def test_rolagem_abaixo_do_limite_e_muito_mais_barata_que_o_cheio(self, tape):
-        cheio: list[float] = []
-        for _ in range(N_AMOSTRAS // 2):
-            tape.aplicar((ItemTape(T0, BASE, 10, 1),))
-            tape.marcar_tudo_sujo()
-            cheio.append(_cronometrar(tape))
+        with Vigia() as vigia:
+            serie_cheio = Serie()
+            for _ in range(N_AMOSTRAS // 2):
+                tape.aplicar((ItemTape(T0, BASE, 10, 1),))
+                tape.marcar_tudo_sujo()
+                serie_cheio.cronometrar(tape)
+            serie_rolagem = _rolagem_do_tape(tape)
 
-        rolagem: list[float] = []
-        for i in range(N_AMOSTRAS):
-            tape.aplicar((ItemTape(T0 + i, BASE + (i % 5), 10 + i % 50, 1 if i % 2 else -1),))
-            if not tape.tem_sujeira:
-                continue
-            rolagem.append(_cronometrar(tape))
-
-        p95 = _p95(rolagem)
-        assert p95 < LIMITE_P95_MS, f"rolagem do tape a {p95:.3f} ms p95"
+        _afirmar_orcamento(serie_rolagem, LIMITE_P95_MS, "rolagem do tape")
+        vigia.exigir_quieta("a razao do tape")
+        # Medianas dos dois lados, da MESMA janela: ver a nota em
+        # `test_a_incrementalidade_ainda_existe`.
+        cheio, rolagem = serie_cheio.parede, serie_rolagem.parede
         razao = statistics.median(cheio) / statistics.median(rolagem)
         assert razao >= RAZAO_MINIMA, f"razao do tape caiu para {razao:.1f}x"
 
@@ -203,55 +253,102 @@ class TestSobCarga:
     desenha. Nao afirma fluidez, e nao finge afirmar.
     """
 
-    def test_a_interface_desenha_sob_carga(self, qapp):
+    def test_a_interface_desenha_sob_carga(self):
+        """Roda em PROCESSO PROPRIO. A terceira coisa que este teste me ensinou.
+
+        Ele e o unico da suite que roda o laco de eventos de verdade
+        (`processEvents` num laco de 2 s); todos os outros desenham chamando
+        `_quadro()` direto. Como a `QApplication` e de escopo de sessao, o
+        primeiro `processEvents()` da suite despacha, de uma vez, tudo o que os
+        testes anteriores deixaram na fila do Qt.
+
+        Medido: com quatro processos queimando CPU ao lado, rodar
+        `test_ui_composicao.py` antes deste derruba o processo com `Windows
+        fatal exception: access violation`, 5 de 6 rodadas. Sozinho sob a mesma
+        carga, ele passa 6 de 6 — bissectado ate o par de arquivos. Nao e
+        instabilidade dele: e acoplamento a `QApplication` compartilhada.
+
+        Drenar a fila entre os testes (`conftest.py::_drenar_qt`) reduziu o
+        acumulo mas nao fechou o buraco, porque nao ha como saber o que cada
+        widget de cada teste ainda tem pendente. O que fecha e nao compartilhar
+        estado: processo novo, `QApplication` nova, fila vazia.
+
+        E o mesmo movimento que tirou a medicao de GIL desta suite para
+        `bench_ui_carga.py`, pelo mesmo motivo — quando o resultado depende do
+        que rodou antes, o portao nao esta medindo o produto.
+        """
+        import json
+        import subprocess
         import sys
-        import threading
-        import time as _time
 
-        from fluxopro.app.config import ConfigOperacao, ConfigSimulador, FonteDados
-        from fluxopro.app.montagem import montar
-        from fluxopro.ui.janela import JanelaFluxo
-        from fluxopro.ui.ponte import PonteFluxo
-        from scripts.painel import GIL_SWITCH_PADRAO
-
-        anterior = sys.getswitchinterval()
-        sys.setswitchinterval(GIL_SWITCH_PADRAO)
-        config = ConfigOperacao(
-            symbol="WDOV26",
-            fonte=FonteDados.SIMULADOR,
-            simulador=ConfigSimulador(seed=7, n_eventos=10**9, taxa_eventos_s=500.0),
+        resultado = subprocess.run(
+            [sys.executable, "-c", _CENARIO_SOB_CARGA],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(_RAIZ),
         )
-        ref: dict = {}
-        montagem = montar(
-            config,
-            ao_sinal=lambda e: ref["p"].registrar_evento(e),
-            ao_deteccao=lambda e: ref["p"].registrar_evento(e),
+        assert resultado.returncode == 0, (
+            f"o cenario caiu (codigo {resultado.returncode})" + chr(10)
+            + f"stdout: {resultado.stdout[-2000:]}" + chr(10)
+            + f"stderr: {resultado.stderr[-2000:]}"
         )
-        ponte = PonteFluxo(montagem.barramento)
-        ref["p"] = ponte
-        janela = JanelaFluxo(ponte, config.symbol, config.price_grid())
-        janela.resize(1280, 800)
-        janela.show()
-        thread = threading.Thread(target=montagem.fonte.iniciar, daemon=True)
-        thread.start()
-        try:
-            fim = _time.perf_counter() + 2.0
-            while _time.perf_counter() < fim:
-                qapp.processEvents()
-            quadros = janela.dom.quadros_desenhados
-            negocios = montagem.sessao.contadores.n_trades_bus
-        finally:
-            montagem.fonte.parar()
-            thread.join(timeout=5.0)
-            janela.close()
-            montagem.sessao.finalizar()
-            sys.setswitchinterval(anterior)
-
-        assert negocios > 0, "a fonte nao produziu nada"
+        medido = json.loads(resultado.stdout.strip().splitlines()[-1])
+        assert medido["negocios"] > 0, "a fonte nao produziu nada"
         # Zero quadros em 2 s de carga e morte por inanicao, e isso NAO depende
         # de maquina nem de ordem. Qualquer numero acima de zero e assunto do
         # benchmark, nao do portao.
-        assert quadros > 0, "a interface nao desenhou um quadro sequer sob carga"
+        assert medido["quadros"] > 0, "a interface nao desenhou um quadro sequer sob carga"
+
+
+_RAIZ = pathlib.Path(__file__).resolve().parent.parent
+
+_CENARIO_SOB_CARGA = """
+import json, os, sys, threading, time
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+sys.path.insert(0, os.getcwd())
+
+from PySide6.QtWidgets import QApplication
+
+from fluxopro.app.config import ConfigOperacao, ConfigSimulador, FonteDados
+from fluxopro.app.montagem import montar
+from fluxopro.ui.janela import JanelaFluxo
+from fluxopro.ui.ponte import PonteFluxo
+from scripts.painel import GIL_SWITCH_PADRAO
+
+sys.setswitchinterval(GIL_SWITCH_PADRAO)
+app = QApplication.instance() or QApplication([])
+config = ConfigOperacao(
+    symbol="WDOV26",
+    fonte=FonteDados.SIMULADOR,
+    simulador=ConfigSimulador(seed=7, n_eventos=10**9, taxa_eventos_s=500.0),
+)
+ref = {}
+montagem = montar(
+    config,
+    ao_sinal=lambda e: ref["p"].registrar_evento(e),
+    ao_deteccao=lambda e: ref["p"].registrar_evento(e),
+)
+ponte = PonteFluxo(montagem.barramento)
+ref["p"] = ponte
+janela = JanelaFluxo(ponte, config.symbol, config.price_grid())
+janela.resize(1280, 800)
+janela.show()
+thread = threading.Thread(target=montagem.fonte.iniciar, daemon=True)
+thread.start()
+try:
+    fim = time.perf_counter() + 2.0
+    while time.perf_counter() < fim:
+        app.processEvents()
+    quadros = janela.dom.quadros_desenhados
+    negocios = montagem.sessao.contadores.n_trades_bus
+finally:
+    montagem.fonte.parar()
+    thread.join(timeout=5.0)
+    janela.close()
+    montagem.sessao.finalizar()
+print(json.dumps({"quadros": quadros, "negocios": negocios}))
+"""
 
 
 class TestQuadroOcioso:
@@ -336,29 +433,38 @@ class TestPortaoDaMatriz:
             painel._quadro()
         return painel
 
-    def _medir(self, matriz):
-        cheio: list[float] = []
-        for _ in range(N_AMOSTRAS // 4):
-            matriz.marcar_tudo_sujo()
-            cheio.append(_cronometrar(matriz))
+    def _medir(self, matriz) -> tuple[Serie, Serie, Vigia]:
+        cheio = Serie()
+        # Ver a nota de resolucao em `tests/medicao.py::Vigia.CPU_MINIMA_S`:
+        # com um quarto destas amostras o laco nao gastava CPU suficiente para
+        # o vigia poder julgar se a maquina estava entregando CPU.
+        with Vigia() as vigia:
+            for _ in range(N_AMOSTRAS):
+                matriz.marcar_tudo_sujo()
+                cheio.cronometrar(matriz)
 
-        incremental: list[float] = []
-        for i in range(N_AMOSTRAS):
-            # So a dominancia muda: uma banda de 40px, nao as sete.
-            matriz.aplicar(self._leitura(0.70 + (i % 25) / 100.0))
-            if not matriz.tem_sujeira:
-                continue
-            incremental.append(_cronometrar(matriz))
-        return cheio, incremental
+            incremental = Serie()
+            for i in range(N_AMOSTRAS * 4):
+                # So a dominancia muda: uma banda de 40px, nao as sete.
+                matriz.aplicar(self._leitura(0.70 + (i % 25) / 100.0))
+                if not matriz.tem_sujeira:
+                    continue
+                incremental.cronometrar(matriz)
+        return cheio, incremental, vigia
 
     def test_p95_incremental_abaixo_do_limite(self, matriz):
-        _, incremental = self._medir(matriz)
-        assert incremental, "nenhum quadro incremental foi medido"
-        p95 = _p95(incremental)
-        assert p95 < LIMITE_P95_MS, f"quadro incremental da matriz a {p95:.3f} ms p95"
+        _afirmar_orcamento(
+            self._medir(matriz)[1],
+            LIMITE_P95_MS,
+            "quadro incremental da matriz",
+        )
 
     def test_a_incrementalidade_ainda_existe(self, matriz):
-        cheio, incremental = self._medir(matriz)
+        serie_cheio, serie_incremental, vigia = self._medir(matriz)
+        vigia.exigir_quieta("a razao da matriz")
+        # Medianas dos dois lados, da MESMA janela: ver a nota em
+        # `TestPortaoDoDOM.test_a_incrementalidade_ainda_existe`.
+        cheio, incremental = serie_cheio.parede, serie_incremental.parede
         razao = statistics.median(cheio) / statistics.median(incremental)
         assert razao >= RAZAO_MINIMA, (
             f"razao cheio/incremental da matriz caiu para {razao:.1f}x "
@@ -367,8 +473,7 @@ class TestPortaoDaMatriz:
         )
 
     def test_quadro_cheio_cabe_no_orcamento_de_60hz(self, matriz):
-        cheio, _ = self._medir(matriz)
-        assert _p95(cheio) < 16.0
+        _afirmar_orcamento(self._medir(matriz)[0], 16.0, "quadro cheio da matriz")
 
     def test_painel_parado_nao_desenha_nada(self, matriz):
         matriz.zerar_medicao()

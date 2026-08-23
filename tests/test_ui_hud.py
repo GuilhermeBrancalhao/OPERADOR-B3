@@ -30,6 +30,10 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets", reason="PySide6 nao instalado")
 
+from PySide6.QtGui import QImage  # noqa: E402
+
+from tests.medicao import Serie  # noqa: E402
+
 from fluxopro.core.eventos import Side  # noqa: E402
 from fluxopro.motor.sinais import EstagioSinal, FaixaConviccao, Sinal  # noqa: E402
 from fluxopro.ui import tokens  # noqa: E402
@@ -371,8 +375,13 @@ class TestTrabalhoDoHUD:
         entao a menor amostra e a unica que mede o desenho em vez de medir o
         vizinho; a mediana media o ruido para dentro do resultado. Baixar o
         limite para esconder isso teria trocado um portao instavel por um
-        portao cego."""
-        cheio: list[float] = []
+        portao cego.
+
+        **E o minimo ainda nao bastava**, porque com a maquina ocupada os 60
+        quadros cheios podem ser TODOS interrompidos — e ai nem o menor deles
+        mede o desenho. `Serie` mede a CPU de cada quadro e o minimo passa a
+        ser tirado so dos que rodaram inteiros. Ver `medicao.Serie`."""
+        serie_cheio = Serie()
         for i in range(60):
             hud.aplicar(
                 contexto_do_sinal(
@@ -382,9 +391,9 @@ class TestTrabalhoDoHUD:
                 )
             )
             hud.marcar_tudo_sujo()
-            cheio.append(_cronometrar(hud))
+            serie_cheio.cronometrar(hud)
 
-        incremental: list[float] = []
+        serie_incremental = Serie()
         for i in range(200):
             hud.aplicar(
                 contexto_do_sinal(
@@ -395,9 +404,12 @@ class TestTrabalhoDoHUD:
             )
             if not hud.tem_sujeira:
                 continue
-            incremental.append(_cronometrar(hud))
+            serie_incremental.cronometrar(hud)
 
-        assert incremental
+        # `cauda=False`: a razao le o PISO das duas distribuicoes, nao o pior
+        # quadro de nenhuma delas.
+        cheio = serie_cheio.limpas("o quadro cheio do HUD", cauda=False)
+        incremental = serie_incremental.limpas("o quadro incremental do HUD", cauda=False)
         razao = min(cheio) / max(min(incremental), 1e-9)
         assert razao >= 5.0, (
             f"razao cheio/incremental caiu para {razao:.1f}x "
@@ -493,7 +505,31 @@ class TestRetencao:
 # 4. As duas paletas e o canal — a direcao sem cor, e a leitura sem texto
 # ==========================================================================
 def _recorte(painel, rect) -> bytes:
-    return bytes(painel._backing.copy(rect).toImage().constBits())
+    """Os pixels de um retangulo do backing, byte a byte.
+
+    O `QImage` fica numa variavel COM NOME, e nao numa cadeia de temporarios.
+    A versao anterior era `bytes(painel._backing.copy(rect).toImage()
+    .constBits())`, e ela lia memoria liberada: `constBits()` devolve uma
+    janela para o buffer do `QImage`, o PySide6 nao mantem o dono vivo pela
+    janela, e o `QImage` temporario morria antes de `bytes()` terminar de
+    copiar. O resultado era um recorte com lixo no meio, de vez em quando —
+    medido em 86 de 400 capturas neste mesmo painel, e ZERO nas mesmas 400
+    guardando a referencia. Era exatamente disto que os dois testes de
+    geometria do canal reprovavam com a maquina ocupada: nao de escala
+    reintroduzida, mas do proprio instrumento.
+
+    Tambem descarta o enchimento de fim de linha (`bytesPerLine` e alinhado e
+    os bytes de sobra nao sao inicializados) e fixa o formato, para que a
+    comparacao seja de pixel e so de pixel."""
+    imagem = painel._backing.copy(rect).toImage().convertToFormat(
+        QImage.Format.Format_RGB32
+    )
+    bits = imagem.constBits()
+    passo = imagem.bytesPerLine()
+    util = imagem.width() * 4
+    return b"".join(
+        bytes(bits[y * passo : y * passo + util]) for y in range(imagem.height())
+    )
 
 
 _DIRECIONAIS = None

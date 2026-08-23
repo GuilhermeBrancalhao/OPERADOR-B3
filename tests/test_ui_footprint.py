@@ -83,6 +83,12 @@ from fluxopro.ui.paineis.perfil import (  # noqa: E402
     PainelPerfil,
     derivar_perfil,
 )
+from tests.medicao import (  # noqa: E402
+    Serie,
+    Vigia,
+    custo_representativo,
+    p95,
+)
 
 T0 = 1_700_000_000_000_000_000
 TF = 60_000_000_000
@@ -582,17 +588,30 @@ class TestOrcamentoDeQuadro:
         for _ in range(6):
             painel.marcar_tudo_sujo()
             painel._quadro()
-        amostras: list[float] = []
-        for i in range(200):
+        serie = Serie()
+        for i in range(800):
             painel._colunas[n - 1] = coluna(
                 inicio=T0 + (n - 1) * TF,
                 niveis={p: (v, c + i % 37) for p, (v, c) in cheia.items()},
                 viva=True,
             )
             painel.marcar_sujo(painel.rect_coluna_inteira(n - 1))
-            amostras.append(_cronometrar(painel))
-        p95 = sorted(amostras)[int(len(amostras) * 0.95)]
-        assert p95 < LIMITE_P95_MS, f"quadro incremental do footprint a {p95:.3f} ms p95"
+            serie.cronometrar(painel)
+        # `serie.limpas` e nao a serie crua: o p95 destas amostras e o decimo
+        # quadro mais caro, e o escalonador entrega dez facil numa maquina
+        # ocupada sem que o `Vigia` da JANELA registre nada. O limite e o
+        # percentil continuam os mesmos — o que sai da conta sao os quadros em
+        # que o processo nao estava rodando. Ver `medicao.Serie`.
+        amostras = serie.limpas("o quadro incremental do footprint")
+        custo = custo_representativo(amostras)
+        assert custo < LIMITE_P95_MS, (
+            f"quadro incremental do footprint a {custo:.3f} ms (p10)"
+        )
+        # A guarda de contencao vive dentro de `serie.limpas`.
+        pior = p95(amostras)
+        assert pior < LIMITE_P95_MS, (
+            f"quadro incremental do footprint a {pior:.3f} ms p95"
+        )
 
 
 class TestTrabalho:
@@ -647,22 +666,24 @@ class TestTrabalho:
         assert antes != footprint.eixo_tempo.inicios[0] or antes is None
 
     def test_a_incrementalidade_do_footprint_existe(self, footprint):
-        cheio: list[float] = []
-        for i in range(40):
-            footprint.aplicar(LeituraFootprint(viva=coluna(niveis={BASE: (10, 20 + i)})))
-            footprint.marcar_tudo_sujo()
-            cheio.append(_cronometrar(footprint))
-        incremental: list[float] = []
-        for i in range(200):
-            footprint.aplicar(LeituraFootprint(viva=coluna(niveis={BASE: (10, 300 + i)})))
-            if not footprint.tem_sujeira:
-                continue
-            incremental.append(_cronometrar(footprint))
+        with Vigia() as vigia:
+            cheio: list[float] = []
+            for i in range(160):
+                footprint.aplicar(LeituraFootprint(viva=coluna(niveis={BASE: (10, 20 + i)})))
+                footprint.marcar_tudo_sujo()
+                cheio.append(_cronometrar(footprint))
+            incremental: list[float] = []
+            for i in range(800):
+                footprint.aplicar(LeituraFootprint(viva=coluna(niveis={BASE: (10, 300 + i)})))
+                if not footprint.tem_sujeira:
+                    continue
+                incremental.append(_cronometrar(footprint))
         assert incremental
         # MINIMO, e nao mediana: contencao de outra suite na mesma maquina so
         # ADICIONA tempo, entao a menor amostra e a unica que mede o desenho
         # em vez de medir o vizinho.
         razao = min(cheio) / max(min(incremental), 1e-9)
+        vigia.exigir_quieta("a razao cheio/incremental")
         assert razao >= RAZAO_MINIMA, (
             f"razao cheio/incremental do footprint caiu para {razao:.1f}x "
             f"(cheio {min(cheio):.3f} ms, incremental {min(incremental):.3f} ms)"
@@ -684,20 +705,22 @@ class TestTrabalho:
         perfil.marcar_tudo_sujo()
         perfil._quadro()
 
-        cheio: list[float] = []
-        for _ in range(40):
-            perfil.marcar_tudo_sujo()
-            cheio.append(_cronometrar(perfil))
-        incremental: list[float] = []
-        for i in range(200):
-            niveis = {BASE + k: 1_000 - 10 * k for k in range(-20, 21)}
-            niveis[BASE + 7] = 300 + i
-            perfil.aplicar(_leitura_perfil(niveis))
-            if not perfil.tem_sujeira:
-                continue
-            incremental.append(_cronometrar(perfil))
+        with Vigia() as vigia:
+            cheio: list[float] = []
+            for _ in range(200):
+                perfil.marcar_tudo_sujo()
+                cheio.append(_cronometrar(perfil))
+            incremental: list[float] = []
+            for i in range(1600):
+                niveis = {BASE + k: 1_000 - 10 * k for k in range(-20, 21)}
+                niveis[BASE + 7] = 300 + i
+                perfil.aplicar(_leitura_perfil(niveis))
+                if not perfil.tem_sujeira:
+                    continue
+                incremental.append(_cronometrar(perfil))
         assert incremental
         razao = min(cheio) / max(min(incremental), 1e-9)
+        vigia.exigir_quieta("a razao cheio/incremental")
         assert razao >= RAZAO_MINIMA, (
             f"razao do perfil caiu para {razao:.1f}x "
             f"(cheio {min(cheio):.3f} ms, incremental {min(incremental):.3f} ms)"
@@ -738,20 +761,22 @@ class TestTrabalho:
         _alimentar_delta(delta, [100 * i for i in range(30)], semear=True)
         delta.marcar_tudo_sujo()
         delta._quadro()
-        cheio: list[float] = []
-        for _ in range(40):
-            delta.marcar_tudo_sujo()
-            cheio.append(_cronometrar(delta))
-        incremental: list[float] = []
-        for i in range(200):
-            valores = [100 * k for k in range(30)]
-            valores[-1] = 400 + i
-            delta.aplicar(_leitura_delta(valores, semear=True))
-            if not delta.tem_sujeira:
-                continue
-            incremental.append(_cronometrar(delta))
+        with Vigia() as vigia:
+            cheio: list[float] = []
+            for _ in range(40):
+                delta.marcar_tudo_sujo()
+                cheio.append(_cronometrar(delta))
+            incremental: list[float] = []
+            for i in range(800):
+                valores = [100 * k for k in range(30)]
+                valores[-1] = 400 + i
+                delta.aplicar(_leitura_delta(valores, semear=True))
+                if not delta.tem_sujeira:
+                    continue
+                incremental.append(_cronometrar(delta))
         assert incremental
         razao = min(cheio) / max(min(incremental), 1e-9)
+        vigia.exigir_quieta("a razao cheio/incremental")
         assert razao >= RAZAO_MINIMA, (
             f"razao do delta caiu para {razao:.1f}x "
             f"(cheio {min(cheio):.3f} ms, incremental {min(incremental):.3f} ms)"

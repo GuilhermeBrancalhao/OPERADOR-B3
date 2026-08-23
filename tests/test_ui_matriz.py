@@ -87,6 +87,12 @@ from fluxopro.ui.paineis.matriz import (  # noqa: E402
     derivar,
     item_de_deteccao,
 )
+from tests.medicao import (  # noqa: E402
+    Serie,
+    Vigia,
+    custo_representativo,
+    p95,
+)
 
 T0 = 1_700_000_000_000_000_000
 BASE = WDO_GRID.to_ticks(5086.5)
@@ -573,22 +579,24 @@ class TestTrabalho:
         barato que redesenhar as seis. Se alguem escrever um `desenhar` que
         ignora a regiao suja, a tela continua CORRETA e este reprova."""
         cheio: list[float] = []
-        for _ in range(60):
-            matriz.marcar_tudo_sujo()
-            inicio = time.perf_counter()
-            matriz._quadro()
-            cheio.append((time.perf_counter() - inicio) * 1000.0)
-
         incremental: list[float] = []
-        for i in range(120):
-            matriz.aplicar(leitura(dominancia=0.70 + (i % 25) / 100.0))
-            if not matriz.tem_sujeira:
-                continue
-            inicio = time.perf_counter()
-            matriz._quadro()
-            incremental.append((time.perf_counter() - inicio) * 1000.0)
+        with Vigia() as vigia:
+            for _ in range(240):
+                matriz.marcar_tudo_sujo()
+                inicio = time.perf_counter()
+                matriz._quadro()
+                cheio.append((time.perf_counter() - inicio) * 1000.0)
+
+            for i in range(480):
+                matriz.aplicar(leitura(dominancia=0.70 + (i % 25) / 100.0))
+                if not matriz.tem_sujeira:
+                    continue
+                inicio = time.perf_counter()
+                matriz._quadro()
+                incremental.append((time.perf_counter() - inicio) * 1000.0)
 
         assert incremental, "nenhum quadro incremental foi medido"
+        vigia.exigir_quieta("a razao cheio/incremental da matriz")
         razao = statistics.median(cheio) / statistics.median(incremental)
         assert razao >= 5.0, (
             f"razao cheio/incremental caiu para {razao:.1f}x "
@@ -610,15 +618,23 @@ class TestTrabalho:
         for _ in range(10):
             matriz.marcar_tudo_sujo()
             matriz._quadro()
-        amostras = []
-        for _ in range(80):
+
+        serie = Serie()
+        for _ in range(320):
             matriz.marcar_tudo_sujo()
-            inicio = time.perf_counter()
-            matriz._quadro()
-            amostras.append((time.perf_counter() - inicio) * 1000.0)
-        ordenadas = sorted(amostras)
-        p95 = ordenadas[min(len(ordenadas) - 1, int(len(ordenadas) * 0.95))]
-        assert p95 < 16.0, f"quadro cheio da matriz a {p95:.3f} ms p95"
+            serie.cronometrar(matriz)
+        # `serie.limpas` e nao a serie crua: o p95 e um punhado de quadros da
+        # cauda, e duas retiradas do escalonador bastam para escolhe-lo — sem
+        # que a razao parede/CPU da JANELA registre nada. A regua tem de ser
+        # por quadro. Ver `medicao.Serie`.
+        amostras = serie.limpas("o quadro cheio da matriz")
+        custo = custo_representativo(amostras)
+        assert custo < 16.0, f"quadro cheio da matriz a {custo:.3f} ms (p10)"
+        # Sem guarda de `Vigia` aqui: `serie.limpas` ja pula quando a
+        # maquina nao deixou os quadros rodarem. Duplicar a guarda so daria a
+        # impressao de duas protecoes onde ha uma.
+        pior = p95(amostras)
+        assert pior < 16.0, f"quadro cheio da matriz a {pior:.3f} ms p95"
 
 
 # --------------------------------------------------------------------------
