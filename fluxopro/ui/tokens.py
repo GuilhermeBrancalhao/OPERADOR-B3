@@ -57,6 +57,19 @@ TEXT_MUTED = QColor("#66727F")      #  3,94:1 — AA-large — SO em >=14px ou
 BUY = QColor("#3B9EFF")      # 6,92:1 — bid, agressao compradora, delta +
 SELL = QColor("#FF5C6C")     # 6,44:1 — ask, agressao vendedora, delta -
 NEUTRAL = QColor("#7D8896")  # 5,37:1 — volume sem direcao, imbalance nulo
+NEUTRAL_FORTE = QColor("#BAC4D1")  # 10,96:1
+"""O par de `OK_FORTE` para o cinza: preenchimento de CHIP, nao cor de dado.
+
+Mesmo motivo, mesma medida. `NEUTRAL` a 5,37:1 e o token de MENOR luminancia
+que ja preencheu chip neste projeto — mais baixo que o `DANGER` (5,45:1) que
+a peca do metodo abandonou por medicao. Com texto escuro por cima, o traco do
+chip `INFERIDO` viajava quase todo em croma, e croma e o que o canal
+subamostra.
+
+`NEUTRAL` continua certo onde e COR DE DADO (imbalance nulo, volume sem
+direcao): la o traco e o proprio pixel colorido, nao uma letra escura
+apoiada nele.
+"""
 
 # --------------------------------------------------------------------------
 # Segundo canal — eventos e estado
@@ -67,6 +80,25 @@ SIGNAL = QColor("#C77DFF")      #  7,18:1 — CONFIRMADO do motor/sinais.py
 POC = QColor("#FFD166")         # 13,41:1 — POC do Volume Profile
 VWAP = QColor("#5AC8FA")        # 10,20:1 — linha de VWAP
 OK = QColor("#26D07C")          #  9,57:1 — conexao viva, latencia saudavel
+OK_FORTE = QColor("#5BE8A5")    # 12,38:1 — MESMO verde, so que carregando o
+"""Preenchimento de CHIP quando a leitura e "tudo vivo".
+
+Existe porque `OK` reprovou na lei do canal e nenhum ajuste de corpo resolve.
+Medido no retrato: o chip de cobertura, preenchido em `OK`, reteve 37,1% de
+traco contra 40,2% do rotulo do trilho que ele qualifica — e ele ja estava a
+13px/700, o corpo e o peso maximos da peca. Os chips vizinhos, identicos em
+tudo menos no token (`ALERT` 12,34:1, `ABSORPTION` 10,72:1), retiveram 46,4% e
+48,3%.
+
+A causa e a segunda metade da lei, escrita em `paineis/metodo.py::
+_COR_CONFIANCA`: texto escuro sobre token de baixa luminancia carrega o traco
+quase so em CROMA, e o JPEG subamostra croma 2x. `OK` a 9,57:1 e o token de
+menor luminancia que ainda preenche chip.
+
+Mesma matiz, mesma leitura ("verde = saudavel"): o que muda e so o quanto do
+traco viaja em luminancia. `OK` continua certo para ponto de status e para
+linha fina, onde nao ha texto escuro por cima para sustentar.
+"""
 DANGER = QColor("#FF3B30")      #  5,45:1 — desconectado, erro
 
 

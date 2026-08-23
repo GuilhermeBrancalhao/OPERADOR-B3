@@ -51,6 +51,11 @@ PISOS = {
     "POC": 7.0,
     "VWAP": 7.0,
     "OK": 7.0,
+    "OK_FORTE": 10.5,   # piso de PREENCHIMENTO DE CHIP, e nao de texto:
+                        # o traco ali e texto ESCURO por cima, entao ele so
+                        # viaja em luminancia se o preenchimento for claro.
+                        # 10,5 e o menor token que passou na medicao de canal
+                        # (`ABSORPTION`, 10,72:1); `OK` a 9,57:1 reprovou.
     "DANGER": 4.5,
 }
 
@@ -59,6 +64,26 @@ PISOS = {
 def test_contraste_contra_o_fundo(nome, piso):
     razao = contraste(getattr(tokens, nome), tokens.BG_BASE)
     assert razao >= piso, f"{nome}: {razao:.2f}:1 abaixo do piso {piso}:1"
+
+
+def test_preenchimento_de_chip_nunca_abaixo_do_piso_de_luminancia():
+    """A regra que `OK_FORTE` existe para cumprir, aplicada a TODOS os tokens
+    que preenchem chip — nao so ao que falhou.
+
+    Sem isto o conserto seria pontual: bastaria alguem preencher um chip novo
+    com `OK` (9,57:1) ou `DANGER` (5,45:1) para reabrir o mesmo defeito, e ele
+    so apareceria na proxima vez que alguem lembrasse de rodar
+    `scripts/retencao.py` sobre um retrato.
+    """
+    from fluxopro.ui.paineis.metodo import _COR_CONFIANCA
+
+    preenchimentos = [*_COR_CONFIANCA.values(), tokens.OK_FORTE, tokens.ALERT]
+    for cor in preenchimentos:
+        razao = contraste(cor, tokens.BG_BASE)
+        assert razao >= 10.5, (
+            f"{cor.name()} preenche chip a {razao:.2f}:1 — texto escuro sobre "
+            "ele carrega o traco em croma, e o JPEG subamostra croma 2x"
+        )
 
 
 def test_nenhum_token_de_informacao_abaixo_de_3():

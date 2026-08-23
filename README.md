@@ -99,7 +99,7 @@ nele com o default real do código.
 
 ---
 
-## Quatro leis descobertas por medição
+## Cinco leis descobertas por medição
 
 Estão aqui porque valem além deste projeto, e cada uma custou uma rodada de crítica adversarial.
 
@@ -114,6 +114,16 @@ Estão aqui porque valem além deste projeto, e cada uma custou uma rodada de cr
    geometria, não procurar uma escala melhor. Descoberto três vezes, em três painéis.
 4. **Teste que mede contra um marco que o desenho não usa é teatro** — e só a mutação revela.
    Um guarda anti-piso deste projeto passava com o único piso que já existiu no produto.
+   O caso extremo: o portão de canal derivava as caixas de medição multiplicando pelo
+   `devicePixelRatio` da janela, então numa passada a 125% ele recortava coordenadas que **não
+   existem** na imagem gerada a 100%. Ele acusou 0,3 pp de margem contra pixel fora da imagem e,
+   na passada seguinte, 10,6 pp de violação real. Um portão frouxo é ruim; um portão que mede
+   outro lugar e imprime um número é pior, porque assina.
+5. **Lei aplicada caso a caso é sorte; lei aplicada como piso é portão.** A regra "ressalva em
+   token de luminância alta" foi verificada três vezes por medição no retrato — e o chip de
+   `CONFIRMADO` violava-a o tempo todo, sem nunca aparecer, porque o retrato amostrava regras
+   `IMPRECISO`. Quem pegou foi um teste que varre **todos** os tokens que preenchem chip, não a
+   imagem: `tests/test_ui_tokens.py::test_preenchimento_de_chip_nunca_abaixo_do_piso_de_luminancia`.
 
 E o critério que atravessa o código todo, de cinco auditorias do núcleo: **estrutura que cresce
 com o estado acumulado e é varrida tarde demais.** Foi encontrada em oito arquivos diferentes.
@@ -141,8 +151,7 @@ cheio — razão de 13×, e o portão de CI reprova abaixo de 5×.
 
 1. **Dados reais.** Nenhum byte de mercado em disco. Só se resolve instalando o MetaTrader5 numa
    conta de corretora e rodando `scripts/operar.py --gravar` num pregão.
-2. **Uma sonda `xfail` aberta**, com o endereço do conserto no próprio `reason`.
-3. **Componentes da fonte cujo mecanismo não é público** — o "Maker" está classificado
+2. **Componentes da fonte cujo mecanismo não é público** — o "Maker" está classificado
    `NÃO REPLICÁVEL`, e construir a caixa visual dele seria dar aparência de autoridade a algo que
    o sistema não consegue calcular.
 

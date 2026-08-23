@@ -10,11 +10,50 @@ ex.: 5000.5) e o inteiro de ticks usado internamente.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum, unique
+from enum import Enum, StrEnum, unique
 
 
 @unique
-class Side(Enum):
+class Side(StrEnum):
+    """Lado do LIVRO (quem está parado na fila), não lado da agressão.
+
+    ## Por que `StrEnum` e não `Enum` — medido, não estilo
+
+    `Side` é o enum mais hasheado do projeto: um censo de `Enum.__hash__` no
+    pipeline completo (`InferidorMBP` + `LivroMBO` + detectores de livro)
+    atribuiu **72% de todos os hashes de enum** a este tipo, ~34 por evento de
+    mercado. Ele entra como elemento de chave em `_qty_por_nivel`
+    (`(side, price)`), nas chaves do `_MapaProcedencia` dos detectores e nos
+    `set` de nível de `ao_snapshot` — e hashear uma tupla hasheia cada
+    elemento.
+
+    `Enum.__hash__` é um método escrito em Python (`hash(self._name_)`): cada
+    busca em dicionário com chave `Side` paga uma chamada de interpretador.
+    Na MRO de `StrEnum` (`Side -> StrEnum -> str -> ReprEnum -> Enum`),
+    `str.__hash__` vem ANTES de `Enum.__hash__`, então o hash passa a ser
+    nível C — e `str` ainda cacheia o próprio hash, de modo que da segunda vez
+    em diante é uma leitura de campo. É a mesma correção que a onda 7 fez à
+    mão em `inferencia_mbp._cod_lado`, aqui generalizada para todos os pontos
+    de uma vez, sem tocar em nenhum call site.
+
+    ## Por que `StrEnum` e não `IntEnum`
+
+    `IntEnum` hasheia igualmente rápido (medido: indistinguível), mas exigiria
+    trocar os valores `"BUY"`/`"SELL"` por inteiros — e `.value` é o que vai
+    para o DISCO em `gravacao/formato.py`, lido de volta por `Side(linha[...])`.
+    Isso quebraria o formato gravado e toda gravação já existente. Com
+    `StrEnum` o `.value` continua sendo exatamente `"BUY"`/`"SELL"`: o arquivo
+    em disco sai byte a byte igual e o round-trip não muda.
+
+    ## O que se paga por isto
+
+    Um membro passa a ser um `str`: `Side.BUY == "BUY"` é verdadeiro e
+    `str(Side.BUY)` vira `"BUY"` (era `"Side.BUY"`). O vazamento é para `str`,
+    não para `int` — um `Side` não pode mais ser confundido com um preço em
+    ticks, uma quantidade ou um índice, que é onde um vazamento silencioso
+    doeria neste projeto. O `repr` (`<Side.BUY: 'BUY'>`) não muda.
+    """
+
     BUY = "BUY"
     SELL = "SELL"
 

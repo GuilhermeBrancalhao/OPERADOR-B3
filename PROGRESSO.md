@@ -246,6 +246,143 @@ Zero bytes de mercado em disco, `MetaTrader5` não instalado. Das 536 funções 
 ### O crítico registrou contra si mesmo
 Que um dos seus ataques falhou (virou evidência **a favor** do desenho); que corrigiu uma afirmação absoluta própria após contra-leitura; e que **o próprio harness dele restaurou conteúdo certo com bytes errados** (LF vs CRLF), precisando de `git checkout` — com a lição de que sha256 normalizado e `git status` são complementares, não alternativos. Repassei esse aviso aos 3 builders da onda 9.
 
+## Onda 11 — a lei do canal deixa de ser caso a caso (22/08)
+
+Fechamento da Fase 1. Um `xfail`, um portão que mentia, e uma lei que só valia
+onde alguém lembrava de aplicá-la.
+
+### 1. O `xfail` — e o argumento dele, que estava errado
+
+A sonda dizia: `de 30,0k` desenhava em 10px/`TEXT_MUTED` (3,94:1) ao lado de um
+`▲ 51%` em 13px/BUY (6,92:1). O construtor da rodada 2 recusou, e o comentário
+dele no código dizia por quê: *"perdê-lo no canal não produz leitura errada
+nenhuma: a proporção continua sendo a proporção."*
+
+Isso é verdade sobre a **barra** e falso sobre o **veredito**. `▲ 51%` de 30,0k
+é convicção; `▲ 51%` de 30 lotes é ruído; e são o mesmo desenho quando o
+denominador morre. O argumento decisivo estava três linhas abaixo, no código
+dele mesmo, sobre o RLP: *"sem isto o saldo pareceria o retrato completo do dia
+quando não é."* Palavra por palavra, o mesmo caso.
+
+Conserto: `hud.FONTE_QUALIFICADOR = FONTE_VEREDITO` — **derivado**, não repetido,
+para que aumentar o veredito sozinho não reabra o defeito em silêncio. A
+hierarquia visual migra para PESO (400 × 600) e CROMA, que não é o que a
+reescala come. Medido depois: 33,0% de retenção contra 26,4% do veredito, tendo
+sido 32% × 39% antes — a ordem inverteu, que é o que a lei pede.
+
+A mutação reprovou **1** teste, tendo eu mexido em **3** qualificadores. Os
+outros dois ganharam teste; a mutação passou a reprovar 3 de 3.
+
+### 2. O portão media outro lugar
+
+Ao regenerar o retrato, ele saiu **1480×914** onde antes saía **1850×1143** —
+mesma linha de comando, mesma máquina. `--caixas-retencao` multiplica pelo
+`devicePixelRatio` da janela, então as caixas de uma passada a 125% recortam
+coordenadas que não existem numa imagem gerada a 100%.
+
+Consequência concreta: o par `cobertura=trilho_elo1` foi reportado como
+`MARGINAL 0,3 pp` medindo pixel fora da imagem, e como `VIOLADA 10,6 pp` quando
+medido no lugar certo. **Um portão frouxo é ruim; um portão que mede outro
+lugar e imprime um número é pior, porque assina.**
+
+Conserto: `QT_SCALE_FACTOR=1` fixado antes de existir `QApplication`, só no
+caminho de retrato. Pixel lógico e pixel de imagem passam a ser o mesmo em
+qualquer máquina, e o conjunto inteiro de retratos foi regerado na mesma escala.
+
+### 3. O par comparava densidade, não lei
+
+Ainda no lugar certo, a comparação era entre um chip de 230×17 de texto denso
+(energia 94) e o **segmento inteiro** do elo 1, 611×26 quase todo fundo (energia
+19,6). Retenção média de Laplaciano não compara região densa com esparsa: o
+fundo não tem traço para perder, só dilui o denominador. `Trilho.rect_rotulo`
+aperta a caixa na métrica do texto — texto contra texto.
+
+### 4. A lei virou piso
+
+Com a medição finalmente válida, `cobertura` reprovou por 3,1 pp de verdade. A
+causa era a segunda metade da lei do canal, já escrita no projeto: **ressalva
+viaja em luminância, não em croma** (o JPEG subamostra croma 2×). O chip usava
+`OK`, 9,57:1 — o token de menor luminância que ainda preenche chip.
+
+Entraram `OK_FORTE` (12,38:1) e `NEUTRAL_FORTE` (10,96:1): mesma matiz, mesma
+leitura, só que carregando o traço em luminância.
+
+**E aqui está o que importa desta onda.** Escrevi o teste que varre *todos* os
+tokens que preenchem chip, e ele reprovou dois que a medição nunca tinha
+tocado: `CONFIRMADO` (`OK`, 9,57:1) e `INFERIDO` (`NEUTRAL`, 5,37:1 — mais baixo
+que o `DANGER` que esta mesma peça havia abandonado por medição). Eles violavam
+a lei desde sempre e nunca apareceram, porque o retrato amostrava regras
+`IMPRECISO`.
+
+> **Um portão que só olha o que caiu no retrato de hoje não é portão, é sorte.**
+> A lei tinha sido verificada três vezes por medição e mesmo assim tinha duas
+> violações vivas. Quem pegou foi a varredura, não a imagem.
+
+Cinco pares no portão, todos aprovados, `exit 0`.
+
+> **Os itens 5 a 7 não estão neste commit.** O conserto deles vive em
+> `tests/medicao.py` e nos três `test_ui_*` de portão de tempo, que **outra
+> sessão estava reescrevendo ao mesmo tempo** — ver o item 7. O que entrou aqui
+> é só `conftest.py::_drenar_qt`. O resto fica registrado como achado, com o
+> número medido, e chega no commit de quem está com aqueles arquivos na mão.
+> Descrever conserto que não está no diff é o defeito que este arquivo já
+> catalogou uma vez, na contagem de testes congelada sob selo de verificação.
+
+### 5. A queda do processo, e o teste que herdava a suíte inteira
+
+Ao medir os portões sob carga artificial (quatro processos queimando CPU), o
+processo **caía**: `Windows fatal exception: access violation`, 5 de 6 rodadas
+de `pytest tests/test_ui_*.py`.
+
+O teste que caía era sempre `test_a_interface_desenha_sob_carga`, e ele passa
+**6 de 6 sozinho sob a mesma carga**. Bissectado até o par mínimo:
+`test_ui_composicao.py` + `test_ui_desempenho.py`. A causa é estrutural, não
+dele: é o único teste da suíte que roda o laço de eventos de verdade
+(`processEvents` num laço de 2 s) — todos os outros desenham chamando
+`_quadro()` direto. Como a `QApplication` é de escopo de sessão, o primeiro
+`processEvents()` despacha de uma vez tudo o que os testes anteriores deixaram
+na fila, parte disso para objetos C++ que já não existem.
+
+Drenar a fila entre os testes (`conftest.py::_drenar_qt`) reduziu o acúmulo e
+**não fechou o buraco** — não há como saber o que cada widget de cada teste
+ainda tem pendente. O que fecha é não compartilhar estado: com o cenário rodando em subprocesso,
+com `QApplication` nova e fila vazia, foram 8 rodadas de 8 sem queda. Essa
+mudança está no arquivo da outra sessão e chega no commit dela.
+
+É o mesmo movimento que tirou a medição de GIL desta suíte para
+`bench_ui_carga.py`, pelo mesmo motivo: quando o resultado depende do que rodou
+antes, o portão não está medindo o produto.
+
+### 6. O portão do DOM media o cache de fontes do Qt
+
+Achado de passagem, e velho: `_medir_dom` nunca descartou quadros de
+aquecimento, e o teste da matriz descarta dez desde sempre — com a nota
+explicando por quê. Medido no DOM: **p95 de 24,95 ms** numa série cujo quadro
+cheio custa ~4 ms. É o mesmo "25 ms" que a docstring da matriz cita, mesma
+causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
+
+Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
+
+### 7. Duas sessões escrevendo no mesmo arquivo (erro meu)
+
+`tests/medicao.py` estava sendo reescrito por **outra sessão** ao mesmo tempo.
+Eu li o arquivo, escrevi por cima, e apaguei uma função dela. Perda clássica de
+atualização: leitura velha, escrita nova.
+
+Fica registrado porque a lição não é sobre Qt: **antes de gravar por cima de um
+arquivo que não é só seu, confira se ele mudou desde a leitura.** O sintoma foi
+três arquivos de teste com `ImportError` e vinte minutos gastos procurando um
+defeito que eu mesmo tinha criado.
+
+O instrumento dela é melhor que o meu e prevaleceu: eu media razão parede/CPU
+do **laço inteiro** com `process_time` (granularidade de 15,6 ms no Windows);
+ela mede o custo de CPU de **cada quadro** com `QueryThreadCycleTime`, que
+conta ciclos, e descarta as amostras em que o processo não estava rodando. A
+granularidade do julgamento passa a ser a mesma do objeto julgado, que era
+exatamente o que faltava.
+
+---
+
 ## Onda 10 — FASE 1 DA INTERFACE: a primeira tela (22/08)
 
 **Escolha do dono**, contra "fechar a metodologia" e "rodada 6 de crítica": construir o painel. Entregue: `fluxopro/ui/` (fundação + 3 painéis), `scripts/painel.py`, **139 testes novos** (657 → **796**, todos verdes), e dois retratos PNG em `design/`.

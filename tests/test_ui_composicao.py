@@ -799,21 +799,19 @@ class TestEscalaNoMesmoPortador:
         _, _, janela = composicao
         assert any(m.texto == "6/8" for m in _espiar(janela.regras).marcas)
 
-    @pytest.mark.xfail(
-        strict=False,
-        reason=(
-            "ESCOPO DE OUTRO CONSTRUTOR (ui/paineis/hud.py, rodada 2). A "
-            "escala do SALDO DIA (`±3,2k`) ja saiu de cena naquela peca; a "
-            "da AGRESSAO continua: `de 30,0k` desenha em 10px/TEXT_MUTED "
-            "(3,94:1) enquanto o veredito `▲ 51%` que ela qualifica desenha "
-            "em 13px/BUY (6,92:1) — menor E mais apagada, as duas coisas que "
-            "o canal come primeiro. Medido no par desta rodada: 32% de "
-            "retencao de traco contra 39% do veredito. A sonda fica na suite "
-            "para a correcao aparecer como XPASS; quando estabilizar, vira "
-            "strict e sai daqui para o teste do painel."
-        ),
-    )
-    def test_sonda_escala_da_pressao_da_janela(self, qapp):
+    def test_o_denominador_da_pressao_esta_no_portador_do_veredito(self, qapp):
+        """Era `xfail` — o conserto esta em `hud.FONTE_QUALIFICADOR`.
+
+        Nasceu como sonda de escopo alheio: `de 30,0k` saia em
+        10px/`TEXT_MUTED` (3,94:1) ao lado de um `▲ 51%` em 13px/BUY
+        (6,92:1) — menor E mais apagado, as duas coisas que o canal come
+        primeiro; medido, 32% de retencao de traco contra 39% do veredito.
+
+        Fica AQUI, e nao em `test_ui_hud.py`, apesar do que o `reason`
+        original mandava: `escala_nao_e_mais_fraca` e `_espiar` sao o
+        aparelho de medida, e moveria-lo significaria duplica-lo. Aparelho
+        duplicado e como uma sonda deixa de medir o que diz medir.
+        """
         from fluxopro.ui.paineis.hud import PainelHUD, contexto_do_sinal
 
         painel = PainelHUD()
@@ -827,6 +825,41 @@ class TestEscalaNoMesmoPortador:
             _espiar(painel).marcas,
             escala=("de ",),
             veredito=("51%",),
+            fundo=tokens.BG_SURFACE.name(),
+        )
+
+    @pytest.mark.parametrize(
+        "qualificador", [("de ",), ("s/lado",)], ids=["denominador", "rlp"]
+    )
+    def test_os_qualificadores_do_saldo_do_dia_tambem(self, qapp, qualificador):
+        """A mesma lei na banda de cima, e nos DOIS qualificadores dela.
+
+        Existe porque a mutacao que provou o teste do denominador da pressao
+        reprovou UM teste, tendo eu mexido em TRES qualificadores. Um conserto
+        com um terco de cobertura volta pelos outros dois tercos.
+
+        O `s/lado` e o mais caro de perder dos tres: sem ele o saldo parece o
+        retrato completo do pregao, e nao e — ha volume real cujo agressor a
+        B3 nao divulga. Um `+2,4k` que sobrevive sozinho ao canal e uma
+        afirmacao mais forte do que o produto tem como sustentar.
+        """
+        from fluxopro.ui.paineis.hud import PainelHUD, contexto_do_sinal
+
+        painel = PainelHUD()
+        painel.resize(340, painel.altura_natural)
+        painel.aplicar(
+            contexto_do_sinal(
+                None,
+                saldo_dia=2400,
+                volume_comprador_dia=16_200,
+                volume_vendedor_dia=13_800,
+                volume_nao_atribuido=4_100,
+            )
+        )
+        escala_nao_e_mais_fraca(
+            _espiar(painel).marcas,
+            escala=qualificador,
+            veredito=("2,4k",),
             fundo=tokens.BG_SURFACE.name(),
         )
 

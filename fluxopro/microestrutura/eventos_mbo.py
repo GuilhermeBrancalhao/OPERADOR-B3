@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from enum import Enum, unique
+from enum import Enum, StrEnum, unique
 
 from fluxopro.core.eventos import Side
 
@@ -35,8 +35,23 @@ CONFIANCA_OBSERVADO = 1.0
 
 
 @unique
-class TipoEventoOrdem(Enum):
-    """Ciclo de vida de uma ordem no livro."""
+class TipoEventoOrdem(StrEnum):
+    """Ciclo de vida de uma ordem no livro.
+
+    `StrEnum` pelo mesmo motivo medido de `core.eventos.Side` (ver a docstring
+    de lá): o censo de `Enum.__hash__` no pipeline completo atribuiu **27% dos
+    hashes de enum** a este tipo — praticamente todos em
+    `sessao_fluxo._ao_ordem_evento`, que indexa `ordem_eventos_por_tipo` por
+    `evento.tipo` (um `get` mais um `setitem`) uma vez por evento de ORDEM, e
+    o pipeline gera ~6,5 eventos de ordem por evento de mercado. Com `str` na
+    frente da MRO o hash sai em C e o `.value` continua sendo a string
+    (`"NEW"`, `"CANCEL"`, ...), então nada que serializa muda.
+
+    O que muda: `TipoEventoOrdem.NEW == "NEW"` passa a ser verdadeiro e
+    `str(...)` devolve `"NEW"` em vez de `"TipoEventoOrdem.NEW"`. As
+    comparações do caminho quente já são por identidade (`is`), que não
+    hasheia nem compara valor, e continuam exatas.
+    """
 
     NEW = "NEW"
     """Ordem entrou no livro."""

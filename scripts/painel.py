@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 import sys
 import threading
 import unicodedata
@@ -291,6 +292,29 @@ def main(argv: list[str] | None = None) -> int:
     if args.gil_switch > 0:
         sys.setswitchinterval(args.gil_switch)
 
+    if args.retrato is not None:
+        # ESCALA FIXA PARA O RETRATO — antes de existir `QApplication`, que e
+        # quando o Qt le isto.
+        #
+        # Sem esta linha o retrato sai no fator do monitor em que a janela
+        # abriu: a MESMA linha de comando gerou 1850x1143 numa passada e
+        # 1480x914 na seguinte, nesta mesma maquina. Duas consequencias, e a
+        # segunda e a grave:
+        #
+        # 1. a evidencia do projeto muda de tamanho sozinha, e um retrato
+        #    regenerado parece uma mudanca de layout quando e so a tela;
+        # 2. `--caixas-retencao` multiplica pelo `devicePixelRatio`, entao as
+        #    caixas de uma passada a 125% recortam coordenadas que nao
+        #    existem numa imagem gerada a 100%. Foi o que aconteceu: um par
+        #    mediu 0,3 pp de margem contra pixel fora da imagem e depois
+        #    10,6 pp de violacao real. O portao nao estava frouxo — estava
+        #    medindo outro lugar.
+        #
+        # Com dpr travado em 1, pixel logico e pixel de imagem sao o mesmo, e
+        # a caixa vale em qualquer maquina.
+        os.environ.setdefault("QT_ENABLE_HIGHDPI_SCALING", "0")
+        os.environ.setdefault("QT_SCALE_FACTOR", "1")
+
     aplicacao = QApplication(sys.argv[:1])
 
     ponte: PonteFluxo | None = None
@@ -455,8 +479,26 @@ def main(argv: list[str] | None = None) -> int:
                 caixa("proc_placar", metodo, metodo.rect_chip_procedencia(I_PLACAR)),
                 caixa("veredito_placar", metodo, metodo.rect_texto_valor(I_PLACAR)),
                 caixa("cobertura", metodo, metodo.rect_chip_cobertura()),
-                caixa("trilho_elo1", janela.trilho, janela.trilho.segmentos()[0]),
+                caixa("trilho_elo1", janela.trilho, janela.trilho.rect_rotulo(0)),
             ]
+            # O par do HUD. Entrou depois do resto: a lei do canal foi
+            # verificada ali por ARITMETICA de contraste (corpo >= corpo,
+            # razao >= razao) e nunca por MEDICAO de traco na imagem — e
+            # contraste calculado e uma previsao do que a reescala faz, nao
+            # uma observacao dela. Os textos vem do painel, nao daqui, para
+            # que a caixa siga o numero que estiver na tela.
+            hud = janela.hud
+            texto_qual, texto_ver = hud.textos_da_pressao()
+            if texto_qual:
+                partes.append(
+                    caixa("denom_pressao", hud, hud.rect_qualificador_da_pressao(texto_qual))
+                )
+                partes.append(
+                    caixa("veredito_pressao", hud, hud.rect_veredito_da_pressao(texto_ver))
+                )
+                pares_hud = " --par denom_pressao=veredito_pressao"
+            else:
+                pares_hud = ""
             # A coluna do registro entrou no portao na rodada da composicao
             # curta: quando a coluna nao cabe inteira, a linha do CORTE e a
             # ressalva daquele painel — ela e que diz que a lista na tela nao
@@ -495,7 +537,7 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 "  --par proc_regime=veredito_regime "
                 "--par proc_placar=veredito_placar "
-                "--par cobertura=trilho_elo1" + pares_extra
+                "--par cobertura=trilho_elo1" + pares_extra + pares_hud
             )
 
         def _capturar() -> None:

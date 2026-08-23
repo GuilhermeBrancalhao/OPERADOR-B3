@@ -702,9 +702,16 @@ def test_evidencia_e_so_de_primitivos_e_portanto_serializavel() -> None:
     assert eventos
     for evento in eventos:
         for chave, valor in evento.evidencia.items():
-            assert isinstance(chave, str)
-            assert isinstance(valor, (int, float, str, bool)), (
-                f"evidencia[{chave!r}] = {valor!r} não é primitivo"
+            assert type(chave) is str
+            # `type(...) is` e nao `isinstance`: desde que `Side` e
+            # `TipoEventoOrdem` sao `StrEnum` (ver a docstring de
+            # `core.eventos.Side`), um membro de enum E um `str` e passaria
+            # por `isinstance` sem ser primitivo. A guarda existe para provar
+            # que a evidencia serializa sem conversor; um enum nao serializa
+            # sozinho em todo formato, entao ele tem de continuar reprovando.
+            assert type(valor) in (int, float, str, bool), (
+                f"evidencia[{chave!r}] = {valor!r} nao e primitivo "
+                f"(tipo {type(valor).__name__})"
             )
 
 

@@ -138,6 +138,31 @@ from fluxopro.ui import formato, tokens
 from fluxopro.ui.base.painel_denso import PainelDenso
 
 # --------------------------------------------------------------------------
+def _rect_qualificador(linha: QRect, largura_rotulo: int, texto: str) -> QRect:
+    """A caixa do qualificador. Modulo, e nao metodo, para que o desenho e o
+    portao de canal saiam da MESMA conta sem um poder chamar o outro pela
+    metade.
+
+    A largura sai da metrica em vez de ser 80 cravado: a 13px `de 30,0k` nao
+    cabia mais nos 80px que cabiam a 10px, e um qualificador RECORTADO e pior
+    que um apagado — `de 30,0` e um numero errado, nao um numero fraco.
+    """
+    fonte = tokens.fonte_numero(FONTE_QUALIFICADOR)
+    largura = metrica(fonte).horizontalAdvance(texto) + 4
+    return QRect(linha.left() + largura_rotulo + 8, linha.top(), largura, linha.height())
+
+
+FONTE_VEREDITO = 13
+"""Corpo do veredito de cada banda (`▲ 51%`, `+2,4k`)."""
+
+FONTE_QUALIFICADOR = FONTE_VEREDITO
+"""Corpo do qualificador (denominador, `s/lado`). **Igual ao do veredito**,
+nao menor: `escala_nao_e_mais_fraca` exige `px_qualificador >= px_veredito`,
+e o veredito sai em `fonte_numero(FONTE_VEREDITO, 600)`. Derivar um do outro
+e o que impede alguem de aumentar o veredito sozinho e reabrir o defeito em
+silencio — a igualdade deixa de depender de ninguem lembrar dela.
+"""
+
 # Glifos — portadores de FORMA, o canal que sobrevive a ausencia de cor.
 # --------------------------------------------------------------------------
 SETA_COMPRA = "▲"
@@ -836,6 +861,65 @@ class PainelHUD(PainelDenso):
     def _linha_rotulo(self, rect: QRect) -> QRect:
         return QRect(rect.left() + MARGEM, rect.top() + 4, rect.width() - 2 * MARGEM, 12)
 
+    def _desenhar_denominador(
+        self, painter: QPainter, linha: QRect, largura_rotulo: int, texto: str
+    ) -> None:
+        """O qualificador de um veredito, no mesmo porte e na mesma
+        luminancia que ele.
+
+        Ver a nota longa em `_desenhar_saldo_dia`. A largura sai da metrica em
+        vez de ser 80 cravado: a 13px `de 30,0k` nao cabia mais nos 80px que
+        cabiam a 10px, e um qualificador RECORTADO e pior que um apagado —
+        `de 30,0` e um numero errado, nao um numero fraco.
+        """
+        painter.setFont(tokens.fonte_numero(FONTE_QUALIFICADOR))
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(
+            _rect_qualificador(linha, largura_rotulo, texto),
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+            texto,
+        )
+
+    def textos_da_pressao(self) -> tuple[str, str]:
+        """(qualificador, veredito) da banda de pressao, como estao na tela.
+
+        Devolve `("", ...)` quando nao ha volume na janela: sem denominador o
+        desenho nao publica o qualificador, e uma caixa de retencao sobre
+        pixel vazio nao mede lei nenhuma — mediria ruido e chamaria de
+        veredito.
+        """
+        leitura = self._leitura
+        if not leitura.volume_janela:
+            return "", ""
+        return (
+            "de " + formato.abreviar(leitura.volume_janela, com_sinal=False),
+            texto_pressao(leitura.taxa_compra_janela, leitura.volume_janela),
+        )
+
+    def rect_qualificador_da_pressao(self, texto: str) -> QRect:
+        """Onde `de 30,0k` cai na banda de pressao, do mesmo calculo do
+        desenho.
+
+        Publica pelo motivo de `rect_barra`, e por um a mais: o portao de
+        canal de `scripts/painel.py --caixas-retencao` recorta esta caixa da
+        IMAGEM. Uma caixa digitada a mao mediria um pedaco que ninguem
+        escolheu, e o portao passaria a aprovar ou reprovar a regiao errada.
+        """
+        linha = self._linha_rotulo(self._rects[BANDA_PRESSAO])
+        largura_rotulo = metrica(tokens.fonte_rotulo()).horizontalAdvance(
+            self.rotulo_janela
+        )
+        return _rect_qualificador(linha, largura_rotulo, texto)
+
+    def rect_veredito_da_pressao(self, texto: str) -> QRect:
+        """O veredito que o qualificador acima qualifica. Alinhado a direita,
+        entao a caixa e o proprio texto, nao a linha inteira."""
+        linha = self._linha_rotulo(self._rects[BANDA_PRESSAO])
+        largura = metrica(tokens.fonte_numero(FONTE_VEREDITO, 600)).horizontalAdvance(
+            texto
+        )
+        return QRect(linha.right() - largura, linha.top(), largura + 2, linha.height())
+
     def _desenhar_veredito(
         self, painter: QPainter, linha: QRect, rotulo: str, texto: str, cor: QColor
     ) -> int:
@@ -846,7 +930,7 @@ class PainelHUD(PainelDenso):
         painter.drawText(
             linha, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, rotulo
         )
-        painter.setFont(tokens.fonte_numero(13, 600))
+        painter.setFont(tokens.fonte_numero(FONTE_VEREDITO, 600))
         painter.setPen(cor)
         painter.drawText(
             linha, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, texto
@@ -895,25 +979,35 @@ class PainelHUD(PainelDenso):
         largura_rotulo = self._desenhar_veredito(painter, linha, "SALDO DIA", texto, cor)
 
         if leitura.volume_dia:
-            # O denominador, como na banda de baixo. `TEXT_MUTED` porque
-            # perde-lo no canal nao produz leitura errada nenhuma: a proporcao
-            # continua sendo a proporcao. E este e o teste que o `±2,5k` nao
-            # passava — la o rotulo era a unica coisa que dizia o eixo.
-            painter.setFont(tokens.fonte_numero(10))
-            painter.setPen(tokens.TEXT_MUTED)
-            painter.drawText(
-                QRect(linha.left() + largura_rotulo + 8, linha.top(), 80, linha.height()),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                "de " + formato.abreviar(leitura.volume_dia, com_sinal=False),
-            )
+            # O denominador. **13px/`TEXT_SECONDARY`, nao 10px/`TEXT_MUTED`.**
+            #
+            # O comentario que estava aqui dizia que perde-lo no canal nao
+            # produz leitura errada, "porque a proporcao continua sendo a
+            # proporcao". Isso e verdade sobre a BARRA e falso sobre o
+            # VEREDITO: `▲ 51%` de 30,0k e conviccao, `▲ 51%` de 30 lotes e
+            # ruido, e sao o mesmo desenho quando o denominador morre. O
+            # vizinho de tres linhas abaixo ja dizia isso do RLP — "sem isto
+            # o saldo pareceria o retrato completo do dia quando nao e" — e o
+            # argumento e o mesmo, palavra por palavra.
+            #
+            # Medido: 10px/`TEXT_MUTED` retem 32% do traco contra 39% do
+            # veredito que ele qualifica; menor E mais apagado, as duas coisas
+            # que o canal come primeiro. A 13px/8,10:1 ele passa a reter pelo
+            # menos tanto quanto o veredito (13px/6,92:1).
+            #
+            # A hierarquia visual nao se perde: ela migra para PESO (400
+            # contra 600) e para CROMA (neutro contra direcional) — nenhum dos
+            # dois e o que a reescala e a quantizacao comem primeiro.
+            texto_de = "de " + formato.abreviar(leitura.volume_dia, com_sinal=False)
+            self._desenhar_denominador(painter, linha, largura_rotulo, texto_de)
         if leitura.volume_nao_atribuido:
             # RLP: volume real cujo agressor a B3 nao divulga. Sem isto o
             # saldo pareceria o retrato completo do dia quando nao e.
-            largura_valor = metrica(tokens.fonte_numero(13, 600)).horizontalAdvance(
+            largura_valor = metrica(tokens.fonte_numero(FONTE_VEREDITO, 600)).horizontalAdvance(
                 texto
             )
-            painter.setFont(tokens.fonte_numero(10))
-            painter.setPen(tokens.TEXT_MUTED)
+            painter.setFont(tokens.fonte_numero(FONTE_QUALIFICADOR))
+            painter.setPen(tokens.TEXT_SECONDARY)
             painter.drawText(
                 linha.adjusted(0, 0, -largura_valor - 8, 0),
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -937,16 +1031,10 @@ class PainelHUD(PainelDenso):
         )
 
         if volume:
-            # "63% de que?" — o denominador. Em `TEXT_MUTED` porque perder
-            # este numero no canal nao produz leitura errada nenhuma: a
-            # proporcao continua sendo a proporcao.
-            painter.setFont(tokens.fonte_numero(10))
-            painter.setPen(tokens.TEXT_MUTED)
-            painter.drawText(
-                QRect(linha.left() + largura_rotulo + 8, linha.top(), 80, linha.height()),
-                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                "de " + formato.abreviar(volume, com_sinal=False),
-            )
+            # "51% de que?" — o denominador, no mesmo portador do veredito.
+            # O porque esta em `_desenhar_denominador`.
+            texto_de = "de " + formato.abreviar(volume, com_sinal=False)
+            self._desenhar_denominador(painter, linha, largura_rotulo, texto_de)
 
         self._desenhar_barra_particionada(
             painter, self.rect_barra(BANDA_PRESSAO), taxa, volume

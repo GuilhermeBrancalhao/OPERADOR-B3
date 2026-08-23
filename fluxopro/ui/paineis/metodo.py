@@ -163,8 +163,8 @@ ROTULO_CONFIANCA: dict[Confianca | None, str] = {
 }
 
 _COR_CONFIANCA: dict[Confianca | None, QColor] = {
-    Confianca.CONFIRMADO: tokens.OK,
-    Confianca.INFERIDO: tokens.NEUTRAL,
+    Confianca.CONFIRMADO: tokens.OK_FORTE,
+    Confianca.INFERIDO: tokens.NEUTRAL_FORTE,
     Confianca.IMPRECISO: tokens.ALERT,
     Confianca.AUSENTE_NA_FONTE: tokens.ABSORPTION,
     None: tokens.ABSORPTION,
@@ -182,6 +182,13 @@ em CROMA. O JPEG subamostra croma 2×. `ALERT` (12,34:1) e `ABSORPTION`
 
 Ou seja: a lei "ressalva em corpo não menor que o dado" tem uma segunda
 metade que só a medição mostrou — **ressalva em token de luminância alta**.
+
+`CONFIRMADO` usou `OK` (9,57:1) até o dia em que a lei virou PISO em
+`tests/test_ui_tokens.py` em vez de continuar sendo caso a caso. A medição
+não pegava: o retrato amostrava regras `IMPRECISO`, e o chip de `CONFIRMADO`
+nunca aparecia na imagem que o portão media. Um portão que só olha o que
+caiu no retrato de hoje não é portão — é sorte. `OK_FORTE` (12,38:1) é o
+mesmo verde carregando o traço em luminância.
 `DANGER` continua certo para a faixa de 3px da janela inteira (§3.5), que é
 área chapada e não carrega texto."""
 
@@ -859,7 +866,10 @@ class PainelMetodo(PainelDenso):
             painter,
             self.rect_chip_cobertura(),
             self.texto_chip_cobertura(),
-            tokens.OK if vivas else tokens.ALERT,
+            # `OK_FORTE`, nao `OK`: ver a docstring do token. Este chip e uma
+            # ressalva ("33 de 42 regras vivas") e ressalva viaja em
+            # luminancia.
+            tokens.OK_FORTE if vivas else tokens.ALERT,
         )
 
     def _desenhar_vazio(self, painter: QPainter) -> None:

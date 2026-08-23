@@ -35,9 +35,19 @@ from fluxopro.app.config import ConfigOperacao, ConfigSimulador
 from fluxopro.app.montagem import Montagem, montar
 from fluxopro.app.saida import ConsoleFluxo
 from fluxopro.app.sessao_fluxo import DeteccaoAnotada, SessaoFluxo
-from fluxopro.core.eventos import AgressorSide, BookDelta, BookSnapshot, Trade
+from fluxopro.core.eventos import (
+    AgressorSide,
+    BookDelta,
+    BookSnapshot,
+    Side,
+    Trade,
+)
 from fluxopro.microestrutura.detectores import TipoDeteccao
-from fluxopro.microestrutura.eventos_mbo import CONFIANCA_OBSERVADO, FonteMicro
+from fluxopro.microestrutura.eventos_mbo import (
+    CONFIANCA_OBSERVADO,
+    FonteMicro,
+    TipoEventoOrdem,
+)
 from fluxopro.motor.sinais import EstagioSinal, Sinal
 
 SYMBOL = "WDOV26"
@@ -182,6 +192,61 @@ def test_contadores_de_cada_elo_batem_com_o_barramento():
         == c.n_trades_metodo
         == c.n_trades_bus
     )
+
+
+def test_a_quebra_por_tipo_de_evento_de_ordem_e_fiel():
+    """`ordem_eventos_por_tipo` tem de somar o total E discriminar os tipos.
+
+    Achado por MUTAÇÃO, não por leitura: trocar o índice de
+    `sessao_fluxo._ao_ordem_evento` por uma constante (todo evento contado sob
+    `TipoEventoOrdem.NEW`) deixava a suíte inteira verde. O contador é lido por
+    `app/saida.py:277`, que imprime a quebra no resumo da execução — ou seja,
+    o número que o usuário lê no fim do pregão não tinha guarda nenhuma. O
+    irmão `deteccoes_por_tipo` tinha (`test_app_saida.py`); este não.
+
+    Duas afirmações, e as duas são necessárias:
+
+    * a soma da quebra fecha com `n_ordem_eventos` — pega evento perdido ou
+      contado duas vezes;
+    * mais de um tipo aparece, e nenhum tipo ausente do livro aparece — só a
+      soma não pega o índice colapsado, porque colapsar preserva o total.
+    """
+    montagem, _ = rodar()
+    c = montagem.sessao.contadores
+    quebra = c.ordem_eventos_por_tipo
+
+    assert c.n_ordem_eventos > 0
+    assert sum(quebra.values()) == c.n_ordem_eventos, (
+        f"a quebra por tipo soma {sum(quebra.values())} e o total e "
+        f"{c.n_ordem_eventos}"
+    )
+    assert len(quebra) > 1, (
+        f"todos os {c.n_ordem_eventos} eventos de ordem cairam em um unico "
+        f"tipo ({list(quebra)}) — indice colapsado"
+    )
+    assert set(quebra) <= set(TipoEventoOrdem), quebra
+    # O inferidor só produz estes três; EXPIRE não tem origem em feed MBP.
+    assert {TipoEventoOrdem.NEW, TipoEventoOrdem.CANCEL} <= set(quebra), quebra
+
+
+def test_o_lado_do_livro_sobrevive_a_ida_e_volta_pelo_disco():
+    """`Side`/`AgressorSide` viram `.value` em `gravacao/formato.py`.
+
+    Este teste existe para travar a decisão tomada quando `Side` virou
+    `StrEnum` (ver a docstring de `core.eventos.Side`): a razão de NÃO ter
+    usado `IntEnum` é que `.value` vai para o disco. Se alguém trocar a base
+    por `IntEnum` procurando o mesmo ganho de hash, o valor gravado deixa de
+    ser `"BUY"` e toda gravação existente passa a ser ilegível — em silêncio,
+    porque nenhum outro teste olha o valor literal.
+    """
+    assert Side.BUY.value == "BUY" and Side.SELL.value == "SELL"
+    assert AgressorSide.UNKNOWN.value == "UNKNOWN"
+    for membro in Side:
+        assert type(membro.value) is str
+        assert Side(membro.value) is membro
+    for membro in TipoEventoOrdem:
+        assert type(membro.value) is str
+        assert TipoEventoOrdem(membro.value) is membro
 
 
 # ---------------------------------------------------------------------------

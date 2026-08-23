@@ -474,6 +474,30 @@ class TrilhoCadeia(PainelDenso):
             for i in range(len(ETAPAS))
         )
 
+    def rect_rotulo(self, indice: int) -> QRect:
+        """A caixa APERTADA do texto do elo — largura da metrica, nao do
+        segmento.
+
+        Existe por causa de uma medicao errada, nao por estetica. O portao de
+        canal comparava a retencao de traco do chip de cobertura (230x17 de
+        texto denso, energia 94) contra a do SEGMENTO inteiro do elo 1
+        (611x26, quase todo fundo, energia 19,6) e acusava violacao de 10,6
+        pp. Retencao media de Laplaciano nao compara regiao densa com regiao
+        esparsa: o fundo nao tem traco para perder, entao ele so dilui o
+        denominador e inflaciona a retencao da caixa grande.
+
+        Comparar TEXTO com TEXTO e a unica forma de o numero significar o que
+        o nome dele diz.
+        """
+        segmento = self.segmentos()[indice]
+        if self._motivo:
+            return segmento
+        fonte = tokens.fonte_ui(12, 600)
+        interno = segmento.adjusted(MARGEM + 6, 0, -(MARGEM + 6), 0)
+        texto = _maior_que_cabe(ETAPAS[indice], max(0, interno.width()), fonte)
+        largura = QFontMetrics(fonte).horizontalAdvance(texto)
+        return QRect(interno.left(), segmento.top() + 4, largura + 2, segmento.height() - 8)
+
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
         painter.fillRect(regiao, self.cor_fundo)
         painter.setPen(tokens.BORDER)
