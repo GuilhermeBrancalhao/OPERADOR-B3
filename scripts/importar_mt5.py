@@ -161,6 +161,19 @@ def importar(
         # cai no dia UTC pedido?** A varredura comeca um dia antes e para um
         # dia depois, margem suficiente para qualquer deslocamento de servidor
         # plausivel, e o filtro decide o que entra.
+        # O cursor viaja em UTC INGENUO, porque e assim que o pacote
+        # `MetaTrader5` interpreta um `datetime` sem fuso.
+        #
+        # Terceiro e ultimo relogio errado desta peca. Depois de unificar o
+        # FILTRO em UTC, a cobertura ainda comecava 09:00:38 num pregao que
+        # comeca 06:00:07 — tres horas a menos, exatamente o offset local. A
+        # causa: o cursor de paginacao era reconstruido com
+        # `fromtimestamp(ms/1000)`, que devolve hora LOCAL, e o MT5 lia aquilo
+        # como UTC. Cada pagina pulava 3 h para a frente.
+        #
+        # Nao havia como notar contando trades: o numero cresce a cada
+        # correcao e nunca parece pouco. Notou-se comparando a COBERTURA com a
+        # de um diagnostico independente — que e para isso que ela existe.
         inicio = dt.datetime.combine(dia, de) - dt.timedelta(days=1)
         limite = dia + dt.timedelta(days=1)
 
@@ -235,6 +248,16 @@ def importar(
                     visto_ate_ms = ultimo_ms
                 if len(lote) < PAGINA:
                     break
+                # LOCAL ingenuo, e nao UTC. Medido, nao suposto: pedindo
+                # `2026-08-21 00:00` o terminal devolve o primeiro tick de
+                # `06:00:07 UTC`; pedindo `06:00`, devolve `09:00:38 UTC`. O
+                # pacote converte o `datetime` sem fuso como hora LOCAL da
+                # maquina. `fromtimestamp` sem `tz` faz exatamente esse
+                # caminho de volta.
+                #
+                # Eu ja "consertei" isto para UTC uma vez, por hipotese, e a
+                # importacao caiu de 200.899 para 123.884 trades. A tabela de
+                # medicao esta no PROGRESSO da onda 12.
                 cursor = dt.datetime.fromtimestamp(visto_ate_ms / 1000.0)
         finally:
             gravador.parar()

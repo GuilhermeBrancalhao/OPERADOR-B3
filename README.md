@@ -10,7 +10,7 @@ extraída de fonte pública com citação e rótulo de confiança.
 
 ## O estado, em uma linha
 
-`python -m pytest tests/ -q` → **1.334 passed, 3 skipped**
+`python -m pytest tests/ -q` → **1.333 passed, 4 skipped**
 · ~29 mil linhas de produção, ~25 mil de teste
 · **o tape é de mercado real**; o livro ainda não.
 

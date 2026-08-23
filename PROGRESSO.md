@@ -8,7 +8,7 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
-> **Estado corrente — 23/08/2026.** `python -m pytest tests/ -q` → **1.334 passed, 3 skipped**.
+> **Estado corrente — 23/08/2026.** `python -m pytest tests/ -q` → **1.333 passed, 4 skipped**.
 > Fases 1, 2, 3 e 5 do plano de UI entregues e montadas numa janela só; `fluxopro/metodologia/`
 > ligado ao pipeline vivo. Detalhe do ciclo em `GAUNTLET_ASG.md`.
 > **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
@@ -391,6 +391,63 @@ resultado é lido por `--fonte replay` sem caminho especial. A conversão de tic
 para `Trade` foi **extraída** para `dados.mt5.trade_de_tick`, usada agora pelos
 dois — se cada um convertesse do seu jeito, a gravação ao vivo e a importada do
 mesmo pregão divergiriam, e a divergência só apareceria ao comparar as duas.
+
+### 32 pregões importados, e o que a série disse
+
+Importados todos os dias que o terminal guardava: **09/07 a 21/08, 3.475.958
+negócios, 26 MB**. `scripts/estudo_pregoes.py` roda o motor sobre cada um e
+tabula — porque um pregão sozinho não diz nada. `EXAUSTAO 7.421` num dia parece
+muito ou pouco? Sem a série ao lado, é opinião.
+
+| | julho (16 dias) | agosto (16 dias) |
+|---|---|---|
+| negócios/dia (mediana) | 16.088 | 198.158 |
+| detecções por minuto | 0,3 | **16,5** (11,8 a 21,1) |
+| volume **sem lado do agressor** | **25,4%** | **4,5%** |
+
+**A taxa de detecção é estável no regime líquido.** O volume varia 2× entre os
+dias de agosto e a taxa varia menos que isso. O detector não explode com o
+volume — que era a pergunta que motivou o estudo.
+
+**O contrato tem vida, e o degrau é 31/07.** `WDOU26` só virou a referência do
+dólar em agosto; antes a liquidez estava no vencimento anterior. Média única
+sobre os 32 dias não descreve nenhum dos dois regimes, então o script separa os
+grupos pela **mediana**, não por data digitada.
+
+**O achado não esperado: 25,4% × 4,5% de volume sem agressor.** No contrato
+magro, um quarto do fluxo chega sem lado identificado — e delta, agressão e
+footprint são construídos sobre esse lado. A tela mostra `s/lado` como ressalva,
+mas a metodologia **não trata isso como regime distinto**. Fica registrado como
+pergunta aberta de calibração.
+
+### Dois dados adversos sobre a calibração
+
+1. **Exaustão é 76,5% de todas as detecções** — 113.770 de 148.773, contra
+   12,9% de absorção e 10,7% de clip institucional. Ou exaustão é mesmo o evento
+   dominante do fluxo, ou o limiar dela está frouxo em relação aos outros dois.
+2. **O motor confirmou sinal em 32 de 32 pregões**, inclusive nos dias magros
+   com 8 mil negócios e um terço do fluxo sem lado. Em 16/07, com 84 detecções
+   no dia inteiro, saíram 8 confirmados.
+
+   Isso **não** está registrado aqui como robustez. Confluência de três
+   condições que confirma todo dia, em qualquer liquidez, merece desconfiança:
+   ou as três são fáceis demais de satisfazer juntas, ou a histerese deixa o
+   estágio subir com evidência fraca. Um pregão só nunca mostraria isso.
+
+### O terceiro erro de unidade do dia
+
+A primeira tabela saiu com `det/min` de **10.475** — cento e setenta e cinco
+detecções por segundo. Eu havia dividido por `sessao.segundos_decorridos()`, que
+mede o **relógio de parede do processo**: no replay a velocidade máxima, 9,5 h de
+pregão passam em 40 s. O valor certo é ~17/min. E a coluna `vwap` saía em
+**ticks** (10.339) com o dólar a 5.169.
+
+> Uma taxa dividida pelo relógio errado não é uma taxa imprecisa — é outra
+> grandeza. A unidade é parte da medida.
+
+Os três erros de relógio desta onda — janela no fuso do servidor, filtro em três
+referenciais, e agora duração de parede no lugar de tempo de mercado — têm a
+mesma forma: **dois relógios no mesmo cálculo, e nenhum deles nomeado.**
 
 ### O resultado, sobre o pregão de 21/08/2026 (WDOU26)
 
