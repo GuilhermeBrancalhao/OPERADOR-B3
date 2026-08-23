@@ -8,7 +8,7 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
-> **Estado corrente — 23/08/2026.** `python -m pytest tests/ -q` → **1.341 passed**.
+> **Estado corrente — 23/08/2026.** `python -m pytest tests/ -q` → **1.344 passed, 2 skipped**.
 > Fases 1, 2, 3 e 5 do plano de UI entregues e montadas numa janela só; `fluxopro/metodologia/`
 > ligado ao pipeline vivo. Detalhe do ciclo em `GAUNTLET_ASG.md`.
 > **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
@@ -362,6 +362,62 @@ cheio custa ~4 ms. É o mesmo "25 ms" que a docstring da matriz cita, mesma
 causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
 
 Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
+
+## Onda 14 — o estudo vira auditável (23/08)
+
+Crítica recebida, e procedente: `/dados/` está no `.gitignore`, então dá para
+auditar o **código** e a **lógica** do estudo, e não dá para reproduzir os
+números dos 32 pregões.
+
+> Um resultado que só o autor consegue reproduzir é uma afirmação, não uma
+> medição.
+
+É a mesma forma de defeito que este arquivo já catalogou em outras roupas:
+número congelado sob selo de verificação, portão que mede fora da imagem, teste
+que passa por estar fora do cenário.
+
+### `dados_manifesto.json`, versionado
+
+Por pregão: símbolo, data, contagem por tipo, primeiro e último timestamp,
+versão de schema e o **SHA-256** do arquivo gravado. 32 dias, 3.475.740
+eventos, 17 KB.
+
+**A fronteira é proposital.** Nada de preço, volume, VWAP, delta ou POC — o
+manifesto responde *"quais insumos, e estão íntegros?"*, não *"quanto o mercado
+andou?"*. A primeira pergunta cabe num repositório; a segunda é o dado
+licenciado.
+
+Não recalcula hash: lê o `meta.json`, onde o `Gravador` já gravou o hash do
+conteúdo no momento da escrita. Recalcular abriria a porta para um manifesto
+que descreve o arquivo de hoje enquanto o metadado descreve o de ontem — duas
+verdades sobre o mesmo dia, e nenhuma identificável como a errada.
+
+### Quatro testes, e um deles é sobre licenciamento
+
+O teste da fronteira varre **todas** as chaves de **todos** os dias contra uma
+lista de campos permitidos, em vez de conferir os campos que hoje se sabe que
+existem. Campo novo reprova por ser novo — a única forma de a fronteira
+sobreviver a quem acrescentar algo sem pensar nela.
+
+O teste contra o disco tem `skipif` (num clone limpo não há `dados/`), e por
+isso **não está sozinho**: os outros três afirmam a forma do manifesto sem
+depender do disco. Teste que não roda não protege nada.
+
+Prova por mutação: adulterar um hash e uma contagem foi pego por **três**
+testes diferentes, e o do disco nomeou o dia exato (`WDOU26 2026-07-16`).
+
+### O laço fechado
+
+`estudo_pregoes.py` passou a imprimir `PROCEDENCIA` antes de qualquer número:
+
+```
+PROCEDENCIA: confere com o manifesto versionado (32 dias, 3.475.740 eventos)
+```
+
+Degrada com aviso e não explode — estudo sobre gravação nova continua útil. O
+que não pode é o número sair parecendo auditado quando não está.
+
+---
 
 ## Onda 13 — a exaustão calibrada, e a tarefa de segunda (23/08)
 

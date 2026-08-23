@@ -1,0 +1,589 @@
+{
+  "versao_manifesto": 1,
+  "aviso": "Metadados de integridade. NAO contem dado de mercado — nenhum preco, volume ou estatistica derivada. Os arquivos de tick ficam fora do repositorio por serem licenciados da corretora.",
+  "como_reproduzir": [
+    "1. python scripts/importar_mt5.py --simbolo <sym> --data <AAAA-MM-DD> --saida dados/",
+    "2. python scripts/manifesto_dados.py --arquivo dados/ --verificar",
+    "3. se os hashes baterem: python scripts/estudo_pregoes.py --arquivo dados/ --simbolo <sym>"
+  ],
+  "n_dias": 32,
+  "n_eventos_total": 3475740,
+  "dias": [
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-09",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 9722
+      },
+      "n_eventos_total": 9722,
+      "inicio_utc": "2026-07-09T09:00:46.335000+00:00",
+      "fim_utc": "2026-07-09T18:29:59.841000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "9c256e377f05f93eeaff1a6eeb8ed5d059efaff01d7ab540e19fc80b9a878c14"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 9722
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-10",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 13595
+      },
+      "n_eventos_total": 13595,
+      "inicio_utc": "2026-07-10T09:00:50.118000+00:00",
+      "fim_utc": "2026-07-10T18:29:55.281000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "120a901f04cf5826d2e38e158a351948d5744fd2b186bd4b391620da2a5eec61"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 13595
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-13",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 15517
+      },
+      "n_eventos_total": 15517,
+      "inicio_utc": "2026-07-13T09:00:48.342000+00:00",
+      "fim_utc": "2026-07-13T18:30:00.039000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "8ece117143cf341b6eb58b30fbadf0a9c0fb3e60bba565c38209f7df8b9b732f"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 15517
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-14",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 30597
+      },
+      "n_eventos_total": 30597,
+      "inicio_utc": "2026-07-14T09:00:54.473000+00:00",
+      "fim_utc": "2026-07-14T18:29:53.305000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "93cea2b1e6fe922b58f356fc8dbf00f201f601a029b5b3cbd3c3451a48dc76a1"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 30597
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-15",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 17458
+      },
+      "n_eventos_total": 17458,
+      "inicio_utc": "2026-07-15T09:00:46.680000+00:00",
+      "fim_utc": "2026-07-15T18:29:59.278000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "b8d5d564573aa98b6bc13d38d0e34e40ded0c1fa4a45bd12af85f9ffda5af1da"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 17458
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-16",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 7861
+      },
+      "n_eventos_total": 7861,
+      "inicio_utc": "2026-07-16T09:00:52.805000+00:00",
+      "fim_utc": "2026-07-16T18:30:00.049000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "a6c27eafbf650c50c2d53b3d269210279ebe1905b87dd40e1a9ea71e0abcb658"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 7861
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-17",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 13738
+      },
+      "n_eventos_total": 13738,
+      "inicio_utc": "2026-07-17T09:00:58.997000+00:00",
+      "fim_utc": "2026-07-17T18:29:59.241000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "ae15ae97f28ae5d08a7157bf0b2f75a52fab5a3e7e8d8dd1c97f4c4eb4dcb8c9"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 13738
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-20",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 11465
+      },
+      "n_eventos_total": 11465,
+      "inicio_utc": "2026-07-20T09:00:50.305000+00:00",
+      "fim_utc": "2026-07-20T18:29:50.307000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "d956f5e25254b1919afe5af5292e4c803dc753f56c7ad9afee5fe96ea8018bd3"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 11465
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-21",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 9166
+      },
+      "n_eventos_total": 9166,
+      "inicio_utc": "2026-07-21T09:00:56.053000+00:00",
+      "fim_utc": "2026-07-21T18:29:58.918000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "521475e17c8254159a8dece236b038e65e238856118192c147b628005d42292d"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 9166
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-22",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 12957
+      },
+      "n_eventos_total": 12957,
+      "inicio_utc": "2026-07-22T09:00:58.939000+00:00",
+      "fim_utc": "2026-07-22T18:29:57.688000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "103c27e98f17f960438e0b48c611a5c454c4c8524e385ca18bb83590f48b42c2"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 12957
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-23",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 16660
+      },
+      "n_eventos_total": 16660,
+      "inicio_utc": "2026-07-23T09:00:45.287000+00:00",
+      "fim_utc": "2026-07-23T18:29:50.174000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "e0f1b195da2a887be6605a866a5db679d631ea6ff866ce15b71f242e25537083"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 16660
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-24",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 17831
+      },
+      "n_eventos_total": 17831,
+      "inicio_utc": "2026-07-24T09:00:57.455000+00:00",
+      "fim_utc": "2026-07-24T18:29:55.499000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "461b6f0392d9c6f3ceb2c79991a95d7a6a8d1e8cb7a56dcca109b4765b18a548"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 17831
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-27",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 16895
+      },
+      "n_eventos_total": 16895,
+      "inicio_utc": "2026-07-27T09:00:48.810000+00:00",
+      "fim_utc": "2026-07-27T18:29:47.949000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "5afe18e384c9c62fa9bae910665dbe6c873b336975b411dbb09117c6cc401119"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 16895
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-28",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 19647
+      },
+      "n_eventos_total": 19647,
+      "inicio_utc": "2026-07-28T09:00:51.351000+00:00",
+      "fim_utc": "2026-07-28T18:29:58.798000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "1706650b4bc22ac4d5bdd4a2ecc3f98ae1482303e912f70abce3edd4814c06df"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 19647
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-29",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 70384
+      },
+      "n_eventos_total": 70384,
+      "inicio_utc": "2026-07-29T09:00:53.930000+00:00",
+      "fim_utc": "2026-07-29T18:29:57.839000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "78cac00290da8dfdfc6ba99df66d8a9362c13f3cd8a17986b8b872f4d0bc7a55"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 70384
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-30",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 57025
+      },
+      "n_eventos_total": 57025,
+      "inicio_utc": "2026-07-30T09:00:56.530000+00:00",
+      "fim_utc": "2026-07-30T18:29:58.779000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "644512c2c14128b18f777509edc3a553dda4c79402773662877c1d4069583fd4"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 57025
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-07-31",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 90720
+      },
+      "n_eventos_total": 90720,
+      "inicio_utc": "2026-07-31T12:33:24.960000+00:00",
+      "fim_utc": "2026-07-31T18:29:59.276000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "be86134bea99d60e43b9b82d0cb74d025e7b886b1732d3dc6565cc698013f707"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 90720
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-03",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 164887
+      },
+      "n_eventos_total": 164887,
+      "inicio_utc": "2026-08-03T09:00:59.756000+00:00",
+      "fim_utc": "2026-08-03T18:29:59.750000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "dfdafa98a81f068aafc67cd2139aeff2d765c4b3839d9de9162580d8a428f8c8"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 164887
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-04",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 212864
+      },
+      "n_eventos_total": 212864,
+      "inicio_utc": "2026-08-04T09:00:57.292000+00:00",
+      "fim_utc": "2026-08-04T18:30:00.028000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "facca79ed112286ace30e19e6eb8311fb1bbd85720e29e6dd038f91be6fae412"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 212864
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-05",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 184617
+      },
+      "n_eventos_total": 184617,
+      "inicio_utc": "2026-08-05T09:00:50.180000+00:00",
+      "fim_utc": "2026-08-05T18:29:59.567000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "b45b6e7bffe89836654cc07dec8856abbda48ead51991da2658f0c1d2a2ab02f"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 184617
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-06",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 177296
+      },
+      "n_eventos_total": 177296,
+      "inicio_utc": "2026-08-06T09:00:43.512000+00:00",
+      "fim_utc": "2026-08-06T18:29:59.987000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "d505fb9d423b3b827baf3141d6e9a254ac91fa39ee307dfb704bec0d29d39e8d"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 177296
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-07",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 176344
+      },
+      "n_eventos_total": 176344,
+      "inicio_utc": "2026-08-07T09:00:57.720000+00:00",
+      "fim_utc": "2026-08-07T18:30:00.036000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "1b80d0adfa5d10885283c5cc4b1c8c2acc8203f64d1584ef7cab765ef8de2f96"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 176344
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-10",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 145018
+      },
+      "n_eventos_total": 145018,
+      "inicio_utc": "2026-08-10T09:00:49.449000+00:00",
+      "fim_utc": "2026-08-10T18:29:59.498000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "8031e757d9a9fd8b5fd948bbee014f4ef6b21788d149efa607af669f0b820a55"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 145018
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-11",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 235779
+      },
+      "n_eventos_total": 235779,
+      "inicio_utc": "2026-08-11T09:00:46.836000+00:00",
+      "fim_utc": "2026-08-11T18:29:59.704000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "303c1c6bf79a03ad582d05bf34d3ac870ecbb483321bdcc1350d087a902c33ea"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 235779
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-12",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 237892
+      },
+      "n_eventos_total": 237892,
+      "inicio_utc": "2026-08-12T09:00:56.238000+00:00",
+      "fim_utc": "2026-08-12T18:29:59.440000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "159cb57c1055d44a3e09842f8977775c3ec111b345e0b4b932ddf31c772e044e"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 237892
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-13",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 206503
+      },
+      "n_eventos_total": 206503,
+      "inicio_utc": "2026-08-13T09:00:46.317000+00:00",
+      "fim_utc": "2026-08-13T18:29:59.128000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "49186b05d9ad99d5243a1de3340bec2054c213de388c053b493765a7d64923d8"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 206503
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-14",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 270816
+      },
+      "n_eventos_total": 270816,
+      "inicio_utc": "2026-08-14T09:00:50.307000+00:00",
+      "fim_utc": "2026-08-14T18:30:00.040000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "c37e755d2b8a68c716ddf80a5b5939845da31a4a9a091016ed9dbf739e12fb59"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 270816
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-17",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 214885
+      },
+      "n_eventos_total": 214885,
+      "inicio_utc": "2026-08-17T09:00:54.365000+00:00",
+      "fim_utc": "2026-08-17T18:29:59.187000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "c09b2ea0480bad3f9af011bf438071557fae10b24066f01bcff9ac0d6eb2bf62"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 214885
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-18",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 195416
+      },
+      "n_eventos_total": 195416,
+      "inicio_utc": "2026-08-18T09:00:54.425000+00:00",
+      "fim_utc": "2026-08-18T18:30:00.037000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "0eb412b70c4523fba335cd9b036d047f8e090d4ec55225b7543480c028218c45"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 195416
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-19",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 235368
+      },
+      "n_eventos_total": 235368,
+      "inicio_utc": "2026-08-19T09:00:47.490000+00:00",
+      "fim_utc": "2026-08-19T18:29:59.995000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "6f8960c854d53144d9a69828d70a69d360c4edbafec92423caba0784164d87e8"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 235368
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-20",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 185918
+      },
+      "n_eventos_total": 185918,
+      "inicio_utc": "2026-08-20T09:00:53.353000+00:00",
+      "fim_utc": "2026-08-20T18:29:59.020000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "8d4a1be5fff5069f97dcf9f3006fbda24fd64c58e9d4a2dd31c9d7e3d95c063a"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 185918
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-21",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 200899
+      },
+      "n_eventos_total": 200899,
+      "inicio_utc": "2026-08-21T09:00:38.268000+00:00",
+      "fim_utc": "2026-08-21T18:29:59.829000+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "5c8bdd32346ee3c016048f0f767ca8374a29ce6bb9a8211bb75109d07a91c157"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 200899
+      }
+    }
+  ]
+}

@@ -10,7 +10,7 @@ extraída de fonte pública com citação e rótulo de confiança.
 
 ## O estado, em uma linha
 
-`python -m pytest tests/ -q` → **1.341 passed**
+`python -m pytest tests/ -q` → **1.344 passed, 2 skipped**
 · ~29 mil linhas de produção, ~25 mil de teste
 · **o tape é de mercado real**; o livro ainda não.
 
@@ -40,15 +40,44 @@ python scripts/painel.py --fonte simulador --simbolo WDOV26
 # o mesmo pipeline, headless, imprimindo sinais e detecções
 python scripts/operar.py --fonte simulador --simbolo WDOV26
 
-# gravar um pregão de verdade (exige MetaTrader5 numa conta de corretora)
-python scripts/operar.py --fonte mt5 --simbolo WDOFUT --gravar dados/
+# importar um pregão JÁ FECHADO (só o tape; exige o terminal MT5 aberto e logado)
+python scripts/importar_mt5.py --simbolo WDOU26 --data 2026-08-21 --saida dados/
+
+# gravar um pregão AO VIVO — tape E livro (exige mercado aberto)
+python scripts/operar.py --fonte mt5 --simbolo WDOU26 --gravar dados/
 
 # reviver o que foi gravado, determinístico
 python scripts/painel.py --fonte replay --arquivo dados/ --simbolo WDOU26
+
+# rodar o motor sobre TODOS os pregões gravados e tabular o que ele viu
+python scripts/estudo_pregoes.py --arquivo dados/ --simbolo WDOU26
+
+# conferir que as gravações locais batem com o manifesto versionado
+python scripts/manifesto_dados.py --arquivo dados/ --verificar
 ```
+
+O contrato é o **líquido do momento** (`WDOU26` em agosto/2026), e não `WDOFUT`:
+os nomes com `$` e `@` são contínuos sintéticos da corretora.
 
 O núcleo roda **sem Qt**. Quem só quer o CLI não instala PySide6, e a suíte de interface se pula
 sozinha.
+
+---
+
+## Reprodutibilidade dos números
+
+`/dados/` está no `.gitignore` e continua: são 26 MB de tick da B3, licenciado da corretora. Isso
+deixava um buraco real — os números publicados aqui e no `PROGRESSO.md` eram auditáveis só por
+quem tem os arquivos. **Um resultado que só o autor reproduz é uma afirmação, não uma medição.**
+
+`dados_manifesto.json` é versionado e carrega, por pregão: símbolo, data, contagem de eventos,
+primeiro e último timestamp, e o **SHA-256** do arquivo gravado. Não carrega preço, volume, VWAP
+nem estatística derivada — a fronteira é proposital: ele responde *"quais insumos foram usados, e
+estão íntegros?"*, e não *"quanto o mercado andou?"*.
+
+Se os hashes baterem, o estudo reproduz. Se não, o `--verificar` diz qual dia divergiu. E o
+próprio `estudo_pregoes.py` imprime a linha `PROCEDENCIA` antes de qualquer número, para que
+nenhuma tabela saia daqui parecendo auditada sem estar.
 
 ---
 

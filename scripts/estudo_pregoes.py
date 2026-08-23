@@ -32,6 +32,7 @@ O script marca a virada sozinho, pela mediana, em vez de a data ser digitada.
 from __future__ import annotations
 
 import argparse
+import json
 import statistics
 import sys
 import time
@@ -113,6 +114,34 @@ def _rodar_dia(caminho: Path, simbolo: str, dia) -> dict:
     }
 
 
+def _procedencia(base: Path) -> str:
+    """Uma linha dizendo se os insumos batem com `dados_manifesto.json`.
+
+    Degrada com aviso e nao explode: um estudo rodado sobre gravacao nova, ou
+    numa maquina sem o manifesto, continua util — o que nao pode e o numero
+    sair parecendo auditado quando nao esta.
+    """
+    manifesto_path = Path(__file__).resolve().parent.parent / "dados_manifesto.json"
+    if not manifesto_path.exists():
+        return "PROCEDENCIA: sem `dados_manifesto.json` — insumos NAO auditaveis"
+    try:
+        from scripts.manifesto_dados import verificar
+
+        manifesto = json.loads(manifesto_path.read_text(encoding="utf-8"))
+        divergencias = verificar(base, manifesto)
+    except Exception as erro:  # pragma: no cover — manifesto ilegivel
+        return f"PROCEDENCIA: manifesto ilegivel ({erro})"
+    if divergencias:
+        return (
+            f"PROCEDENCIA: {len(divergencias)} DIVERGENCIA(S) contra o manifesto "
+            "— rode `python scripts/manifesto_dados.py --arquivo dados/ --verificar`"
+        )
+    return (
+        "PROCEDENCIA: confere com o manifesto versionado "
+        f"({manifesto['n_dias']} dias, {manifesto['n_eventos_total']:,} eventos)"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--arquivo", required=True)
@@ -127,6 +156,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"nenhuma gravacao de {args.simbolo} em {caminho}")
         return 1
 
+    # PROCEDENCIA DOS INSUMOS, antes de qualquer numero.
+    #
+    # `dados/` e ignorado no git, entao uma tabela publicada sem isto e uma
+    # afirmacao: quem le audita o codigo e a logica, e nao consegue conferir de
+    # que arquivos os numeros sairam. O manifesto versionado carrega hash,
+    # janela e contagem de cada dia; esta linha diz se o disco ainda bate.
+    print(_procedencia(caminho))
     print(f"{len(entradas)} pregoes de {args.simbolo}\n")
     cab = (
         f"{'dia':<11}{'trades':>9}{'volume':>11}{'s/lado':>8}"
