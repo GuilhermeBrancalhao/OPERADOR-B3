@@ -176,10 +176,27 @@ def _trade(ns: int, preco: int, qty: int, lado: AgressorSide) -> Trade:
 def _recorte(painel, rect: QRect) -> tuple:
     """Os pixels de um retangulo do backing, como tupla de RGB.
 
-    Nao `bytes(...constBits())`: o `QImage` tem enchimento de linha, e os bytes
-    de enchimento nao sao inicializados — duas capturas identicas podiam
-    diferir no primeiro byte de cada linha e o teste acusava uma diferenca que
-    nao existe em pixel nenhum. Custou uma investigacao; fica escrito."""
+    Nao `bytes(...constBits())`, e o motivo escrito aqui antes estava
+    INCOMPLETO — dizia so "o `QImage` tem enchimento de linha e os bytes de
+    enchimento nao sao inicializados". Enchimento existe e e um problema real,
+    mas nao e o perigoso, e a correcao importa porque este docstring vinha
+    selado com "custou uma investigacao; fica escrito".
+
+    O perigo e de TEMPO DE VIDA: `constBits()` devolve uma janela para o
+    buffer do `QImage`, o PySide6 nao mantem o dono vivo pela janela, e numa
+    cadeia de temporarios (`painel._backing.copy(rect).toImage().constBits()`)
+    o `QImage` morre antes de `bytes()` terminar de copiar. Le memoria
+    liberada. Medido em `test_ui_hud.py`, no mesmo padrao: **86 recortes
+    corrompidos em 400**, e zero nas mesmas 400 guardando a referencia.
+
+    Este helper escapava por acidente, nao por desenho: ele usa `pixelColor`
+    e nunca chega a tocar em `constBits()`. Quem lesse a versao anterior e
+    quisesse um recorte mais rapido trataria o enchimento, acharia que estava
+    coberto, e reintroduziria a leitura de memoria liberada.
+
+    A forma certa, quando a velocidade importar, esta em
+    `test_ui_hud.py::_recorte`: `QImage` numa variavel COM NOME, formato
+    fixado, e enchimento de fim de linha descartado explicitamente."""
     imagem = painel._backing.toImage()
     return tuple(
         imagem.pixelColor(x, y).rgb()

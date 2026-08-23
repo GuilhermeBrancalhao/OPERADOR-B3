@@ -363,6 +363,34 @@ causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
 
 Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
 
+### 8. O instrumento lia memória liberada
+
+Os dois testes de geometria do canal no HUD reprovavam com a máquina ocupada,
+e eu atribuí à contenção. Estava errado, e a causa é pior: `_recorte` era
+`bytes(painel._backing.copy(rect).toImage().constBits())`. `constBits()`
+devolve uma janela para o buffer do `QImage`; o PySide6 não mantém o dono vivo
+pela janela; numa cadeia de temporários o `QImage` morre antes de `bytes()`
+terminar de copiar. **86 recortes corrompidos em 400**, e zero nas mesmas 400
+guardando a referência.
+
+Não era escala reintroduzida no produto. Era o instrumento.
+
+Dois desdobramentos:
+
+* O `_recorte` do footprint escapava **por acidente** — usa `pixelColor` e
+  nunca toca em `constBits()`. O docstring dele culpava enchimento de linha,
+  sob o selo "custou uma investigação; fica escrito". Enchimento é real e é o
+  problema menor; quem lesse aquilo, tratasse o enchimento e trocasse por
+  `constBits()` por velocidade reintroduziria a leitura de memória liberada.
+  Corrigido, apontando para a forma certa.
+* Varridos os outros usos vivos de `constBits()`: `scripts/retencao.py::_cinza`
+  e `design/bench/bench_qt2.py` guardam o `QImage` em variável com nome. Estão
+  corretos — os números de retenção da lei do canal não estavam contaminados.
+
+Fica junto do item 6 como a mesma lição em duas roupas: **antes de acusar o
+código medido, conferir o que mede.** No item 6 o portão media o cache de
+fontes do Qt; aqui o recorte media memória que já não era dele.
+
 ### 7. Duas sessões escrevendo no mesmo arquivo (erro meu)
 
 `tests/medicao.py` estava sendo reescrito por **outra sessão** ao mesmo tempo.
