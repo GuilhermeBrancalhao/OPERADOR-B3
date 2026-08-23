@@ -8,7 +8,7 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
-> **Estado corrente — 23/08/2026.** `python -m pytest tests/ -q` → **1.333 passed, 4 skipped**.
+> **Estado corrente — 23/08/2026.** `python -m pytest tests/ -q` → **1.341 passed**.
 > Fases 1, 2, 3 e 5 do plano de UI entregues e montadas numa janela só; `fluxopro/metodologia/`
 > ligado ao pipeline vivo. Detalhe do ciclo em `GAUNTLET_ASG.md`.
 > **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
@@ -362,6 +362,91 @@ cheio custa ~4 ms. É o mesmo "25 ms" que a docstring da matriz cita, mesma
 causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
 
 Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
+
+## Onda 13 — a exaustão calibrada, e a tarefa de segunda (23/08)
+
+### O limiar não era o problema
+
+O estudo da onda 12 mostrou exaustão em **76,5%** de todas as detecções e
+registrou a pergunta: limiar frouxo, ou é o evento dominante mesmo?
+
+Primeiro a procedência, antes de mexer: `exaustao.conceito` está marcada
+**`AUSENTE_NA_FONTE`** no registro — o termo não aparece em nenhuma transcrição
+lida. Não é regra do método; o detector existe como componente genérico, de
+origem interna. Ou seja, os 76,5% da tela vêm do componente que o registro se
+recusa a endossar. E o parâmetro não veio da fonte, então calibrar não fere a
+disciplina.
+
+Aí a causa apareceu no código, e não é limiar:
+
+```python
+terco = max(1, cfg.n_trades_janela // 3)
+```
+
+Com o default `n_trades_janela = 5`, isso dá `5 // 3 = 1`. O detector diz
+comparar *"último terço vs primeiro terço da janela"* e comparava **um negócio
+contra um negócio**. Um lote grande seguido de um pequeno bastava — o que num
+tape real acontece o tempo todo.
+
+> Não era limiar frouxo. Era a regra documentada não tendo como rodar.
+
+### A varredura, sobre três pregões reais (13, 14 e 21/08)
+
+| config | exaustões | share | det/min | sinais | confirmados |
+|---|---|---|---|---|---|
+| 5 trades, queda 0,40 (antigo) | 24.602 | 78,9% | 18,2 | 458 | 133 |
+| 5 trades, queda 0,60 | 21.022 | 76,2% | 16,2 | 458 | 133 |
+| 5 trades, queda 0,75 | 18.134 | 73,4% | 14,5 | 458 | 133 |
+| **9 trades, queda 0,40 (novo)** | **9.246** | **58,5%** | **9,3** | 458 | 133 |
+| 9 trades, queda 0,60 | 7.489 | 53,3% | 8,2 | 458 | 133 |
+| 15 trades, queda 0,60 | 3.005 | 31,4% | 5,6 | 458 | 133 |
+
+Duas leituras, e a segunda é a que impede conclusão errada:
+
+* **A janela é a alavanca; o limiar de volume não.** 5→9 corta 62% das
+  emissões; 0,40→0,75 corta 26%. Coerente: limiar não conserta uma comparação
+  entre duas amostras de tamanho 1.
+* **A coluna de sinais não se move.** 458 e 133 nas seis configurações, com a
+  exaustão indo de 24.602 a 3.005. **Exaustão não alimenta a confluência** —
+  mexer aqui muda o que a tela MOSTRA, não o que o produto DECIDE.
+
+Escolhido **9**, e não 15: nove é o menor valor em que o terço vira três
+negócios, mínimo para "volume caindo ao longo da janela" ser tendência em vez
+de diferença entre dois lotes. Quinze reduziria mais filtrando fenômeno de
+verdade, e não há nada na fonte que justifique.
+
+Efeito no pregão de 21/08: detecções de 9.661 para **5.068**; exaustão de 7.421
+(76,8%) para **2.828 (55,8%)**; absorção **1.332** e clip **908** inalterados —
+a mudança tocou só o que devia.
+
+### Cinco testes caíram, e a correção não foi afrouxá-los
+
+Com a janela em 9, o cenário sintético de 2.000 eventos parou de produzir
+detecção de tape. A saída **não** foi devolver a janela curta na config do
+teste: isso deixaria a suíte verde exercitando uma configuração que não vai para
+produção — o teste passaria a medir um produto que não existe. Os cenários
+subiram para 10.000 eventos (CLI: 6.000), dimensionados por medição.
+
+### A tarefa agendada, e o defeito que o teste de fumaça achou
+
+`FluxoPro-GravarPregao`, segunda a sexta 09:00, chamando
+`scripts/gravar_pregao.cmd`. Disparada e morta em 25 s para provar a cadeia
+inteira: Agendador → cmd → Python → MT5 → Gravador.
+
+E o teste de fumaça achou um defeito real. Ao conectar num domingo, o adaptador
+republicou **141 negócios do último minuto de sexta** — todos já gravados e
+hasheados — e o `Gravador` criou um `trades.csv` solto **ao lado** do
+`trades.csv.gz` finalizado. Dois arquivos com o mesmo nome-base, e o catálogo
+passando a ter de escolher. **Ia se repetir toda segunda às 09:00.**
+
+Guarda: dia finalizado é reconhecido pela existência do `.gz`, e o evento é
+**descartado com contagem pública** (`descartados_por_dia_fechado`). Descartar,
+e não recusar — recusar abortaria a captura do dia novo por causa de um minuto
+do dia velho. Dois testes: um prova a guarda, outro prova que ela **não**
+atrapalha a retomada após crash, sem o qual trocar o descarte por um `raise`
+passaria despercebido.
+
+---
 
 ## Onda 12 — o primeiro pregão real em disco (23/08)
 

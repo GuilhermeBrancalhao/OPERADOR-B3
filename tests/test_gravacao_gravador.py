@@ -197,3 +197,83 @@ def test_formato_decodificar_niveis_preserva_ordem_e_valores():
     decodificados = formato.decodificar_niveis(texto)
     assert decodificados == niveis
     assert decodificados[0].price == 9999  # topo continua sendo o topo
+
+
+# ==========================================================================
+# Dia ja finalizado — a guarda da tarefa agendada
+# ==========================================================================
+def test_evento_de_dia_ja_fechado_e_descartado_e_contado(tmp_path: Path):
+    """O cenario de toda segunda-feira as 09:00.
+
+    O adaptador MT5 republica o rabo da sessao anterior ao conectar. Medido num
+    teste real da tarefa agendada: **141 negocios do ultimo minuto de sexta**,
+    todos ja gravados e hasheados, chegaram numa execucao de domingo — e o
+    gravador criou um `trades.csv` solto ao lado do `trades.csv.gz` finalizado.
+    Dois arquivos com o mesmo nome-base, e o catalogo passando a ter de
+    escolher entre eles.
+
+    A guarda descarta e CONTA, em vez de recusar: recusar abortaria a captura
+    do dia novo por causa de um minuto do dia velho.
+    """
+    bus1 = Barramento()
+    g = Gravador(bus1, tmp_path)
+    g.iniciar()
+    bus1.publicar(_trade(_DIA_1_TS, trade_id="T1"))
+    g.parar()  # fecha o dia: comprime e apaga o .csv
+
+    dia = date.fromtimestamp(_DIA_1_TS / 1e9)
+    pasta = tmp_path / "WDOV26" / dia.isoformat()
+    assert (pasta / "trades.csv.gz").exists()
+    assert not (pasta / "trades.csv").exists()
+
+    # segunda execucao, mesmo dia — o rabo da sessao anterior
+    bus2 = Barramento()
+    g2 = Gravador(bus2, tmp_path)
+    g2.iniciar()
+    for i in range(5):
+        bus2.publicar(_trade(_DIA_1_TS + i, trade_id=f"REPUB{i}"))
+    g2.parar()
+
+    assert not (pasta / "trades.csv").exists(), (
+        "o dia fechado ganhou um .csv solto ao lado do .csv.gz"
+    )
+    assert g2.descartados_por_dia_fechado == {("WDOV26", dia): 5}
+
+
+def test_a_guarda_nao_atrapalha_a_retomada_apos_crash(tmp_path: Path):
+    """O controle do teste acima, e ele e obrigatorio.
+
+    Uma guarda que bloqueasse toda reabertura mataria a retomada apos crash —
+    que e o motivo de `_abrir_arquivo` saber anexar e re-hashear. A diferenca
+    e o `.gz`: dia interrompido nao tem, dia finalizado tem.
+
+    Sem este teste, trocar o descarte por um `raise` passaria despercebido.
+    """
+    # UM BARRAMENTO POR EXECUCAO, e nao um compartilhado: o processo que
+    # "morreu" nao desassina, e publicar no mesmo barramento entregaria o
+    # evento ao gravador morto antes de chegar no novo. Foi o que aconteceu na
+    # primeira versao deste teste — `I/O operation on closed file`, um erro do
+    # ARREIO que parecia defeito do produto.
+    bus1 = Barramento()
+    g = Gravador(bus1, tmp_path)
+    g.iniciar()
+    bus1.publicar(_trade(_DIA_1_TS, trade_id="A"))
+    # NAO chama parar(): simula o processo morto no meio do pregao
+    for arq in list(g._arquivos.values()):
+        arq.handle.close()
+
+    dia = date.fromtimestamp(_DIA_1_TS / 1e9)
+    pasta = tmp_path / "WDOV26" / dia.isoformat()
+    assert (pasta / "trades.csv").exists()
+    assert not (pasta / "trades.csv.gz").exists()
+
+    bus2 = Barramento()
+    g2 = Gravador(bus2, tmp_path)
+    g2.iniciar()
+    bus2.publicar(_trade(_DIA_1_TS + 1, trade_id="B"))
+    g2.parar()
+
+    assert g2.descartados_por_dia_fechado == {}
+    with gzip.open(pasta / "trades.csv.gz", "rt", encoding="utf-8") as fh:
+        linhas = fh.read().strip().splitlines()
+    assert len(linhas) == 3, f"cabecalho + A + B, veio: {linhas}"

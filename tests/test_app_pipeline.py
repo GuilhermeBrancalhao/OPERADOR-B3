@@ -52,7 +52,28 @@ from fluxopro.motor.sinais import EstagioSinal, Sinal
 
 SYMBOL = "WDOV26"
 SEED = 42
-N_EVENTOS = 2_000
+N_EVENTOS = 10_000
+"""Eventos do simulador por cenario. **Eram 2.000, e 2.000 pararam de servir.**
+
+Estes testes afirmam que deteccao vinda do TAPE atravessa o pipeline como
+`OBSERVADA`. Com 2.000 eventos elas so apareciam porque o default da exaustao
+era uma janela de 5 negocios — que, medido, comparava UM negocio contra UM e
+disparava a torto e a direito (ver `ConfigExaustao.n_trades_janela`).
+
+Corrigido o default para 9, o cenario curto deixou de produzir deteccao de tape
+e cinco testes ficaram vermelhos. A saida NAO foi devolver a janela curta na
+config do teste: isso deixaria a suite verde exercitando uma configuracao que
+nao vai para producao — o teste passaria a medir um produto que nao existe.
+
+Medido com a configuracao de PRODUCAO:
+
+    2.000 eventos ->   7 deteccoes,  0 do tape
+    5.000 eventos ->  55 deteccoes,  3 do tape
+   10.000 eventos -> 152 deteccoes,  6 do tape
+
+Dez mil, e nao cinco: tres deteccoes e pouca folga para um teste que so afirma
+"existe pelo menos uma". O custo e ~0,25 s por cenario.
+"""
 
 # Tipos que SÓ podem existir se o `LivroMBO` tiver sido alimentado pelo
 # `InferidorMBP` — nenhum deles lê o tape diretamente.

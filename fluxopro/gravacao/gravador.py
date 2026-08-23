@@ -136,11 +136,25 @@ class Gravador:
         self._hora_inicio_ns: dict[tuple[str, date], int] = {}
         self._hora_fim_ns: dict[tuple[str, date], int] = {}
         self._desde_meta: dict[tuple[str, date], int] = {}
+        # Um contador por (symbol, dia) DESCARTADO. Limitado pelo numero de
+        # dias que uma execucao encosta, nao por eventos — o criterio deste
+        # arquivo aplicado a ele mesmo.
+        self._descartados: dict[tuple[str, date], int] = {}
 
     # ------------------------------------------------------------------
     def iniciar(self) -> None:
         for tipo in _TIPOS_GRAVADOS:
             self._barramento.assinar(tipo, self._receber)
+
+    @property
+    def descartados_por_dia_fechado(self) -> dict[tuple[str, date], int]:
+        """Quantos eventos foram descartados por chegarem a um dia finalizado.
+
+        Publico porque descarte silencioso e o defeito que este projeto passou
+        cinco auditorias caçando: quem opera precisa poder perguntar.
+        """
+        with self._lock:
+            return dict(self._descartados)
 
     def parar(self) -> None:
         with self._lock:
@@ -168,6 +182,9 @@ class Gravador:
         chave = (symbol, dia, tipo)
         arq = self._arquivos.get(chave)
         if arq is None:
+            if self._dia_ja_finalizado(symbol, dia, tipo):
+                self._descartar_de_dia_fechado(symbol, dia)
+                return
             arq = self._abrir_arquivo(symbol, dia, tipo)
             self._arquivos[chave] = arq
 
@@ -199,6 +216,55 @@ class Gravador:
         self._desde_meta[chave_dia] = self._desde_meta.get(chave_dia, 0) + 1
         if self._meta_a_cada > 0 and self._desde_meta[chave_dia] >= self._meta_a_cada:
             self._checkpoint_meta(symbol, dia)
+
+    def _dia_ja_finalizado(self, symbol: str, dia: date, tipo: type) -> bool:
+        """O dia ja foi fechado e comprimido numa execucao anterior?
+
+        `_fechar_dia` comprime o `.csv` em `.csv.gz` e apaga o original, entao a
+        presenca do `.gz` **e** a marca de finalizado. Nao se le o `meta.json`
+        aqui de proposito: o `.gz` e o mesmo arquivo que a verificacao de
+        integridade hasheia, e perguntar ao arquivo e mais barato e mais direto
+        que perguntar ao metadado que descreve o arquivo.
+        """
+        caminho = self._saida / symbol / dia.isoformat() / formato.NOMES_ARQUIVO[tipo]
+        return caminho.with_suffix(caminho.suffix + ".gz").exists()
+
+    def _descartar_de_dia_fechado(self, symbol: str, dia: date) -> None:
+        """Evento de um dia ja finalizado: DESCARTA, conta, e avisa uma vez.
+
+        ## O caso real que trouxe esta guarda
+
+        O adaptador MT5 republica o rabo da sessao anterior ao conectar. Num
+        teste da tarefa agendada, num domingo, a conexao trouxe **141 negocios
+        do ultimo minuto de sexta** — todos ja gravados e hasheados — e o
+        gravador criou um `trades.csv` solto ao lado do `trades.csv.gz`
+        finalizado. Dois arquivos com o mesmo nome-base no mesmo dia, e o
+        catalogo passa a ter de escolher entre eles.
+
+        Isso ia se repetir em toda segunda-feira as 09:00.
+
+        ## Por que descartar, e nao recusar
+
+        A guarda obvia seria levantar erro. Seria pior: a captura de segunda
+        inteira abortaria por causa de um minuto de sexta que ja esta em disco.
+        A retomada apos crash — que e o motivo de `_abrir_arquivo` saber anexar
+        — continua funcionando, porque um dia interrompido nao tem `.gz`.
+
+        O aviso sai UMA vez por dia descartado, e nao por evento: 141 linhas de
+        log identicas escondem a informacao em vez de entrega-la. A contagem
+        continua subindo e fica no fim.
+        """
+        chave = (symbol, dia)
+        n = self._descartados.get(chave, 0) + 1
+        self._descartados[chave] = n
+        if n == 1:
+            _logger.warning(
+                "evento de %s %s chegou com o dia JA FECHADO (existe .gz) — "
+                "descartando. Normalmente e o rabo da sessao anterior que o "
+                "adaptador republica ao conectar; ele ja esta gravado.",
+                symbol,
+                dia,
+            )
 
     def _abrir_arquivo(self, symbol: str, dia: date, tipo: type) -> _ArquivoAberto:
         diretorio = self._saida / symbol / dia.isoformat()

@@ -164,7 +164,12 @@ def test_rodar_com_simulador_imprime_resumo_e_sai_zero(capsys):
             "--fonte", "simulador",
             "--simbolo", "WDOV26",
             "--seed", "42",
-            "--n-eventos", "1500",
+            # 6.000 e nao 1.500: com a janela de exaustao corrigida para 9
+            # negocios (ver `ConfigExaustao.n_trades_janela`), um cenario de
+            # 1.500 eventos nao produz mais deteccao de TAPE, e este teste
+            # afirma que o console imprime `[OBS]`. Medido: 5.000 eventos ja
+            # dao 3 deteccoes de tape com a configuracao de producao.
+            "--n-eventos", "6000",
             "--status-a-cada", "0",
         ]
     )
@@ -172,7 +177,7 @@ def test_rodar_com_simulador_imprime_resumo_e_sai_zero(capsys):
     saida = capsys.readouterr().out
     assert "FLUXO PRO" in saida
     assert "RESUMO DA SESSAO" in saida
-    assert "eventos processados : 3000" in saida
+    assert "eventos processados : 12000" in saida
     assert "SINAL" in saida
     assert "DETECCAO" in saida
     assert "ordens (MBP->MBO)" in saida

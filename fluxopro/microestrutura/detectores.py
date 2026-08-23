@@ -1114,8 +1114,51 @@ class DetectorLiquidezFantasma(_DetectorDeLivro):
 
 @dataclass(frozen=True, slots=True)
 class ConfigExaustao:
-    n_trades_janela: int = 5
-    queda_volume_minima: float = 0.4  # último terço vs primeiro terço da janela
+    n_trades_janela: int = 9
+    """Negocios na janela. **Era 5, e 5 tornava a propria regra impossivel.**
+
+    O corpo calcula `terco = max(1, n_trades_janela // 3)`. Com 5, isso da
+    `5 // 3 = 1`: o detector diz comparar "ultimo terco vs primeiro terco" e
+    compara UM negocio contra UM negocio. Um lote grande seguido de um pequeno
+    dispara — o que num tape real acontece o tempo todo.
+
+    Nao era limiar frouxo. Era a regra documentada nao tendo como rodar.
+
+    Medido sobre tres pregoes reais (13, 14 e 21/08/2026, WDOU26):
+
+    | config                | exaustoes | share  | det/min | sinais |
+    |---|---|---|---|---|
+    | 5 trades, queda 0,40  |    24.602 | 78,9%  |    18,2 | 458 |
+    | 5 trades, queda 0,75  |    18.134 | 73,4%  |    14,5 | 458 |
+    | **9 trades, queda 0,40** | **9.246** | **58,5%** | **9,3** | 458 |
+    | 15 trades, queda 0,60 |     3.005 | 31,4%  |     5,6 | 458 |
+
+    Duas leituras da tabela:
+
+    * **O tamanho da janela e a alavanca; o limiar de volume nao.** Passar de 5
+      para 9 corta 62% das emissoes; endurecer a queda de 0,40 para 0,75 corta
+      26%. Faz sentido: o limiar nao conserta uma comparacao entre duas
+      amostras de tamanho 1.
+    * **A coluna de sinais nao se move.** 458 sinais e 133 confirmados nas seis
+      configuracoes. Exaustao nao alimenta a confluencia do motor — coerente
+      com ela ser `AUSENTE_NA_FONTE` no registro da metodologia. Mexer aqui
+      muda o que a tela MOSTRA, e nao o que o produto DECIDE.
+
+    Nove, e nao quinze: nove e o menor valor em que o terco vira tres negocios,
+    que e o minimo para "volume caindo ao longo da janela" ser uma tendencia em
+    vez de uma diferenca entre dois lotes. Quinze reduz mais, e reduziria por
+    filtrar fenomeno de verdade — nao ha nada na fonte que justifique.
+    """
+
+    queda_volume_minima: float = 0.4
+    """Queda minima do ultimo terco em relacao ao primeiro.
+
+    Continua 0,4: a varredura acima mostra que este e o parametro FRACO, e
+    nao ha nada na fonte que sustente outro numero — `exaustao.conceito` esta
+    marcada `AUSENTE_NA_FONTE` em `metodologia/regras.py`. Mudar por gosto
+    seria cravar constante sem procedencia, que e exatamente o que este
+    projeto nao faz.
+    """
 
 
 class DetectorExaustao:

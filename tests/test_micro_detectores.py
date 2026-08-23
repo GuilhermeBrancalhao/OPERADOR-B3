@@ -1639,3 +1639,57 @@ def test_exaustao_pontas_iguais_com_a_mesma_ancora_continua_mudo():
         saidas.append(det.ao_trade(_trade(i * 1_000_000, p, q, AgressorSide.SELL)))
     emitidos = [(i, s.price) for i, s in enumerate(saidas) if s is not None]
     assert emitidos == [(5, 5002)], f"mesma ancora nao pode reemitir; saiu {emitidos}"
+
+
+# ==========================================================================
+# O default da exaustao tem de permitir a regra que ela documenta
+# ==========================================================================
+def test_a_janela_padrao_da_exaustao_forma_tercos_de_verdade():
+    """`terco = max(1, n // 3)` — e com n=5 o terco era UM negocio.
+
+    O detector diz comparar "ultimo terco vs primeiro terco da janela". Com o
+    default antigo de 5, `5 // 3 = 1`, e ele comparava um negocio contra um
+    negocio: um lote grande seguido de um pequeno bastava. Nao era limiar
+    frouxo — era a regra documentada nao tendo como rodar.
+
+    Medido sobre tres pregoes reais: 78,9% de todas as deteccoes eram exaustao
+    com n=5, contra 58,5% com n=9.
+
+    Tres e o piso porque abaixo disso "volume caindo ao longo da janela" nao e
+    tendencia, e diferenca entre dois lotes. A afirmacao vale para o DEFAULT, e
+    nao para a configuracao do operador: quem quiser uma janela curta continua
+    podendo, de forma explicita.
+    """
+    from fluxopro.microestrutura.detectores import ConfigExaustao
+
+    padrao = ConfigExaustao()
+    terco = max(1, padrao.n_trades_janela // 3)
+    assert terco >= 3, (
+        f"o terco padrao tem {terco} negocio(s): com menos de 3 a comparacao "
+        "entre pontas da janela nao mede tendencia de volume, mede ruido"
+    )
+
+
+def test_a_exaustao_nao_entra_na_confluencia_do_motor():
+    """A outra metade do achado, e a que impede uma conclusao errada.
+
+    Ao calibrar a exaustao sobre pregoes reais, a contagem de sinais ficou
+    IDENTICA nas seis configuracoes varridas — 458 sinais, 133 confirmados,
+    com a exaustao indo de 24.602 para 3.005 emissoes. Ou seja: mexer neste
+    detector muda o que a tela MOSTRA e nao o que o produto DECIDE.
+
+    Isso e coerente com `exaustao.conceito` estar marcada `AUSENTE_NA_FONTE`
+    no registro — o termo nao aparece em nenhuma transcricao lida, entao o
+    metodo nao a usa. Este teste prende a coerencia entre as duas coisas: se
+    alguem ligar exaustao na confluencia, ou a regra sai de `AUSENTE_NA_FONTE`
+    com citacao, ou este teste reprova.
+    """
+    from fluxopro.metodologia.confianca import Confianca
+    from fluxopro.metodologia.regras import REGRAS
+
+    regra = REGRAS["exaustao.conceito"]
+    assert regra.confianca is Confianca.AUSENTE_NA_FONTE
+    assert not regra.implementada, (
+        "exaustao passou a ser implementada como regra do metodo: ou ha "
+        "citacao na fonte, ou o registro esta mentindo"
+    )

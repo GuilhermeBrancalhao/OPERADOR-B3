@@ -26,3 +26,6 @@ __pycache__/
 *_transmissao.jpg
 *_retencao.png
 *_retencao.jpg
+
+# logs de pregao (gerados pela tarefa agendada)
+/logs/
