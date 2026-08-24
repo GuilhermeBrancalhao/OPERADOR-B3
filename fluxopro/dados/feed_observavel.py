@@ -416,7 +416,11 @@ class FeedQualityMonitor:
 
     def _observe_payload_locked(self, event: MarketEvent) -> None:
         if isinstance(event, BookSnapshot):
+            if self._book_kind is BookKind.NONE:
+                self._book_kind = BookKind.MBP
             self._depth = max(len(event.bids), len(event.asks))
+        elif isinstance(event, BookDelta) and self._book_kind is BookKind.NONE:
+            self._book_kind = BookKind.MBP
         if isinstance(event, Trade) and event.side_agressor is AgressorSide.UNKNOWN:
             self._unknown_aggressors += 1
             if self._declared_aggressor_quality not in (

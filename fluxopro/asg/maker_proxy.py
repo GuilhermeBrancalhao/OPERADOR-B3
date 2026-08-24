@@ -234,6 +234,10 @@ class MakerProxy:
 
         if market_timestamp_ns is None:
             self._feed_health = feed
+            # Telemetria sem relógio causal pode ser exibida, mas nunca pode
+            # sustentar confirmação. O próximo snapshot com timestamp de
+            # mercado válido rearma explicitamente esta condição.
+            self._feed_temporalmente_valido = False
             return self._snapshot(registrar_persistencia=False)
         if not isinstance(market_timestamp_ns, int) or isinstance(
             market_timestamp_ns, bool
@@ -385,7 +389,12 @@ class MakerProxy:
         source = feed.source.value.upper()
         book_kind = feed.book_kind.value.upper()
         conectado = feed.state is FeedState.CONNECTED
-        latencia_desconhecida = feed.latency_ns is None and source != "REPLAY"
+        # Replay e simulador usam relógio lógico e deliberadamente não
+        # publicam latência de rede. `None` só bloqueia uma fonte externa/ao
+        # vivo que deveria ter relógios comparáveis (MT5/OTHER).
+        latencia_desconhecida = (
+            feed.latency_ns is None and source not in {"REPLAY", "SIMULATOR"}
+        )
         atrasado = (
             (not self._feed_temporalmente_valido)
             or (not conectado)

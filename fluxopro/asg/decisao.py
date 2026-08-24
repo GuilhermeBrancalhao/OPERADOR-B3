@@ -189,6 +189,25 @@ class MotorDecisaoASG:
         if maker.estado is EstadoMaker.DIVERGENTE:
             motivos.append("ALERTA: MakerProxy divergente; nao e veto automatico")
 
+        if direcao is not None:
+            margem = self.config.stop_fora_regiao_ticks
+            if direcao is Side.BUY:
+                invalidacao = (
+                    regiao.invalidacao_ticks
+                    if regiao.invalidacao_ticks is not None
+                    else regiao.inicio_ticks
+                )
+                risco_estrutural = entrada_ticks - (invalidacao - margem)
+            else:
+                invalidacao = (
+                    regiao.invalidacao_ticks
+                    if regiao.invalidacao_ticks is not None
+                    else regiao.fim_ticks
+                )
+                risco_estrutural = (invalidacao + margem) - entrada_ticks
+            if risco_estrutural < 1:
+                bloqueios.append("INVALIDACAO_ESTRUTURAL_INVALIDA")
+
         # Remove repeticoes sem perder a ordem explicativa.
         bloqueios = list(dict.fromkeys(bloqueios))
         confirmacao = pre_sinal and not bloqueios

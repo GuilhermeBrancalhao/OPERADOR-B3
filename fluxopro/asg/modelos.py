@@ -435,7 +435,13 @@ class LeituraASG:
             "linha_azul", "regime", "velocimetro", "placar",
         ):
             atual = _mapping(getattr(self, nome), nome)
-            timestamp = atual.get("timestamp_ns", atual.get("ingress_timestamp_ns"))
+            # FeedQualitySnapshot separa tempo causal do mercado e tempo de
+            # ingresso. O segundo mede latência e jamais pode invalidar ou
+            # avançar um snapshot causal.
+            timestamp = atual.get(
+                "market_timestamp_ns",
+                atual.get("timestamp_ns", atual.get("ingress_timestamp_ns")),
+            )
             if timestamp is not None and timestamp != self.timestamp_ns:
                 raise ValueError(f"{nome} e MakerProxySnapshot devem ter o mesmo timestamp")
             symbol = atual.get("symbol")

@@ -190,6 +190,32 @@ def test_preco_fora_da_regiao_nao_confirma():
     assert "PRECO_FORA_DA_REGIAO" in decisao.bloqueios
 
 
+@pytest.mark.parametrize(
+    ("maker", "invalidacao"),
+    [
+        (_maker(side=Side.BUY), 103),
+        (_maker(estado=EstadoMaker.VENDEDOR, side=Side.SELL, percent=-80), 99),
+    ],
+)
+def test_invalidacao_estrutural_do_lado_errado_bloqueia_sem_excecao(
+    maker, invalidacao
+):
+    regiao = RegiaoOperacional(
+        SYMBOL,
+        100 * S,
+        99,
+        103,
+        confianca=0.9,
+        procedencia=ProcedenciaASG.OBSERVADA,
+        invalidacao_ticks=invalidacao,
+    )
+    decisao = MotorDecisaoASG().avaliar(_leitura(maker), regiao, 101)
+    assert decisao.nivel is NivelDecisao.AGUARDAR
+    assert not decisao.confirmacao
+    assert decisao.proposta_risco is None
+    assert "INVALIDACAO_ESTRUTURAL_INVALIDA" in decisao.bloqueios
+
+
 def test_leitura_asg_compoe_toda_matriz_em_mappings_e_tuplas_imutaveis():
     leitura = _leitura()
     assert leitura.maker_proxy is leitura.maker

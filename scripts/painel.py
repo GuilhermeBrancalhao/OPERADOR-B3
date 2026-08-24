@@ -61,8 +61,8 @@ from fluxopro.ui.janela import (  # noqa: E402
 from fluxopro.ui.ponte import PonteFluxo  # noqa: E402
 from fluxopro.ui.trilha import TrilhaEventos  # noqa: E402
 from fluxopro.ui.workspace import (  # noqa: E402
-    NOMES_DE_FABRICA,
-    WORKSPACES_DE_FABRICA,
+    NOMES_DISPONIVEIS,
+    WORKSPACES_DISPONIVEIS,
     por_nome,
 )
 from scripts.operar import (  # noqa: E402
@@ -223,8 +223,8 @@ def _parser():
     )
     g.add_argument(
         "--workspace",
-        choices=list(NOMES_DE_FABRICA),
-        default=NOMES_DE_FABRICA[0],
+        choices=list(NOMES_DISPONIVEIS),
+        default=NOMES_DISPONIVEIS[0],
         help="arranjo de fabrica inicial (§4.1). Ctrl+1..9 troca a quente.",
     )
     g.add_argument(
@@ -242,7 +242,7 @@ def _parser():
         action="store_true",
         dest="persistir",
         help=(
-            "grava geometria e arranjo em %APPDATA%/FluxoPro/workspaces ao "
+            "grava geometria e arranjo em %%APPDATA%%/FluxoPro/workspaces ao "
             "fechar, e le de la ao trocar de workspace (§4.1). Desligado por "
             "padrao: um retrato nunca deve depender do perfil de quem roda."
         ),
@@ -289,6 +289,13 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config = config_de_args(args)
+    if args.workspace == "ASG-like":
+        config = dataclasses.replace(
+            config,
+            ligar_feed_quality=True,
+            ligar_maker_proxy=True,
+            ligar_leitura_asg=True,
+        )
     if args.gil_switch > 0:
         sys.setswitchinterval(args.gil_switch)
 
@@ -427,7 +434,7 @@ def main(argv: list[str] | None = None) -> int:
 
         def _capturar_workspaces() -> None:
             base = Path(args.retrato)
-            for ws in WORKSPACES_DE_FABRICA:
+            for ws in WORKSPACES_DISPONIVEIS:
                 janela.aplicar_workspace(ws)
                 aplicacao.processEvents()
                 janela._sincronizar_trilho()

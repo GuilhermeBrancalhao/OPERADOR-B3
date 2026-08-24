@@ -89,6 +89,9 @@ ELO_DA_DOCA: dict[str, int] = {
     "hud": ELO_DECISAO,
     "metodo": ELO_DECISAO,
     "regras": ELO_DECISAO,
+    # Camada ASG-like consultiva. Ela resume os quatro elos, mas ocupa a
+    # coluna de decisão ao lado dos painéis originais — nunca os substitui.
+    "asg": ELO_DECISAO,
     # fora da cadeia: transporte e meta. Não têm elo porque não SÃO elo —
     # pô-los num elo qualquer para "completar" o trilho seria mentir sobre a
     # cadeia para poder desenhá-la.
@@ -109,6 +112,7 @@ TITULO_DA_DOCA: dict[str, str] = {
     "hud": "HUD",
     "metodo": "MÉTODO",
     "regras": "REGISTRO DE REGRAS",
+    "asg": "OPERADOR B3 · ASG-LIKE",
     "replay": "REPLAY",
     "trilha": "TRILHA DE EVENTOS",
 }
@@ -186,16 +190,32 @@ WORKSPACES_DE_FABRICA: tuple[Workspace, ...] = (
 NOMES_DE_FABRICA: tuple[str, ...] = tuple(w.nome for w in WORKSPACES_DE_FABRICA)
 PADRAO = WORKSPACES_DE_FABRICA[0]
 
+# Extensão opt-in. Os quatro nomes e atalhos de fábrica acima permanecem uma
+# ABI pública (testes, perfis salvos e documentação). O ASG-like entra como
+# quinto arranjo disponível sem reescrever essa lista histórica.
+WORKSPACE_ASG = Workspace(
+    "ASG-like",
+    5,
+    "fluxo completo com MakerProxy independente e decisão consultiva",
+    ("dom", "tape", "players", "bookmap", "conduto", "footprint", "perfil",
+     "delta", "asg", "trilha"),
+)
+WORKSPACES_DISPONIVEIS: tuple[Workspace, ...] = (
+    *WORKSPACES_DE_FABRICA,
+    WORKSPACE_ASG,
+)
+NOMES_DISPONIVEIS: tuple[str, ...] = tuple(w.nome for w in WORKSPACES_DISPONIVEIS)
+
 
 def por_atalho(digito: int) -> Workspace | None:
-    for w in WORKSPACES_DE_FABRICA:
+    for w in WORKSPACES_DISPONIVEIS:
         if w.atalho == digito:
             return w
     return None
 
 
 def por_nome(nome: str) -> Workspace | None:
-    for w in WORKSPACES_DE_FABRICA:
+    for w in WORKSPACES_DISPONIVEIS:
         if w.nome == nome:
             return w
     return None

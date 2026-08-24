@@ -116,6 +116,19 @@ from fluxopro.ui.paineis.matriz import (
     regras_do_campo,
 )
 from fluxopro.ui.paineis.bookmap import PainelBookmap
+from fluxopro.ui.paineis.asg import (
+    ConfiancaASG,
+    DadosASGSnapshot,
+    DecisaoASGSnapshot,
+    DirecaoASG,
+    EstadoASG,
+    MatrizASGSnapshot,
+    ProcessamentoASGSnapshot,
+    ProcedenciaASG,
+    TrilhaEvidenciasASGSnapshot,
+    WorkspaceASG,
+    WorkspaceASGSnapshot,
+)
 from fluxopro.ui.paineis.delta_acumulado import PainelDeltaAcumulado, derivar_delta
 from fluxopro.ui.paineis.footprint import PainelFootprint, derivar_footprint
 from fluxopro.ui.paineis.metodo import PainelMetodo
@@ -1591,6 +1604,7 @@ class JanelaFluxo(QMainWindow):
         self.hud = PainelHUD(densidade=d, paleta=p)
         self.metodo = PainelMetodo(self.grid, densidade=d, paleta=p)
         self.regras = PainelRegras(self.config_motor)
+        self.asg = WorkspaceASG(paleta=p)
 
         self.controles_replay = ControlesReplay(densidade=d)
         self.controles_replay.buscou.connect(self._ao_buscar_replay)
@@ -1611,6 +1625,7 @@ class JanelaFluxo(QMainWindow):
             "hud": self.hud,
             "metodo": self.metodo,
             "regras": self.regras,
+            "asg": self.asg,
             "replay": self.controles_replay,
             "trilha": self.painel_trilha,
         }
@@ -1661,6 +1676,10 @@ class JanelaFluxo(QMainWindow):
         host.splitDockWidget(self.docas["footprint"], self._nova_doca("delta"), V)
         host.splitDockWidget(self.docas["hud"], self._nova_doca("metodo"), V)
         host.splitDockWidget(self.docas["metodo"], self._nova_doca("regras"), V)
+        # A camada ASG-like nasce na coluna de decisão, mas escondida nos
+        # quatro workspaces históricos. No Ctrl+5 ela ocupa essa coluna ao
+        # lado dos painéis crus; não substitui DOM, Tape, Bookmap ou perfil.
+        host.splitDockWidget(self.docas["hud"], self._nova_doca("asg"), V)
 
         # O bookmap nasce TABULADO com o DOM: os dois respondem a mesma
         # pergunta (onde esta a liquidez) em escalas de tempo diferentes, e
@@ -1750,6 +1769,11 @@ class JanelaFluxo(QMainWindow):
         for chave, doca in self.docas.items():
             doca.setVisible(chave in alvo.docas)
         self._workspace = alvo
+        self.setWindowTitle(
+            f"Operador B3 — ASG-like funcional — {self.simbolo}"
+            if alvo.nome == "ASG-like"
+            else f"FluxoPro — {self.simbolo}"
+        )
         self._sincronizar_trilho()
         if registrar:
             self.trilha.info("workspace", "%s — %s" % (alvo.nome, alvo.descricao))
@@ -2081,6 +2105,7 @@ class JanelaFluxo(QMainWindow):
         self.matriz.aplicar(self._leitura, deteccoes)
         self.hud.aplicar(self._contexto(retrato))
         self._aplicar_metodo()
+        self._aplicar_asg()
         self._aplicar_footprint()
         self._aplicar_players()
         self.painel_trilha.aplicar()
@@ -2143,6 +2168,59 @@ class JanelaFluxo(QMainWindow):
         """
         ler = getattr(self.sessao, "leitura_do_metodo", None) if self.sessao else None
         self.metodo.aplicar(ler() if callable(ler) else None)
+
+    def _aplicar_asg(self) -> None:
+        """Aplica um retrato congelado somente quando o workspace o exibe."""
+
+        if "asg" not in self._workspace.docas or self.sessao is None:
+            return
+        ler = getattr(self.sessao, "retrato_asg", None)
+        retrato = ler() if callable(ler) else None
+        if retrato is None:
+            return
+
+        dados = DadosASGSnapshot.de_feed(retrato.feed_quality)
+        taxa = getattr(self.sessao, "taxa_eventos_s", None)
+        if callable(taxa):
+            dados = dataclasses.replace(dados, trades_s=float(taxa()))
+        estado = dados.estado
+        processamento = dataclasses.replace(
+            ProcessamentoASGSnapshot.de_maker(retrato.maker), estado=estado
+        )
+        matriz = dataclasses.replace(
+            MatrizASGSnapshot.de_leitura(retrato.leitura), estado=estado
+        )
+        evidencias = dataclasses.replace(
+            TrilhaEvidenciasASGSnapshot.de_maker(retrato.maker), estado=estado
+        )
+
+        decisao_bruta = DecisaoASGSnapshot.de_decisao(retrato.decisao)
+        if estado in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}:
+            decisao = dataclasses.replace(decisao_bruta, estado=estado)
+        else:
+            decisao = DecisaoASGSnapshot(
+                timestamp_ns=retrato.timestamp_ns,
+                estado=estado,
+                direcao=DirecaoASG.AGUARDAR,
+                titulo="DECISAO BLOQUEADA",
+                motivo=(
+                    retrato.feed_quality.detail
+                    or "Qualidade do feed insuficiente para confirmar"
+                ),
+                confianca=ConfiancaASG.INDISPONIVEL,
+                procedencia=ProcedenciaASG.INDISPONIVEL,
+            )
+        self.asg.aplicar(
+            WorkspaceASGSnapshot(
+                timestamp_ns=retrato.timestamp_ns,
+                dados=dados,
+                processamento=processamento,
+                matriz=matriz,
+                decisao=decisao,
+                evidencias=evidencias,
+                estado_operacional=estado,
+            )
+        )
 
     def desenhar_agora(self) -> None:
         """Fecha um quadro inteiro AGORA — le os dados e forca o desenho."""

@@ -194,6 +194,34 @@ def test_feed_sem_market_timestamp_atualiza_saude_sem_avancar_relogio():
     assert sem_market.discarded_regressive == 0
 
 
+def test_feed_conectado_sem_market_timestamp_bloqueia_a3():
+    proxy, saudavel = _maker_estavel()
+    assert saudavel.estado is EstadoMaker.COMPRADOR
+
+    sem_market = proxy.ao_feed_quality(_feed(
+        None,
+        ingress_ts=200 * S,
+        state=FeedState.CONNECTED,
+        book=BookKind.MBO,
+    ))
+    assert sem_market is not None
+    assert sem_market.timestamp_ns == 3 * S
+    assert sem_market.estado is EstadoMaker.SEM_BOOK
+    assert sem_market.book_delayed is True
+    assert sem_market.feed_quality == 0.0
+
+    leitura = LeituraASG.do_maker(sem_market)
+    regiao = RegiaoOperacional(
+        SYMBOL, 3 * S, 9_999, 10_001,
+        procedencia=ProcedenciaASG.OBSERVADA,
+        invalidacao_ticks=9_999,
+    )
+    decisao = MotorDecisaoASG().avaliar(leitura, regiao, 10_000)
+    assert decisao.nivel is NivelDecisao.AGUARDAR
+    assert not decisao.confirmacao
+    assert "BOOK_ATRASADO" in decisao.bloqueios
+
+
 def test_ingress_e_snapshot_local_nao_avancam_expiracao_causal():
     proxy = MakerProxy(SYMBOL)
     proxy.ao_feed_quality(_feed(103 * S, ingress_ts=103 * S))

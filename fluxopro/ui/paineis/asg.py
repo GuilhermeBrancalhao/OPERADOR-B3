@@ -11,7 +11,8 @@ no proprio quadro e nao oferece sinal, callback ou API de envio de ordem.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from collections.abc import Mapping
+from dataclasses import dataclass, fields, replace as dataclass_replace
 from enum import Enum, unique
 
 from PySide6.QtCore import QRect, QSize, Qt
@@ -175,12 +176,16 @@ class DadosASGSnapshot:
         detalhe = str(getattr(snapshot, "detail", "")).strip()
         if not detalhe:
             detalhe = f"BOOK {book.upper()} · AGRESSOR {qualidade.upper()}"
+        timestamp_mercado = getattr(snapshot, "market_timestamp_ns", None)
+        if timestamp_mercado is None:
+            timestamp_mercado = getattr(snapshot, "timestamp_ns")
+        latencia = getattr(snapshot, "latency_ns", None)
         return cls(
-            timestamp_ns=int(getattr(snapshot, "timestamp_ns")),
+            timestamp_ns=int(timestamp_mercado),
             estado=estado,
             fonte=fonte.upper(),
             sequencia=getattr(snapshot, "last_sequence", None),
-            atraso_ms=float(getattr(snapshot, "latency_ns", 0)) / 1_000_000.0,
+            atraso_ms=(None if latencia is None else float(latencia) / 1_000_000.0),
             trades_s=0.0,
             niveis_book=int(getattr(snapshot, "depth", getattr(snapshot, "profundidade", 0))),
             gaps=gaps,
@@ -279,6 +284,20 @@ class MatrizASGSnapshot:
 
         maker = getattr(leitura, "maker", leitura)
         estado = _estado_do_maker(maker)
+        if hasattr(leitura, "maker"):
+            linhas = _linhas_da_matriz_asg(leitura, maker, estado)
+            cobertura = 100 * float(getattr(maker, "cobertura", 0.0))
+            return cls(
+                timestamp_ns=int(getattr(maker, "timestamp_ns")),
+                estado=estado,
+                linhas=linhas,
+                cobertura=f"{cobertura:.0f}%",
+                modelo="MATRIZ ASG-LIKE · PROXY INDEPENDENTE · "
+                + str(getattr(maker, "formula_version", "MAKER V1")),
+            )
+
+        # Compatibilidade para consumidores que ainda entregam somente o
+        # MakerProxySnapshot: conserva a decomposição por evidência.
         linhas = []
         procedencia = _procedencia_do_maker(getattr(maker, "procedencia", ""))
         for item in tuple(getattr(maker, "componentes", ())):
@@ -389,7 +408,11 @@ class DecisaoASGSnapshot:
             direcao=direcao,
             titulo=f"{nivel} {direcao.value}" if nivel != "AGUARDAR" else "SEM DECISAO",
             motivo=" · ".join(motivos) if motivos else "Aguardando evidencias suficientes",
-            confianca=_confianca_numerica(float(getattr(leitura, "confianca", 0.0))),
+            confianca=(
+                _confianca_numerica(float(getattr(leitura, "confianca", 0.0)))
+                if estado in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}
+                else ConfiancaASG.INDISPONIVEL
+            ),
             procedencia=_procedencia_textual(procedencias),
             gates=gates,
             stop=nivel_ticks("stop_ticks"),
@@ -504,7 +527,10 @@ class _PainelASG(PainelDenso):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent, cor_fundo=tema_asg.PAINEL)
-        self.setMinimumSize(240, 112)
+        # O workspace pode ocupar uma doca estreita em 1280x720. Conteúdo
+        # excedente é virtualizado pelo próprio painel; impor a altura de
+        # todas as linhas como mínimo faria a janela crescer além da tela.
+        self.setMinimumSize(170, 64)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._primeiro_visivel = 0
 
@@ -684,7 +710,7 @@ class PainelDadosASG(_PainelASG):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._snapshot = DadosASGSnapshot(0)
-        self.setMinimumHeight(150)
+        self.setMinimumHeight(80)
 
     @property
     def snapshot(self) -> DadosASGSnapshot:
@@ -797,7 +823,7 @@ class PainelProcessamentoASG(_PainelASG):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._snapshot = ProcessamentoASGSnapshot(0)
-        self.setMinimumHeight(150)
+        self.setMinimumHeight(80)
 
     def aplicar(self, snapshot: ProcessamentoASGSnapshot) -> None:
         mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
@@ -889,7 +915,7 @@ class PainelMatrizASG(_PainelASG):
         super().__init__(parent)
         self.paleta = paleta
         self._snapshot = MatrizASGSnapshot(0)
-        self.setMinimumHeight(210)
+        self.setMinimumHeight(80)
 
     def aplicar(self, snapshot: MatrizASGSnapshot) -> None:
         mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
@@ -1060,7 +1086,7 @@ class PainelDecisaoASG(_PainelASG):
         super().__init__(parent)
         self.paleta = paleta
         self._snapshot = DecisaoASGSnapshot(0)
-        self.setMinimumHeight(210)
+        self.setMinimumHeight(80)
 
     def aplicar(self, snapshot: DecisaoASGSnapshot) -> None:
         mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
@@ -1179,7 +1205,7 @@ class PainelEvidenciasASG(_PainelASG):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._snapshot = TrilhaEvidenciasASGSnapshot(0)
-        self.setMinimumHeight(140)
+        self.setMinimumHeight(80)
 
     def aplicar(self, snapshot: TrilhaEvidenciasASGSnapshot) -> None:
         mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
@@ -1341,6 +1367,132 @@ class WorkspaceASG(QWidget):
             self._layout.setColumnStretch(2, 0)
 
 
+def _campo(objeto: object, nome: str, padrao: object = None) -> object:
+    if isinstance(objeto, Mapping):
+        return objeto.get(nome, padrao)
+    return getattr(objeto, nome, padrao)
+
+
+def _direcao_textual(valor: object) -> DirecaoASG:
+    texto = _valor_enum(valor).upper()
+    if texto in {"BUY", "COMPRA", "COMPRADOR", "ACIMA"}:
+        return DirecaoASG.COMPRA
+    if texto in {"SELL", "VENDA", "VENDEDOR", "ABAIXO"}:
+        return DirecaoASG.VENDA
+    return DirecaoASG.NEUTRA
+
+
+def _direcao_numero(valor: int | float | None) -> DirecaoASG:
+    if valor is None:
+        return DirecaoASG.NEUTRA
+    return _direcao_de_score(float(valor))
+
+
+def _forca_limitada(valor: float) -> float:
+    return max(-1.0, min(1.0, valor))
+
+
+def _linhas_da_matriz_asg(
+    leitura: object, maker: object, estado: EstadoASG
+) -> tuple[LinhaMatrizASG, ...]:
+    """Macro, Micro, Linha Azul, Regime, MakerProxy e Velocímetro."""
+
+    macro_micro = _campo(leitura, "macro", {})
+    medida_macro = _campo(macro_micro, "macro", {})
+    medida_micro = _campo(_campo(leitura, "micro", {}), "micro", {})
+    valor_macro = _campo(medida_macro, "valor")
+    valor_micro = _campo(medida_micro, "valor")
+    linha_azul = _campo(leitura, "linha_azul", {})
+    regime = _campo(leitura, "regime", {})
+    velocimetro = _campo(leitura, "velocimetro", {})
+
+    def contexto(nome: str, valor: object) -> LinhaMatrizASG:
+        numero = int(valor) if isinstance(valor, int) and not isinstance(valor, bool) else None
+        return LinhaMatrizASG(
+            componente=nome,
+            direcao=_direcao_numero(numero),
+            valor="SEM DADOS" if numero is None else f"{numero:+d}",
+            forca=0.0 if numero is None else _forca_limitada(numero / max(abs(numero), 1)),
+            confianca=(ConfiancaASG.INDISPONIVEL if numero is None else ConfiancaASG.MEDIA),
+            procedencia=(ProcedenciaASG.INDISPONIVEL if numero is None else ProcedenciaASG.DERIVADO),
+            detalhe="ESCALA PROPRIA · NAO COMPARAR MAGNITUDES",
+        )
+
+    fracao = _campo(linha_azul, "fracao_compradora")
+    nivel = _campo(linha_azul, "nivel")
+    lado_linha = _campo(linha_azul, "lado", "SEM_LINHA")
+    regime_nome = _campo(regime, "regime", "INDEFINIDO")
+    velocidade_estado = _campo(velocimetro, "estado", "SEM_DADOS")
+    velocidade_lado = _campo(velocimetro, "sentido")
+    magnitude = _campo(velocimetro, "magnitude_relativa")
+    maker_score = float(getattr(maker, "pontuacao", getattr(maker, "score", 0.0)))
+    maker_conf = float(getattr(maker, "confianca", getattr(maker, "confidence", 0.0)))
+
+    linhas = [
+        contexto("MACRO", valor_macro),
+        contexto("MICRO", valor_micro),
+        LinhaMatrizASG(
+            componente="LINHA AZUL",
+            direcao=_direcao_textual(lado_linha),
+            valor="SEM LINHA" if nivel is None else f"{int(nivel)}t",
+            forca=(
+                0.0
+                if not isinstance(fracao, (int, float)) or isinstance(fracao, bool)
+                else _forca_limitada((float(fracao) - 0.5) * 2.0)
+            ),
+            confianca=(ConfiancaASG.INDISPONIVEL if nivel is None else ConfiancaASG.BAIXA),
+            procedencia=(ProcedenciaASG.INDISPONIVEL if nivel is None else ProcedenciaASG.INFERIDO),
+            detalhe=_valor_enum(lado_linha).upper(),
+        ),
+        LinhaMatrizASG(
+            componente="REGIME",
+            direcao=_direcao_textual(regime_nome),
+            valor=_valor_enum(regime_nome).upper(),
+            forca=(1.0 if _direcao_textual(regime_nome) is DirecaoASG.COMPRA
+                   else -1.0 if _direcao_textual(regime_nome) is DirecaoASG.VENDA else 0.0),
+            confianca=ConfiancaASG.MEDIA,
+            procedencia=ProcedenciaASG.DERIVADO,
+            detalhe="ESTRUTURA DO DIA",
+        ),
+        LinhaMatrizASG(
+            componente="MAKERPROXY",
+            direcao=_direcao_de_score(maker_score),
+            valor=f"{maker_score * 100:+.0f}%",
+            forca=maker_score,
+            confianca=_confianca_numerica(maker_conf),
+            procedencia=_procedencia_do_maker(getattr(maker, "procedencia", "")),
+            evidencias=len(tuple(getattr(maker, "evidence", ()))),
+            detalhe=f"PERSIST {int(getattr(maker, 'persistence_ns', 0)) / 1e9:.1f}s",
+        ),
+        LinhaMatrizASG(
+            componente="VELOCIMETRO",
+            direcao=_direcao_textual(velocidade_lado),
+            valor=_valor_enum(velocidade_estado).upper(),
+            forca=(
+                0.0 if not isinstance(magnitude, (int, float)) or isinstance(magnitude, bool)
+                else _forca_limitada(float(magnitude))
+                * (-1.0 if _direcao_textual(velocidade_lado) is DirecaoASG.VENDA else 1.0)
+            ),
+            confianca=(ConfiancaASG.INDISPONIVEL if velocidade_lado is None else ConfiancaASG.MEDIA),
+            procedencia=ProcedenciaASG.DERIVADO,
+            detalhe="MAGNITUDE + MANUTENCAO",
+        ),
+    ]
+    if estado is EstadoASG.DESCONHECIDO:
+        linhas = [
+            dataclass_replace(
+                linha,
+                direcao=DirecaoASG.NEUTRA,
+                valor="INDISPONIVEL",
+                forca=0.0,
+                confianca=ConfiancaASG.INDISPONIVEL,
+                procedencia=ProcedenciaASG.INDISPONIVEL,
+            )
+            for linha in linhas
+        ]
+    return tuple(linhas)
+
+
 def _abreviar_procedencia(procedencia: ProcedenciaASG) -> str:
     return {
         ProcedenciaASG.OBSERVADO: "OBS",
@@ -1480,6 +1632,10 @@ def _direcao_externa(valor: object) -> DirecaoASG:
 def _estado_do_maker(snapshot: object) -> EstadoASG:
     texto = _valor_enum(getattr(snapshot, "estado", "SEM_DADOS")).upper()
     if texto in {"SEM_DADOS", "AGUARDANDO"}:
+        return EstadoASG.AGUARDANDO
+    if texto == "SEM_BOOK":
+        return EstadoASG.SEM_BOOK
+    if texto == "AJUSTANDO":
         return EstadoASG.AGUARDANDO
     if texto in {"NEUTRO", "DIVERGENTE", "COMPRADOR", "VENDEDOR"}:
         return EstadoASG.AO_VIVO
