@@ -275,6 +275,12 @@ class ConfigOperacao:
     shadow_dir: str | None = None
     """Raiz do sidecar. `None` impede qualquer escrita mesmo com config criada."""
 
+    shadow_queue_capacity: int = 4_096
+    """Snapshots aguardando o writer; limite evita crescimento pelo pregão."""
+
+    intervalo_retrato_asg_ns: int = 33_333_333
+    """Cadência máxima da matriz consultiva (30 Hz) no relógio de mercado."""
+
     emitir_apenas_mudanca_de_estagio: bool = True
     """Se `True`, um `Sinal` só sai quando (estágio, direção) MUDA. `False`
     entrega um sinal por trade — a 5.000 trades/s isso é ruído puro no console,

@@ -82,6 +82,7 @@ from fluxopro.app.config import (
     ConfigOperacao,
     FonteDados,
 )
+from fluxopro.app.shadow_runtime import AsyncShadowWriter, ShadowRuntimeSnapshot
 from fluxopro.asg import (
     DecisionSnapshot,
     LeituraASG,
@@ -122,7 +123,7 @@ from fluxopro.microestrutura.inferencia_mbp import InferidorMBP
 from fluxopro.microestrutura.livro_mbo import CruzamentoLivro, LivroMBO
 from fluxopro.microestrutura.perfil_player import PerfilPlayer
 from fluxopro.motor.sinais import EstagioSinal, MotorSinais, Sinal
-from fluxopro.shadow import AmostraFeatures, BufferShadowCheio, SidecarShadow
+from fluxopro.shadow import AmostraFeatures, SidecarShadow
 
 
 @dataclass(frozen=True, slots=True)
@@ -369,7 +370,10 @@ def _contrato_da_fonte(fonte: FonteDados) -> tuple[FeedSource, BookKind, Aggress
         # quando um BookSnapshot/BookDelta real for visto.
         return FeedSource.REPLAY, BookKind.NONE, AggressorQuality.UNKNOWN
     if fonte is FonteDados.MT5:
-        return FeedSource.MT5, BookKind.MBP, AggressorQuality.INFERRED
+        # Disponibilidade declarada não é disponibilidade observada:
+        # market_book_add/get podem falhar. O monitor eleva para MBP somente
+        # após receber um BookSnapshot/BookDelta válido.
+        return FeedSource.MT5, BookKind.NONE, AggressorQuality.INFERRED
     raise ValueError(f"fonte sem contrato de qualidade: {fonte!r}")
 
 
@@ -636,10 +640,24 @@ class SessaoFluxo:
         # ------------------------------------------------------------------
         self.motor_decisao_asg: MotorDecisaoASG | None = None
         self.shadow: SidecarShadow | None = None
+        self.shadow_writer: AsyncShadowWriter | None = None
         self._lock_retrato_asg = threading.Lock()
         self._retrato_asg: RetratoASG | None = None
-        if cfg.ligar_shadow_learning and cfg.shadow_dir is not None:
+        self._ultimo_retrato_asg_timestamp_ns: int | None = None
+        if type(cfg.intervalo_retrato_asg_ns) is not int or cfg.intervalo_retrato_asg_ns < 1:
+            raise ValueError("intervalo_retrato_asg_ns deve ser inteiro positivo")
+        if cfg.ligar_shadow_learning and not cfg.ligar_leitura_asg:
+            raise ValueError(
+                "ligar_shadow_learning exige ligar_leitura_asg=True"
+            )
+        if cfg.ligar_shadow_learning and cfg.shadow_dir is None:
+            raise ValueError("ligar_shadow_learning exige shadow_dir")
+        if cfg.ligar_shadow_learning:
+            assert cfg.shadow_dir is not None
             self.shadow = SidecarShadow(cfg.shadow_dir, cfg.shadow)
+            self.shadow_writer = AsyncShadowWriter(
+                self.shadow, capacity=cfg.shadow_queue_capacity
+            )
         if cfg.ligar_leitura_asg:
             self.motor_decisao_asg = MotorDecisaoASG(cfg.decisao_asg)
             barramento.assinar(
@@ -725,8 +743,8 @@ class SessaoFluxo:
         if trade.symbol != self.config.symbol:
             return
         if self.feed_monitor is not None:
-            self.maker_proxy.ao_feed_quality(self.feed_monitor.snapshot())
-        self.maker_proxy.ao_trade(trade)
+            self.maker_proxy.ingerir_feed_quality(self.feed_monitor.snapshot())
+        self.maker_proxy.ingerir_trade(trade)
 
     def _ao_trade_motor(self, trade: Trade) -> None:
         assert self.motor is not None
@@ -826,6 +844,12 @@ class SessaoFluxo:
         assert self.motor_decisao_asg is not None
         if trade.symbol != self.config.symbol:
             return
+        ultimo = self._ultimo_retrato_asg_timestamp_ns
+        if (
+            ultimo is not None
+            and trade.timestamp_ns - ultimo < self.config.intervalo_retrato_asg_ns
+        ):
+            return
         feed = self.feed_monitor.snapshot() if self.feed_monitor is not None else None
         maker = self.maker_proxy.snapshot()
         # Evento regressivo/duplicado não pode costurar um quadro novo com o
@@ -883,6 +907,7 @@ class SessaoFluxo:
         )
         with self._lock_retrato_asg:
             self._retrato_asg = retrato
+        self._ultimo_retrato_asg_timestamp_ns = trade.timestamp_ns
         self._observar_shadow(trade, retrato)
 
     def _observar_shadow(self, trade: Trade, retrato: RetratoASG) -> None:
@@ -924,11 +949,12 @@ class SessaoFluxo:
                 proposta.stop_ticks if proposta is not None else None
             ),
         )
-        try:
-            self.shadow.observar(amostra)
-        except BufferShadowCheio:
-            self.shadow.flush()
-            self.shadow.observar(amostra)
+        assert self.shadow_writer is not None
+        self.shadow_writer.submit(amostra)
+
+    def shadow_status(self) -> ShadowRuntimeSnapshot | None:
+        """Telemetria explícita; erro do sidecar nunca vira erro do mercado."""
+        return None if self.shadow_writer is None else self.shadow_writer.snapshot()
 
     # ------------------------------------------------------------------
     # Retrato de analytics
@@ -1328,13 +1354,11 @@ class SessaoFluxo:
         if self.maker_proxy is not None:
             self.maker_proxy.iniciar_nova_sessao()
         if self.shadow is not None:
-            try:
-                self.shadow.resetar_sessao(symbol)
-            except BufferShadowCheio:
-                self.shadow.flush()
-                self.shadow.resetar_sessao(symbol)
+            assert self.shadow_writer is not None
+            self.shadow_writer.reset_session(symbol)
         with self._lock_retrato_asg:
             self._retrato_asg = None
+        self._ultimo_retrato_asg_timestamp_ns = None
 
         # O retrato guardado é do pregão que acabou. Mantê-lo faria a UI
         # desenhar o footprint de ontem no primeiro quadro de hoje — a mesma
@@ -1357,8 +1381,8 @@ class SessaoFluxo:
             if base is None:
                 base = self.contadores.ts_ultimo_ns or 0
             self.inferidor.drenar(base + self.config.inferencia.janela_reconciliacao_ns + 1)
-        if self.shadow is not None:
-            self.shadow.finalizar()
+        if self.shadow_writer is not None:
+            self.shadow_writer.close()
         if self.feed_observer is not None:
             self.feed_observer.parar()
         self._perf_fim = time.perf_counter()

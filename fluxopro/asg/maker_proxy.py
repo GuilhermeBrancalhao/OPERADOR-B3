@@ -155,8 +155,18 @@ class MakerProxy:
         self._trade_ids_fila.append(trade_id)
 
     def ao_trade(self, trade: Trade) -> MakerProxySnapshot | None:
+        return self._ingerir_trade(trade, produzir_snapshot=True)
+
+    def ingerir_trade(self, trade: Trade) -> bool:
+        """Hot path: atualiza estado sem materializar o snapshot derivado."""
+
+        return bool(self._ingerir_trade(trade, produzir_snapshot=False))
+
+    def _ingerir_trade(
+        self, trade: Trade, *, produzir_snapshot: bool
+    ) -> MakerProxySnapshot | bool | None:
         if trade.symbol != self.symbol:
-            return None
+            return None if produzir_snapshot else False
         if not isinstance(trade.price, int) or isinstance(trade.price, bool):
             raise TypeError("trade.price deve ser int em ticks")
         if trade.qty < 0:
@@ -164,9 +174,15 @@ class MakerProxy:
         # ID vence timestamp: retransmissao antiga continua classificada como duplicata.
         if trade.trade_id and trade.trade_id in self._trade_ids:
             self._descartados_duplicados += 1
-            return self._snapshot(registrar_persistencia=False)
+            return (
+                self._snapshot(registrar_persistencia=False)
+                if produzir_snapshot else False
+            )
         if not self._aceitar_timestamp_mercado(trade.timestamp_ns):
-            return self._snapshot(registrar_persistencia=False)
+            return (
+                self._snapshot(registrar_persistencia=False)
+                if produzir_snapshot else False
+            )
         self._registrar_trade_id(trade.trade_id)
         sinal = (
             1 if trade.side_agressor is AgressorSide.BUY
@@ -181,7 +197,10 @@ class MakerProxy:
             self._volume_atribuido += retido.qty
             self._delta_agressao += retido.qty * sinal
         self._expirar()
-        return self._snapshot(registrar_persistencia=True)
+        return (
+            self._snapshot(registrar_persistencia=True)
+            if produzir_snapshot else True
+        )
 
     def ao_deteccao(self, deteccao: Deteccao) -> MakerProxySnapshot | None:
         if deteccao.symbol != self.symbol:
@@ -221,8 +240,18 @@ class MakerProxy:
         return self._snapshot(registrar_persistencia=True)
 
     def ao_feed_quality(self, feed: FeedQualitySnapshot) -> MakerProxySnapshot | None:
+        return self._ingerir_feed_quality(feed, produzir_snapshot=True)
+
+    def ingerir_feed_quality(self, feed: FeedQualitySnapshot) -> bool:
+        """Hot path equivalente a :meth:`ao_feed_quality`, sem alocação."""
+
+        return bool(self._ingerir_feed_quality(feed, produzir_snapshot=False))
+
+    def _ingerir_feed_quality(
+        self, feed: FeedQualitySnapshot, *, produzir_snapshot: bool
+    ) -> MakerProxySnapshot | bool | None:
         if feed.symbol != self.symbol:
-            return None
+            return None if produzir_snapshot else False
 
         # ``timestamp_ns`` era historicamente um alias do relogio de ingresso.
         # Ele so e causal em snapshots legados que nao expoem o relogio de
@@ -238,7 +267,10 @@ class MakerProxy:
             # sustentar confirmação. O próximo snapshot com timestamp de
             # mercado válido rearma explicitamente esta condição.
             self._feed_temporalmente_valido = False
-            return self._snapshot(registrar_persistencia=False)
+            return (
+                self._snapshot(registrar_persistencia=False)
+                if produzir_snapshot else False
+            )
         if not isinstance(market_timestamp_ns, int) or isinstance(
             market_timestamp_ns, bool
         ):
@@ -248,7 +280,10 @@ class MakerProxy:
         if market_timestamp_ns < self._timestamp_ns:
             self._descartados_regressivos += 1
             self._feed_temporalmente_valido = False
-            return self._snapshot(registrar_persistencia=False)
+            return (
+                self._snapshot(registrar_persistencia=False)
+                if produzir_snapshot else False
+            )
 
         self._last_feed_timestamp_ns = market_timestamp_ns
         self._timestamp_ns = market_timestamp_ns
@@ -256,7 +291,10 @@ class MakerProxy:
         self._feed_health = feed
         self._feed_temporalmente_valido = True
         self._expirar()
-        return self._snapshot(registrar_persistencia=False)
+        return (
+            self._snapshot(registrar_persistencia=False)
+            if produzir_snapshot else True
+        )
 
     atualizar_feed_quality = ao_feed_quality
 
