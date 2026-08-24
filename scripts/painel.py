@@ -42,6 +42,7 @@ import os
 import sys
 import threading
 import unicodedata
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -58,6 +59,24 @@ from fluxopro.ui.janela import (  # noqa: E402
     JanelaFluxo,
     formatar_limiar,
 )
+from fluxopro.ui.paineis.asg import (  # noqa: E402
+    ConfiancaASG,
+    DadosASGSnapshot,
+    DecisaoASGSnapshot,
+    DirecaoASG,
+    EstadoASG,
+    EtapaProcessamentoASG,
+    EvidenciaASG,
+    GateDecisaoASG,
+    LinhaMatrizASG,
+    MatrizASGSnapshot,
+    ProcessamentoASGSnapshot,
+    ProcedenciaASG,
+    ResultadoGate,
+    TrilhaEvidenciasASGSnapshot,
+    WorkspaceASGSnapshot,
+)
+from fluxopro.ui.paineis.replay import EstadoReplay  # noqa: E402
 from fluxopro.ui.ponte import PonteFluxo  # noqa: E402
 from fluxopro.ui.trilha import TrilhaEventos  # noqa: E402
 from fluxopro.ui.workspace import (  # noqa: E402
@@ -126,6 +145,126 @@ cobrar um preco por um beneficio que ele nao usa."""
 TITULO_SIMULADOR = "DADOS DE SIMULADOR — NÃO É PREGÃO"
 TITULO_CALIBRADO = "MOTOR CALIBRADO — ESTA TELA NÃO USA OS CORTES DE PRODUÇÃO"
 TITULO_AMBOS = "DADOS DE SIMULADOR E MOTOR CALIBRADO — NÃO É PREGÃO"
+
+_T0_EVIDENCIA_ASG = 1_777_200_000_000_000_000
+
+
+def quadro_evidencia_asg(estado: EstadoASG) -> WorkspaceASGSnapshot:
+    """Cenario congelado para screenshots end-to-end da janela real.
+
+    Nao entra no pipeline nem simula ticks. E apenas um snapshot de
+    apresentacao, explicitamente rotulado, aplicado ao mesmo ``JanelaFluxo``
+    aberto pelo operador para provar estados de falha e replay.
+    """
+
+    t = _T0_EVIDENCIA_ASG
+    saudavel = estado in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}
+    procedencia = (
+        ProcedenciaASG.REPLAY
+        if estado is EstadoASG.REPLAY
+        else ProcedenciaASG.DERIVADO
+    )
+    confianca = ConfiancaASG.ALTA if saudavel else ConfiancaASG.INDISPONIVEL
+    dados = DadosASGSnapshot(
+        timestamp_ns=t,
+        estado=estado,
+        fonte="REPLAY" if estado is EstadoASG.REPLAY else "MT5",
+        sequencia=184_221,
+        atraso_ms=8.4 if saudavel else 3_250.0,
+        trades_s=146.0,
+        niveis_book=0 if estado is EstadoASG.SEM_BOOK else 20,
+        gaps=0,
+        anomalias=0 if saudavel else 1,
+        descartados=0,
+        confianca=confianca,
+        procedencia=procedencia,
+        detalhe=f"CENARIO CONGELADO DE EVIDENCIA · {estado.value}",
+    )
+    nomes_etapas = ("AGRESSAO", "DELTA", "ABSORCAO", "REPOSICAO", "CLIPS")
+    processamento = ProcessamentoASGSnapshot(
+        timestamp_ns=t,
+        estado=estado,
+        versao="maker-proxy-v1",
+        etapas=tuple(
+            EtapaProcessamentoASG(
+                nome,
+                "ATIVO" if saudavel else "BLOQUEADO",
+                0.4 + indice / 10,
+                confianca,
+                procedencia,
+                "evidencia sintetica de interface",
+            )
+            for indice, nome in enumerate(nomes_etapas)
+        ),
+    )
+    componentes = (
+        ("MACRO", DirecaoASG.COMPRA, "+2"),
+        ("MICRO", DirecaoASG.COMPRA, "+3"),
+        ("LINHA AZUL", DirecaoASG.COMPRA, "5.086t"),
+        ("REGIME", DirecaoASG.NEUTRA, "ROTACAO"),
+        ("MAKERPROXY", DirecaoASG.COMPRA, "+42%"),
+        ("VELOCIMETRO", DirecaoASG.COMPRA, "+0,68"),
+    )
+    matriz = MatrizASGSnapshot(
+        timestamp_ns=t,
+        estado=estado,
+        linhas=tuple(
+            LinhaMatrizASG(
+                nome,
+                direcao,
+                valor,
+                0.68 if direcao is DirecaoASG.COMPRA else 0.0,
+                confianca,
+                procedencia,
+                4,
+                "proxy independente",
+            )
+            for nome, direcao, valor in componentes
+        ),
+        cobertura="100%" if saudavel else "BLOQUEADA",
+    )
+    gate_resultado = ResultadoGate.PASSA if saudavel else ResultadoGate.BLOQUEIA
+    decisao = DecisaoASGSnapshot(
+        timestamp_ns=t,
+        estado=estado,
+        direcao=DirecaoASG.COMPRA if saudavel else DirecaoASG.AGUARDAR,
+        titulo="CONFIRMACAO A1" if saudavel else "SEM DECISAO",
+        motivo=(
+            "regiao valida · fluxo confirmado"
+            if saudavel
+            else f"bloqueado pelo estado {estado.value}"
+        ),
+        confianca=confianca,
+        procedencia=procedencia,
+        gates=(
+            GateDecisaoASG("REGIAO", gate_resultado, "5.084-5.086"),
+            GateDecisaoASG("FEED", gate_resultado, estado.value),
+            GateDecisaoASG("MAKER", gate_resultado, "+42%"),
+        ),
+        stop="5.082t" if saudavel else "—",
+        alvo_1="5.088t" if saudavel else "—",
+        alvo_2="5.090t" if saudavel else "—",
+        alvo_3="5.092t" if saudavel else "—",
+    )
+    itens = tuple(
+        EvidenciaASG(
+            t - indice * 100_000_000,
+            "BOOK" if indice % 2 else "TAPE",
+            evento,
+            leitura,
+            confianca,
+            procedencia,
+            estado,
+        )
+        for indice, (evento, leitura) in enumerate(
+            (("ABSORCAO", "+18 lotes"), ("REPOSICAO", "+22 lotes"),
+             ("DELTA", "+340"), ("CLIP", "12 negocios"))
+        )
+    )
+    evidencias = TrilhaEvidenciasASGSnapshot(t, estado, itens, len(itens), len(itens))
+    return WorkspaceASGSnapshot(
+        t, dados, processamento, matriz, decisao, evidencias, estado
+    )
 
 
 def ressalva_da_config(config: ConfigOperacao) -> tuple[str, str]:
@@ -238,6 +377,15 @@ def _parser():
         ),
     )
     g.add_argument(
+        "--retrato-estados-asg",
+        action="store_true",
+        dest="retrato_estados_asg",
+        help=(
+            "com --retrato, captura a janela completa ASG-like nos cenarios "
+            "congelados AO VIVO, ATRASADO, SEM BOOK, ERRO e REPLAY"
+        ),
+    )
+    g.add_argument(
         "--persistir-workspace",
         action="store_true",
         dest="persistir",
@@ -283,7 +431,10 @@ def _parser():
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if args.retrato_workspaces and args.retrato_estados_asg:
+        parser.error("use apenas um entre --retrato-workspaces e --retrato-estados-asg")
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
@@ -412,11 +563,15 @@ def main(argv: list[str] | None = None) -> int:
     if args.retrato:
         duracao = args.duracao if args.duracao else 8.0
 
-        def _salvar(caminho: Path) -> None:
+        def _salvar(caminho: Path, *, atualizar_dados: bool = True) -> None:
             # Fecha um quadro completo antes de copiar os pixels: os relogios
             # de desenho sao assincronos e o backing poderia estar um quadro
             # atras.
-            janela.desenhar_agora()
+            if atualizar_dados:
+                janela.desenhar_agora()
+            else:
+                for painel in janela.asg.paineis:
+                    painel._quadro()
             caminho.parent.mkdir(parents=True, exist_ok=True)
             janela.grab().save(str(caminho))
             if args.caixas_retencao:
@@ -436,6 +591,7 @@ def main(argv: list[str] | None = None) -> int:
             base = Path(args.retrato)
             for ws in WORKSPACES_DISPONIVEIS:
                 janela.aplicar_workspace(ws)
+                janela.resize(args.largura, args.altura)
                 aplicacao.processEvents()
                 janela._sincronizar_trilho()
                 # ASCII de proposito: `revisão` vira `revisao`. Nome de
@@ -449,6 +605,40 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 seguro = "".join(c for c in seguro if c.isalnum() or c == "_")
                 _salvar(base.with_name(base.stem + "_" + seguro + base.suffix))
+            janela.close()
+
+        def _capturar_estados_asg() -> None:
+            base = Path(args.retrato)
+            asg = por_nome("ASG-like")
+            assert asg is not None
+            janela.aplicar_workspace(asg)
+            janela._relogio.stop()
+            for estado in (
+                EstadoASG.AO_VIVO,
+                EstadoASG.ATRASADO,
+                EstadoASG.SEM_BOOK,
+                EstadoASG.ERRO,
+                EstadoASG.REPLAY,
+            ):
+                janela.resize(args.largura, args.altura)
+                janela.definir_estado_replay(
+                    EstadoReplay(
+                        ativo=estado is EstadoASG.REPLAY,
+                        symbol=config.symbol,
+                        data=date(2026, 4, 26),
+                        inicio_ns=_T0_EVIDENCIA_ASG - 1_800_000_000_000,
+                        fim_ns=_T0_EVIDENCIA_ASG + 1_800_000_000_000,
+                        posicao_ns=_T0_EVIDENCIA_ASG,
+                        velocidade=2.0,
+                    )
+                )
+                janela.asg.aplicar(quadro_evidencia_asg(estado))
+                aplicacao.processEvents()
+                seguro = estado.name.lower()
+                _salvar(
+                    base.with_name(base.stem + "_" + seguro + base.suffix),
+                    atualizar_dados=False,
+                )
             janela.close()
 
         def _imprimir_caixas() -> None:
@@ -570,7 +760,11 @@ def main(argv: list[str] | None = None) -> int:
 
         QTimer.singleShot(
             int(duracao * 1000),
-            _capturar_workspaces if args.retrato_workspaces else _capturar,
+            _capturar_estados_asg
+            if args.retrato_estados_asg
+            else _capturar_workspaces
+            if args.retrato_workspaces
+            else _capturar,
         )
     elif args.duracao:
         # `--duracao` vem do parser de `operar.py`. Honra-la aqui e o que

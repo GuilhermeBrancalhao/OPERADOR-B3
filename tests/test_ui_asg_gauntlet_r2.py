@@ -159,6 +159,38 @@ def test_workspace_recebe_um_snapshot_asg_tipado_por_quadro(qapp):
         workspace.aplicar(SimpleNamespace())  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize(
+    "estado",
+    [
+        EstadoASG.AO_VIVO,
+        EstadoASG.ATRASADO,
+        EstadoASG.SEM_BOOK,
+        EstadoASG.ERRO,
+        EstadoASG.REPLAY,
+    ],
+)
+def test_cenarios_de_screenshot_usam_janela_real_e_estado_coerente(qapp, estado):
+    from scripts.painel import quadro_evidencia_asg
+
+    quadro = quadro_evidencia_asg(estado)
+    workspace = WorkspaceASG()
+    workspace.resize(1280, 620)
+    workspace.aplicar(quadro)
+    workspace.show()
+    qapp.processEvents()
+    workspace.layout().activate()
+
+    assert quadro.estado_operacional is estado
+    assert all(
+        estado.value in " ".join(painel.textos_visiveis())
+        for painel in workspace.paineis
+    )
+    if estado not in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}:
+        assert quadro.decisao.direcao is DirecaoASG.AGUARDAR
+        assert quadro.decisao.stop == quadro.decisao.alvo_1 == "—"
+    workspace.hide()
+
+
 def test_estado_desconhecido_do_maker_e_neutro_e_bloqueado():
     componente = SimpleNamespace(
         componente=SimpleNamespace(value="ABSORCAO"), pontuacao=.9,

@@ -85,6 +85,8 @@ from PySide6.QtWidgets import (
     QDockWidget,
     QFrame,
     QMainWindow,
+    QSizePolicy,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -1492,6 +1494,21 @@ class JanelaFluxo(QMainWindow):
         self._montar_paineis()
         self._montar_docas()
 
+        # A doca ASG existe no estado serializado por compatibilidade de
+        # nomes, mas o composto real nao mora nela: no Ctrl+5 ele ocupa a
+        # area operacional inteira em um stack. Isso isola o layout historico
+        # e elimina o sizeHint transitorio da antiga coluna de decisao.
+        self._asg_doca_placeholder = QWidget()
+        self.docas["asg"].setWidget(self._asg_doca_placeholder)
+        self.asg.setParent(None)
+        self._area_operacional = QStackedWidget()
+        self._area_operacional.setMinimumSize(0, 0)
+        self._area_operacional.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored
+        )
+        self._area_operacional.addWidget(self._host)
+        self._area_operacional.addWidget(self.asg)
+
         self.tarja_replay = TarjaReplay()
         self.tarja_replay.instalar_em(self)
         self.tarja_replay.setVisible(False)
@@ -1505,7 +1522,7 @@ class JanelaFluxo(QMainWindow):
             coluna.addWidget(self.ressalva)
         coluna.addWidget(self.topo)
         coluna.addWidget(self.trilho)
-        coluna.addWidget(self._host, 1)
+        coluna.addWidget(self._area_operacional, 1)
         coluna.addWidget(self.rodape)
         self.setCentralWidget(central)
 
@@ -1676,9 +1693,10 @@ class JanelaFluxo(QMainWindow):
         host.splitDockWidget(self.docas["footprint"], self._nova_doca("delta"), V)
         host.splitDockWidget(self.docas["hud"], self._nova_doca("metodo"), V)
         host.splitDockWidget(self.docas["metodo"], self._nova_doca("regras"), V)
-        # A camada ASG-like nasce na coluna de decisão, mas escondida nos
-        # quatro workspaces históricos. No Ctrl+5 ela ocupa essa coluna ao
-        # lado dos painéis crus; não substitui DOM, Tape, Bookmap ou perfil.
+        # A camada ASG-like nasce escondida nos quatro workspaces históricos.
+        # No Ctrl+5 ela se torna a superfície operacional inteira; manter os
+        # demais painéis simultaneamente visíveis a confinaria à antiga
+        # coluna de decisão e esconderia justamente Matriz e Decisão.
         host.splitDockWidget(self.docas["hud"], self._nova_doca("asg"), V)
 
         # O bookmap nasce TABULADO com o DOM: os dois respondem a mesma
@@ -1764,10 +1782,20 @@ class JanelaFluxo(QMainWindow):
         do footprint e do bookmap toda vez — o operador que fosse ao Bookmap
         conferir uma coisa e voltasse encontraria a grade do Fluxo vazia.
         """
+        tamanho_antes = self.size()
         estado = self._estado_salvo(alvo)
         self._host.restoreState(estado if estado is not None else self._estado_de_fabrica)
+        # O WorkspaceASG ja agrega DADOS (DOM/Tape/Bookmap/volume),
+        # PROCESSAMENTO, MATRIZ, DECISAO e EVIDENCIAS. Ele precisa da area de
+        # docking inteira para que as seis linhas da matriz sejam operacionais
+        # em 1280x720. Os quatro workspaces historicos continuam usando
+        # exatamente ``alvo.docas`` e o estado canonico congelado.
+        eh_asg = alvo.nome == "ASG-like"
+        visiveis = set() if eh_asg else set(alvo.docas)
         for chave, doca in self.docas.items():
-            doca.setVisible(chave in alvo.docas)
+            doca.setVisible(chave in visiveis)
+        self._area_operacional.setCurrentWidget(self.asg if eh_asg else self._host)
+        self.trilho.setVisible(not eh_asg)
         self._workspace = alvo
         self.setWindowTitle(
             f"Operador B3 — ASG-like funcional — {self.simbolo}"
@@ -1775,6 +1803,10 @@ class JanelaFluxo(QMainWindow):
             else f"FluxoPro — {self.simbolo}"
         )
         self._sincronizar_trilho()
+        # Trocar workspace nunca e autorizacao para alterar a geometria da
+        # janela. A restauracao explicita tambem neutraliza sizeHints
+        # transitórios enquanto o Qt colapsa/expande a arvore de docas.
+        self.resize(tamanho_antes)
         if registrar:
             self.trilha.info("workspace", "%s — %s" % (alvo.nome, alvo.descricao))
         if not alvo.cadeia_completa:
@@ -1914,6 +1946,8 @@ class JanelaFluxo(QMainWindow):
 
         estado = self._host.saveState()
         visiveis = {c for c, dc in self.docas.items() if dc.isVisible()}
+        asg_antigo = self.asg
+        asg_ativo = self._workspace.nome == "ASG-like"
         antigos = [
             painel
             for chave, painel in self._paineis.items()
@@ -1925,7 +1959,13 @@ class JanelaFluxo(QMainWindow):
 
         self._montar_paineis(preservados=preservados)
         for chave, doca in self.docas.items():
-            doca.setWidget(self._paineis[chave])
+            if chave == "asg":
+                doca.setWidget(self._asg_doca_placeholder)
+            else:
+                doca.setWidget(self._paineis[chave])
+        self._area_operacional.removeWidget(asg_antigo)
+        self._area_operacional.addWidget(self.asg)
+        self._area_operacional.setCurrentWidget(self.asg if asg_ativo else self._host)
         for painel in antigos:
             painel.setParent(None)
             painel.deleteLater()

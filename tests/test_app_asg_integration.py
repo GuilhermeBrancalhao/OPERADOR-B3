@@ -324,3 +324,119 @@ def test_janela_aplica_asg_somente_quando_workspace_esta_ativo(qapp) -> None:
     finally:
         janela.close()
         sessao.finalizar(T0 + 1_000_000_000)
+
+
+def test_workspace_asg_ocupa_area_inteira_e_expoe_matriz_nas_tres_resolucoes(
+    qapp,
+) -> None:
+    from fluxopro.ui.janela import JanelaFluxo
+    from fluxopro.ui.ponte import PonteFluxo
+
+    barramento = Barramento()
+    ponte = PonteFluxo(barramento)
+    config = _config_asg()
+    sessao = SessaoFluxo(barramento, config)
+    janela = JanelaFluxo(
+        ponte,
+        SYMBOL,
+        config.price_grid(),
+        sessao=sessao,
+        config=config,
+        persistir=False,
+    )
+    try:
+        _publicar_quadro(barramento, T0, suffix="ui-area-inteira")
+        assert janela.workspace_por_atalho(5)
+        janela._tick()
+        janela.show()
+
+        esperadas = {
+            "MACRO", "MICRO", "LINHA AZUL", "REGIME", "MAKERPROXY",
+            "VELOCIMETRO",
+        }
+        for largura, altura in ((1280, 720), (1480, 900), (1920, 1080)):
+            janela.resize(largura, altura)
+            qapp.processEvents()
+            janela._host.layout().activate()
+            janela.asg.layout().activate()
+
+            assert janela.size().width() == largura
+            assert janela.size().height() == altura
+            assert janela._area_operacional.currentWidget() is janela.asg
+            assert not any(doca.isVisible() for doca in janela.docas.values())
+            assert janela.asg.width() == janela._area_operacional.width()
+            assert janela.asg.height() == janela._area_operacional.height()
+            assert esperadas <= set(janela.asg.matriz.textos_visiveis())
+            assert "CONSULTIVO · SEM ENVIO DE ORDENS" in (
+                janela.asg.decisao.textos_visiveis()
+            )
+    finally:
+        janela.close()
+        sessao.finalizar(T0)
+
+
+def test_ctrl_5_e_retorno_ao_fluxo_preservam_tamanho_da_janela(qapp) -> None:
+    from fluxopro.ui.janela import JanelaFluxo
+    from fluxopro.ui.ponte import PonteFluxo
+
+    barramento = Barramento()
+    config = _config_asg()
+    sessao = SessaoFluxo(barramento, config)
+    janela = JanelaFluxo(
+        PonteFluxo(barramento),
+        SYMBOL,
+        config.price_grid(),
+        sessao=sessao,
+        config=config,
+        persistir=False,
+    )
+    try:
+        janela.resize(1280, 720)
+        janela.show()
+        qapp.processEvents()
+        tamanho = janela.size()
+
+        assert janela.workspace_por_atalho(5)
+        qapp.processEvents()
+        assert janela.size() == tamanho
+
+        assert janela.workspace_por_atalho(1)
+        qapp.processEvents()
+        assert janela.size() == tamanho
+        assert janela.trilho.isVisible()
+    finally:
+        janela.close()
+        sessao.finalizar(T0)
+
+
+def test_retrato_workspaces_respeita_1480x900_e_docas_historicas(qapp) -> None:
+    from fluxopro.ui.janela import JanelaFluxo
+    from fluxopro.ui.ponte import PonteFluxo
+    from fluxopro.ui.workspace import WORKSPACES_DE_FABRICA, WORKSPACES_DISPONIVEIS
+
+    barramento = Barramento()
+    config = _config_asg()
+    sessao = SessaoFluxo(barramento, config)
+    janela = JanelaFluxo(
+        PonteFluxo(barramento), SYMBOL, config.price_grid(),
+        sessao=sessao, config=config, persistir=False,
+    )
+    try:
+        janela.show()
+        for workspace in WORKSPACES_DISPONIVEIS:
+            janela.aplicar_workspace(workspace)
+            janela.resize(1480, 900)
+            qapp.processEvents()
+            assert (janela.width(), janela.height()) == (1480, 900)
+            if workspace in WORKSPACES_DE_FABRICA:
+                assert janela._area_operacional.currentWidget() is janela._host
+                visiveis = {
+                    chave for chave, doca in janela.docas.items() if doca.isVisible()
+                }
+                assert visiveis == set(workspace.docas)
+            else:
+                assert janela._area_operacional.currentWidget() is janela.asg
+                assert not any(doca.isVisible() for doca in janela.docas.values())
+    finally:
+        janela.close()
+        sessao.finalizar(T0)

@@ -17,7 +17,7 @@ from enum import Enum, unique
 
 from PySide6.QtCore import QRect, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
-from PySide6.QtWidgets import QGridLayout, QWidget
+from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
 
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.base.painel_denso import PainelDenso
@@ -527,10 +527,13 @@ class _PainelASG(PainelDenso):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent, cor_fundo=tema_asg.PAINEL)
-        # O workspace pode ocupar uma doca estreita em 1280x720. Conteúdo
-        # excedente é virtualizado pelo próprio painel; impor a altura de
-        # todas as linhas como mínimo faria a janela crescer além da tela.
-        self.setMinimumSize(170, 64)
+        # A troca de docas resolve primeiro a geometria antiga e so depois a
+        # nova largura. Um minimo por filho faria o modo estreito transitorio
+        # somar cinco alturas e redimensionar a janela antes de o composto
+        # ganhar a area inteira. O conteudo tem virtualizacao propria, logo o
+        # layout pode ignorar o hint sem perder estado nem escrever fora.
+        self.setMinimumSize(0, 0)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._primeiro_visivel = 0
 
@@ -710,7 +713,7 @@ class PainelDadosASG(_PainelASG):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._snapshot = DadosASGSnapshot(0)
-        self.setMinimumHeight(80)
+        self.setMinimumHeight(0)
 
     @property
     def snapshot(self) -> DadosASGSnapshot:
@@ -823,7 +826,7 @@ class PainelProcessamentoASG(_PainelASG):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._snapshot = ProcessamentoASGSnapshot(0)
-        self.setMinimumHeight(80)
+        self.setMinimumHeight(0)
 
     def aplicar(self, snapshot: ProcessamentoASGSnapshot) -> None:
         mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
@@ -915,7 +918,7 @@ class PainelMatrizASG(_PainelASG):
         super().__init__(parent)
         self.paleta = paleta
         self._snapshot = MatrizASGSnapshot(0)
-        self.setMinimumHeight(80)
+        self.setMinimumHeight(0)
 
     def aplicar(self, snapshot: MatrizASGSnapshot) -> None:
         mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
@@ -1086,7 +1089,7 @@ class PainelDecisaoASG(_PainelASG):
         super().__init__(parent)
         self.paleta = paleta
         self._snapshot = DecisaoASGSnapshot(0)
-        self.setMinimumHeight(80)
+        self.setMinimumHeight(0)
 
     def aplicar(self, snapshot: DecisaoASGSnapshot) -> None:
         mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
@@ -1205,7 +1208,7 @@ class PainelEvidenciasASG(_PainelASG):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._snapshot = TrilhaEvidenciasASGSnapshot(0)
-        self.setMinimumHeight(80)
+        self.setMinimumHeight(0)
 
     def aplicar(self, snapshot: TrilhaEvidenciasASGSnapshot) -> None:
         mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
@@ -1295,6 +1298,10 @@ class WorkspaceASG(QWidget):
     def __init__(self, parent: QWidget | None = None,
                  paleta: tokens.Paleta = tokens.PALETA_COR) -> None:
         super().__init__(parent)
+        # O composto e a superficie operacional inteira no Ctrl+5. ``Ignored``
+        # impede que um sizeHint de desktop force a janela a crescer quando o
+        # Qt ainda esta resolvendo a antiga arvore de docas durante a troca.
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.dados = PainelDadosASG(self)
         self.processamento = PainelProcessamentoASG(self)
         self.matriz = PainelMatrizASG(self, paleta)
@@ -1314,7 +1321,12 @@ class WorkspaceASG(QWidget):
         return self._modo
 
     def sizeHint(self) -> QSize:  # noqa: N802
-        return QSize(1280, 760)
+        return QSize(960, 540)
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802
+        # A responsividade e decidida pela geometria efetiva, nao por um piso
+        # capaz de redimensionar permanentemente a janela hospedeira.
+        return QSize(0, 0)
 
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         """Aplica exatamente um snapshot tipado e coerente por quadro."""
@@ -1341,6 +1353,9 @@ class WorkspaceASG(QWidget):
         self._modo = modo
         for painel in self.paineis:
             self._layout.removeWidget(painel)
+        for indice in range(5):
+            self._layout.setRowStretch(indice, 0)
+            self._layout.setColumnStretch(indice, 0)
         if modo == "largo":
             self._layout.addWidget(self.dados, 0, 0)
             self._layout.addWidget(self.processamento, 0, 1)
@@ -1350,6 +1365,12 @@ class WorkspaceASG(QWidget):
             self._layout.setColumnStretch(0, 1)
             self._layout.setColumnStretch(1, 1)
             self._layout.setColumnStretch(2, 1)
+            # Em 1280x720 a matriz precisa de 6 linhas de 28 px, cabecalho,
+            # selo e rodape. Ela recebe a maior parte vertical; a decisao
+            # atravessa as duas linhas e continua legivel ao lado.
+            self._layout.setRowStretch(0, 2)
+            self._layout.setRowStretch(1, 3)
+            self._layout.setRowStretch(2, 1)
         elif modo == "medio":
             self._layout.addWidget(self.dados, 0, 0)
             self._layout.addWidget(self.processamento, 0, 1)
@@ -1359,12 +1380,17 @@ class WorkspaceASG(QWidget):
             self._layout.setColumnStretch(0, 1)
             self._layout.setColumnStretch(1, 1)
             self._layout.setColumnStretch(2, 0)
+            self._layout.setRowStretch(0, 2)
+            self._layout.setRowStretch(1, 3)
+            self._layout.setRowStretch(2, 1)
         else:
             for linha, painel in enumerate(self.paineis):
                 self._layout.addWidget(painel, linha, 0)
             self._layout.setColumnStretch(0, 1)
             self._layout.setColumnStretch(1, 0)
             self._layout.setColumnStretch(2, 0)
+            for linha in range(5):
+                self._layout.setRowStretch(linha, 1)
 
 
 def _campo(objeto: object, nome: str, padrao: object = None) -> object:
