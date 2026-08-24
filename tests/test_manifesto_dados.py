@@ -61,6 +61,16 @@ def test_o_manifesto_nao_carrega_dado_de_mercado():
     campos permitidos, em vez de conferir os campos que hoje se sabe que
     existem. Campo novo reprova por ser novo — que e a unica forma de a
     fronteira sobreviver a quem acrescentar algo sem pensar nisto aqui.
+
+    `contagens`, `hashes_sha256` e `n_linhas_hasheadas` sao os TRES campos
+    chaveados por tipo de evento/nome de arquivo (`Trade`, `BookDelta`,
+    `book_deltas.csv`... — de `fluxopro.gravacao.formato.NOMES_ARQUIVO`), nao
+    por dado de mercado. Primeiro dia com book de verdade (24/08) expos que
+    "BookDelta" e "book_deltas.csv" contem a substring "delta" sem carregar
+    um delta — dois falsos positivos, um em cada campo. A varredura de termo
+    proibido olha os VALORES desses tres campos (contagem, hash, contagem de
+    linha), nunca as chaves — o teste de campos permitidos acima ja cobre a
+    forma das chaves.
     """
     permitidos = {
         "symbol",
@@ -83,7 +93,10 @@ def test_o_manifesto_nao_carrega_dado_de_mercado():
             f"{sorted(extras)} — se e metadado de integridade, acrescente a "
             "lista; se e dado de mercado, ele nao pode ir para o repositorio"
         )
-        cru = json.dumps(dia, ensure_ascii=False).lower()
+        sem_nomes_de_tipo = dict(dia)
+        for campo in ("contagens", "hashes_sha256", "n_linhas_hasheadas"):
+            sem_nomes_de_tipo[campo] = sorted(str(v) for v in dia[campo].values())
+        cru = json.dumps(sem_nomes_de_tipo, ensure_ascii=False).lower()
         for termo in proibidos:
             assert termo not in cru, (
                 f"{dia['symbol']} {dia['data']}: o manifesto menciona {termo!r}"

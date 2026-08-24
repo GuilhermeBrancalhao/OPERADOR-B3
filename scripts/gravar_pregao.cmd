@@ -11,10 +11,19 @@ REM   nao digita senha, e o `initialize()` sem terminal devolve
 REM   "IPC initialize failed". Por isso o log abaixo e a primeira coisa a
 REM   conferir se um dia o arquivo do dia nao aparecer.
 REM
-REM Por que --duracao e nao "ate o mercado fechar": o produto nao sabe o
-REM calendario da B3 (feriado, leilao estendido, sessao encurtada). Um limite de
-REM parede e honesto sobre o que ele sabe — e o Gravador fecha o dia com meta e
-REM hash mesmo sendo interrompido.
+REM Por que --fim e nao "ate o mercado fechar": o produto nao sabe o
+REM calendario da B3 (feriado, leilao estendido, sessao encurtada). Um horario
+REM de parede e honesto sobre o que ele sabe — e o Gravador fecha o dia com
+REM meta e hash mesmo sendo interrompido.
+REM
+REM 24/08/2026: `operar.py` chamado direto morreu as 13:21 (Ctrl+C externo,
+REM terminal MT5 continuou de pe) com fim previsto em 18:30 — quase 5h de
+REM pregao sem ninguem gravando, e nada relancou sozinho. Por isso agora quem
+REM roda aqui e `supervisionar_gravacao.py`, que reconecta `operar.py`
+REM enquanto a janela nao fecha e o dia nao esta finalizado (retomar e seguro:
+REM `Gravador` escreve em append e so recusa reabrir dia com `.gz`). Ver o
+REM docstring de `scripts/supervisionar_gravacao.py` para o circuito de
+REM seguranca contra MT5 fechado/deslogado o dia inteiro.
 REM ============================================================================
 
 setlocal
@@ -29,11 +38,10 @@ echo ============================================ >> "%LOG%"
 echo INICIO %date% %time% >> "%LOG%"
 
 cd /d "%RAIZ%"
-python scripts\operar.py ^
-  --fonte mt5 ^
+python scripts\supervisionar_gravacao.py ^
   --simbolo WDOU26 ^
   --gravar dados\ ^
-  --duracao 34200 ^
+  --fim 18:30 ^
   --status-a-cada 300 >> "%LOG%" 2>&1
 
 echo FIM %date% %time% (codigo %ERRORLEVEL%) >> "%LOG%"

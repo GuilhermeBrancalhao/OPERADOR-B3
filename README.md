@@ -10,7 +10,7 @@ extraída de fonte pública com citação e rótulo de confiança.
 
 ## O estado, em uma linha
 
-`python -m pytest tests/ -q` → **1.344 passed, 2 skipped**
+`python -m pytest tests/ -q` → **1.351 passed, 2 skipped**
 · ~29 mil linhas de produção, ~25 mil de teste
 · **o tape é de mercado real**; o livro ainda não.
 
@@ -24,6 +24,15 @@ O que **não** se resolve assim é o livro: `market_book_get` só existe com o m
 MT5 não guarda histórico de book. Numa gravação importada o DOM e o bookmap ficam vazios — e a
 gravação é honesta sobre isso, ela simplesmente não tem `snapshots.csv`. Para as duas metades,
 o caminho continua sendo o pregão ao vivo.
+
+Em 24/08/2026 a tarefa agendada capturou a primeira gravação ao vivo com **livro** preenchido —
+até morrer sozinha às 13:21 (Ctrl+C externo; o terminal MT5 continuou de pé, só o processo de
+gravação caiu) e ninguém relançar pelas quase 5 horas de pregão que faltavam. Os dados até ali
+não se perderam — `Gravador` grava em append e o dia interrompido não tinha `.gz` — mas nada no
+nível de processo sabia que devia tentar de novo. `scripts/supervisionar_gravacao.py` fecha essa
+lacuna: reconecta `operar.py` enquanto a janela do pregão não fecha e o dia não está finalizado,
+com um circuito que desiste se as quedas forem rápidas e seguidas (sinal de MT5 fora do ar, não
+de um evento isolado). É o que `gravar_pregao.cmd` chama agora.
 
 ---
 
@@ -45,6 +54,10 @@ python scripts/importar_mt5.py --simbolo WDOU26 --data 2026-08-21 --saida dados/
 
 # gravar um pregão AO VIVO — tape E livro (exige mercado aberto)
 python scripts/operar.py --fonte mt5 --simbolo WDOU26 --gravar dados/
+
+# o mesmo, mas reconectando sozinho se a captura cair antes da hora
+# (é o que a tarefa agendada roda — ver "O gargalo mudou de tamanho" abaixo)
+python scripts/supervisionar_gravacao.py --simbolo WDOU26 --gravar dados/ --fim 18:30
 
 # reviver o que foi gravado, determinístico
 python scripts/painel.py --fonte replay --arquivo dados/ --simbolo WDOU26

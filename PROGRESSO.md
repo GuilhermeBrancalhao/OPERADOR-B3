@@ -8,7 +8,7 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
-> **Estado corrente — 23/08/2026.** `python -m pytest tests/ -q` → **1.344 passed, 2 skipped**.
+> **Estado corrente — 24/08/2026.** `python -m pytest tests/ -q` → **1.351 passed, 2 skipped**.
 > Fases 1, 2, 3 e 5 do plano de UI entregues e montadas numa janela só; `fluxopro/metodologia/`
 > ligado ao pipeline vivo. Detalhe do ciclo em `GAUNTLET_ASG.md`.
 > **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
@@ -362,6 +362,46 @@ cheio custa ~4 ms. É o mesmo "25 ms" que a docstring da matriz cita, mesma
 causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
 
 Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
+
+## Onda 15 — a gravação sabe se reconectar sozinha (24/08)
+
+Primeira segunda-feira com a tarefa agendada rodando de verdade. Às 09:00:01
+`operar.py --gravar` subiu certinho — primeira captura AO VIVO com **livro**
+preenchido do projeto inteiro, não só tape. Às 13:21:08 ele caiu: o log
+termina com `^C`, código de saída `-1073741510` (`STATUS_CONTROL_C_EXIT` do
+Windows) — o mesmo assinatura do smoke-test manual do domingo anterior. O
+terminal MT5 continuou de pé; só o processo de gravação morreu. O pregão
+seguiu sendo negociado por quase 5 horas sem ninguém do lado de cá gravando,
+e nada relançou sozinho — a tarefa agendada era um disparo único.
+
+Os dados até ali não foram perdidos: `meta.json` marcou `"parcial": true`
+honestamente, com hash calculado sobre 113.428 trades e 621.545 eventos de
+book. Isso só era possível porque `Gravador` já escreve em modo append e
+`_dia_ja_finalizado` só recusa reabrir um dia com `.csv.gz` — retomar depois
+de queda sempre foi seguro no nível do arquivo. Faltava quem, no nível do
+**processo**, soubesse que devia tentar de novo.
+
+### `scripts/supervisionar_gravacao.py`
+
+Não tenta adivinhar *por que* `operar.py` caiu — Ctrl+C externo, MT5
+fechado/deslogado, exceção no pipeline, todos parecem iguais de fora, e
+adivinhar seria a mesma armadilha do "código de saída mente" já catalogada
+aqui. Reage ao fato observável: *"ainda estou dentro da janela do pregão e o
+dia não está finalizado, então devia estar gravando — e não estou"*. Relança
+com `--duracao` recalculado para o tempo que falta até `--fim`, nunca um
+valor fixo que ultrapassaria o fechamento.
+
+Circuito de segurança: quedas rápidas (`< 60s`) **seguidas** derrubam o
+supervisor depois de um teto configurável — sinal de algo estrutural (MT5
+fora do ar o dia inteiro), não de um evento isolado. Uma queda depois de
+rodar bastante tempo (o caso real de hoje: 4h20 saudável antes do Ctrl+C)
+**reseta** esse contador — testado por mutação: removida a linha do reset, o
+teste dedicado pegou o circuito desistindo uma reconexão cedo demais (3
+chamadas em vez de 4).
+
+`gravar_pregao.cmd` agora chama o supervisor em vez de `operar.py` direto.
+Sete testes novos, sem depender de MT5 nem de tempo real — `agora`/`dormir`/
+`lancar` injetados, mesmo padrão de dublê do resto do projeto.
 
 ## Onda 14 — o estudo vira auditável (23/08)
 
