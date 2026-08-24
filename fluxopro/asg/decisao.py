@@ -1,4 +1,4 @@
-"""Motor estritamente consultivo para A1/A2/A3 e niveis de risco."""
+"""Decisao exclusivamente consultiva — REGRA DO OPERADOR B3."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from .modelos import (
     DECISION_FORMULA_VERSION,
     DecisionSnapshot,
     EstadoMaker,
+    FrozenMapping,
     LeituraASG,
     MakerProxySnapshot,
     NivelDecisao,
@@ -20,20 +21,23 @@ from .modelos import (
 
 @dataclass(frozen=True, slots=True)
 class ConfigMotorDecisaoASG:
-    """Cortes abertos do classificador consultivo; nenhum e formula da ASG."""
-
-    score_a1: float = 0.20
-    score_a2: float = 0.40
+    score_a1: float = 0.07
+    score_a2: float = 0.35
     score_a3: float = 0.65
-    confianca_a1: float = 0.35
-    confianca_a2: float = 0.55
-    confianca_a3: float = 0.75
-    cobertura_a1: float = 0.25
-    cobertura_a2: float = 0.50
-    cobertura_a3: float = 0.75
-    persistencia_a1: float = 0.40
-    persistencia_a2: float = 0.60
-    persistencia_a3: float = 0.80
+    confianca_a1: float = 0.60
+    confianca_a2: float = 0.70
+    confianca_a3: float = 0.80
+    cobertura_a1: float = 0.60
+    cobertura_a2: float = 0.70
+    cobertura_a3: float = 0.80
+    persistencia_a1: float = 1.0
+    persistencia_a2: float = 1.0
+    persistencia_a3: float = 1.0
+    persistencia_minima_ns: int = 3_000_000_000
+    confianca_minima: float = 0.60
+    relevancia_minima: float = 0.07
+    confianca_regiao_minima: float = 0.60
+    idade_regiao_max_ns: int = 30_000_000_000
     stop_fora_regiao_ticks: int = 1
     alvo_a1_r: int = 1
     alvo_a2_r: int = 2
@@ -47,21 +51,23 @@ class ConfigMotorDecisaoASG:
                 raise ValueError(f"cortes de {prefixo} devem estar entre 0 e 1")
             if valores != tuple(sorted(valores)):
                 raise ValueError(f"cortes de {prefixo} devem ser nao decrescentes")
+        for nome in ("confianca_minima", "relevancia_minima", "confianca_regiao_minima"):
+            valor = float(getattr(self, nome))
+            if not 0.0 <= valor <= 1.0:
+                raise ValueError(f"{nome} deve estar entre 0 e 1")
         for nome in (
-            "stop_fora_regiao_ticks",
-            "alvo_a1_r",
-            "alvo_a2_r",
-            "alvo_a3_r",
+            "persistencia_minima_ns", "idade_regiao_max_ns", "stop_fora_regiao_ticks",
+            "alvo_a1_r", "alvo_a2_r", "alvo_a3_r",
         ):
             valor = getattr(self, nome)
             if not isinstance(valor, int) or isinstance(valor, bool) or valor < 1:
                 raise ValueError(f"{nome} deve ser inteiro >= 1")
         if not self.alvo_a1_r < self.alvo_a2_r < self.alvo_a3_r:
-            raise ValueError("alvos A1/A2/A3 devem ser estritamente crescentes")
+            raise ValueError("alvos A1/A2/A3 devem ser crescentes")
 
 
 class MotorDecisaoASG:
-    """Classifica a leitura e calcula uma proposta; nao possui API de execucao."""
+    """Publica gates, bloqueios e niveis informativos; nao executa operacoes."""
 
     __slots__ = ("config",)
 
@@ -69,26 +75,31 @@ class MotorDecisaoASG:
         self.config = config or ConfigMotorDecisaoASG()
 
     def propor_risco(
-        self,
-        direcao: Side,
-        entrada_ticks: int,
-        regiao: RegiaoOperacional,
+        self, direcao: Side, entrada_ticks: int, regiao: RegiaoOperacional
     ) -> PropostaRisco:
         if not isinstance(entrada_ticks, int) or isinstance(entrada_ticks, bool):
-            raise TypeError("entrada_ticks deve ser int em ticks (nunca float)")
+            raise TypeError("entrada_ticks deve ser int em ticks")
         margem = self.config.stop_fora_regiao_ticks
         if direcao is Side.BUY:
-            stop = regiao.inicio_ticks - margem
+            invalidacao = (
+                regiao.invalidacao_ticks
+                if regiao.invalidacao_ticks is not None else regiao.inicio_ticks
+            )
+            stop = invalidacao - margem
             risco = entrada_ticks - stop
             sinal = 1
         elif direcao is Side.SELL:
-            stop = regiao.fim_ticks + margem
+            invalidacao = (
+                regiao.invalidacao_ticks
+                if regiao.invalidacao_ticks is not None else regiao.fim_ticks
+            )
+            stop = invalidacao + margem
             risco = stop - entrada_ticks
             sinal = -1
-        else:  # defesa para valores que imitem Enum sem serem Side
-            raise ValueError("direcao deve ser Side.BUY ou Side.SELL")
+        else:
+            raise ValueError("direcao deve ser BUY ou SELL")
         if risco < 1:
-            raise ValueError("entrada deve ficar do lado de risco valido em relacao ao stop")
+            raise ValueError("entrada e invalidacao produzem risco invalido")
         return PropostaRisco(
             direcao=direcao,
             entrada_ticks=entrada_ticks,
@@ -98,15 +109,13 @@ class MotorDecisaoASG:
             a3_ticks=entrada_ticks + sinal * risco * self.config.alvo_a3_r,
             risco_ticks=risco,
             formula_version=self.config.formula_version,
+            invalidacao_ticks=invalidacao,
+            obstaculo_ticks=regiao.obstaculo_ticks,
         )
 
-    def _nivel(self, leitura: LeituraASG) -> NivelDecisao:
-        magnitude = abs(leitura.pontuacao)
-        for numero, nivel in (
-            (3, NivelDecisao.A3),
-            (2, NivelDecisao.A2),
-            (1, NivelDecisao.A1),
-        ):
+    def _nivel_confirmado(self, leitura: LeituraASG) -> NivelDecisao:
+        magnitude = abs(leitura.maker.percent or 0.0) / 100.0
+        for numero, nivel in ((3, NivelDecisao.A3), (2, NivelDecisao.A2), (1, NivelDecisao.A1)):
             if (
                 magnitude >= getattr(self.config, f"score_a{numero}")
                 and leitura.confianca >= getattr(self.config, f"confianca_a{numero}")
@@ -114,7 +123,7 @@ class MotorDecisaoASG:
                 and leitura.persistencia >= getattr(self.config, f"persistencia_a{numero}")
             ):
                 return nivel
-        return NivelDecisao.AGUARDAR
+        return NivelDecisao.A1
 
     def avaliar(
         self,
@@ -127,38 +136,84 @@ class MotorDecisaoASG:
         if leitura.symbol != regiao.symbol:
             raise ValueError("leitura e regiao devem ter o mesmo symbol")
         if not isinstance(entrada_ticks, int) or isinstance(entrada_ticks, bool):
-            raise TypeError("entrada_ticks deve ser int em ticks (nunca float)")
+            raise TypeError("entrada_ticks deve ser int em ticks")
 
+        maker = leitura.maker
+        bloqueios: list[str] = []
         motivos: list[str] = []
-        nivel = NivelDecisao.AGUARDAR
-        proposta: PropostaRisco | None = None
-        direcao = leitura.direcao
+        regiao_temporalmente_valida = True
+        if regiao.timestamp_ns > leitura.timestamp_ns:
+            bloqueios.append("REGIAO_FUTURA")
+            regiao_temporalmente_valida = False
+        elif leitura.timestamp_ns - regiao.timestamp_ns > self.config.idade_regiao_max_ns:
+            bloqueios.append("REGIAO_EXPIRADA")
+            regiao_temporalmente_valida = False
+        if not regiao.valida:
+            bloqueios.append("REGIAO_INVALIDA")
+        if regiao.confianca < self.config.confianca_regiao_minima:
+            bloqueios.append("QUALIDADE_REGIAO_BAIXA")
+        if not regiao.contem(entrada_ticks):
+            bloqueios.append("PRECO_FORA_DA_REGIAO")
 
-        if leitura.estado in {EstadoMaker.SEM_DADOS, EstadoMaker.NEUTRO}:
-            motivos.append(f"maker {leitura.estado.value.lower()}")
-        elif leitura.estado is EstadoMaker.DIVERGENTE:
-            motivos.append("componentes direcionais divergentes")
-        elif direcao is None:
-            motivos.append("direcao indisponivel")
+        direcao = maker.direcao
+        relevante = abs(maker.percent or 0.0) >= self.config.relevancia_minima * 100.0
+        regiao_ok = (
+            regiao_temporalmente_valida and regiao.valida
+            and regiao.confianca >= self.config.confianca_regiao_minima
+            and regiao.contem(entrada_ticks)
+        )
+        pre_sinal = direcao is not None and relevante and regiao_ok
+
+        if direcao is None:
+            bloqueios.append("DIRECAO_INDISPONIVEL")
+        if maker.estado is EstadoMaker.SEM_DADOS:
+            bloqueios.append("SEM_DADOS")
+        if maker.book_kind == "NONE" or maker.estado is EstadoMaker.SEM_BOOK:
+            bloqueios.append("SEM_BOOK")
+        if maker.book_delayed:
+            bloqueios.append("BOOK_ATRASADO")
+        if maker.feed_quality <= 0.0:
+            bloqueios.append("FEED_NAO_SAUDAVEL")
+        if maker.feed_quality < self.config.confianca_minima:
+            bloqueios.append("QUALIDADE_FEED_BAIXA")
+        if maker.confianca < self.config.confianca_minima:
+            bloqueios.append("CONFIANCA_BAIXA")
+        if maker.persistence_ns < self.config.persistencia_minima_ns:
+            bloqueios.append("PERSISTENCIA_INSUFICIENTE")
+        if not relevante:
+            bloqueios.append("EVIDENCIA_IRRELEVANTE")
+        if maker.estado not in {
+            EstadoMaker.COMPRADOR, EstadoMaker.VENDEDOR, EstadoMaker.DIVERGENTE
+        }:
+            bloqueios.append("MAKER_NAO_CONFIRMADO")
+        if maker.estado is EstadoMaker.DIVERGENTE:
+            motivos.append("ALERTA: MakerProxy divergente; nao e veto automatico")
+
+        # Remove repeticoes sem perder a ordem explicativa.
+        bloqueios = list(dict.fromkeys(bloqueios))
+        confirmacao = pre_sinal and not bloqueios
+        proposta: PropostaRisco | None = None
+        nivel = NivelDecisao.AGUARDAR
+        if confirmacao and direcao is not None:
+            proposta = self.propor_risco(direcao, entrada_ticks, regiao)
+            nivel = self._nivel_confirmado(leitura)
+            motivos.append(
+                f"{nivel.value}: confirmacao consultiva; stop um tick alem da invalidacao"
+            )
+        elif pre_sinal:
+            motivos.append("pre-sinal presente; confirmacao bloqueada")
         else:
-            nivel = self._nivel(leitura)
-            if nivel is NivelDecisao.AGUARDAR:
-                motivos.append(
-                    "score, confianca, cobertura ou persistencia abaixo dos cortes A1"
-                )
-            else:
-                proposta = self.propor_risco(direcao, entrada_ticks, regiao)
-                motivos.append(
-                    f"{nivel.value}: cortes consultivos satisfeitos; "
-                    f"stop {self.config.stop_fora_regiao_ticks} tick(s) alem da regiao"
-                )
+            motivos.append("aguardando regiao valida e evidencia direcional")
 
         procedencia = (
-            f"maker:{leitura.maker.procedencia.value}",
+            f"maker:{maker.procedencia.value}",
+            f"feed:{maker.source}/{maker.book_kind}",
             f"regiao:{regiao.procedencia.value}",
-            f"maker_formula:{leitura.maker.formula_version}",
+            f"maker_formula:{maker.formula_version}",
             f"decision_formula:{self.config.formula_version}",
+            "regra:REGRA DO OPERADOR B3",
         )
+        confianca = min(maker.confianca, regiao.confianca)
         return DecisionSnapshot(
             timestamp_ns=leitura.timestamp_ns,
             symbol=leitura.symbol,
@@ -170,6 +225,15 @@ class MotorDecisaoASG:
             motivos=tuple(motivos),
             procedencia=procedencia,
             formula_version=self.config.formula_version,
+            placar=leitura.placar if leitura.placar else FrozenMapping(),
+            qualidade_regiao=regiao.qualidade,
+            pre_sinal=pre_sinal,
+            confirmacao=confirmacao,
+            invalidacao_ticks=(proposta.invalidacao_ticks if proposta else regiao.invalidacao_ticks),
+            obstaculo_ticks=regiao.obstaculo_ticks,
+            razao="REGRA DO OPERADOR B3 · stop +1 tick · A1/A2/A3 = 1R/2R/3R",
+            bloqueios=tuple(bloqueios),
+            confianca=confianca,
         )
 
     decidir = avaliar

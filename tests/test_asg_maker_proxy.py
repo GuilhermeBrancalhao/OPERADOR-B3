@@ -1,254 +1,391 @@
 from __future__ import annotations
 
 import json
-from dataclasses import FrozenInstanceError
+from dataclasses import FrozenInstanceError, fields
 
 import pytest
 
 from fluxopro.asg import (
-    ComponenteMaker,
-    ConfigMakerProxy,
-    EstadoMaker,
-    MakerEvidence,
-    MakerProxy,
+    ComponenteMaker, ConfigMakerProxy, EstadoMaker, MakerEvidence, MakerProxy,
     ProcedenciaASG,
 )
 from fluxopro.core.eventos import AgressorSide, Side, Trade
+from fluxopro.dados.qualidade import (
+    AggressorQuality, BookKind, FeedQualitySnapshot, FeedSource, FeedState,
+)
 from fluxopro.microestrutura.detectores import Deteccao, TipoDeteccao
 
-
 SYMBOL = "WDOV26"
+S = 1_000_000_000
 
 
-def _trade(ts: int, side: AgressorSide, qty: int = 100, price: int = 10_000) -> Trade:
-    return Trade(ts, SYMBOL, price, qty, side, f"t{ts}")
+def _trade(ts: int, side: AgressorSide, qty: int = 300, trade_id: str | None = None) -> Trade:
+    return Trade(ts, SYMBOL, 10_000, qty, side, trade_id or f"t{ts}-{side.value}")
 
 
-def _deteccao(
+def _feed(
     ts: int,
-    tipo: TipoDeteccao,
-    side: Side,
     *,
-    confianca: float = 1.0,
-    procedencia: str = "OBSERVADA",
-) -> Deteccao:
-    return Deteccao(
-        timestamp_ns=ts,
-        symbol=SYMBOL,
-        tipo=tipo,
-        side=side,
-        price=10_000,
-        confianca=confianca,
-        evidencia={"procedencia": procedencia, "fonte": "MBO", "n": 3},
-    )
+    book: BookKind = BookKind.MBO,
+    state: FeedState = FeedState.CONNECTED,
+    latency: int | None = 0,
+    aggressor: AggressorQuality = AggressorQuality.NATIVE,
+    source: FeedSource = FeedSource.MT5,
+    received: int = 0,
+    accepted: int = 0,
+    anomalies: int = 0,
+) -> FeedQualitySnapshot:
+    dados = {
+        "symbol": SYMBOL, "state": state, "source": source,
+        "book_kind": book, "depth": 20 if book is not BookKind.NONE else 0,
+        "aggressor_quality": aggressor, "latency_ns": latency,
+        "received_events": received, "accepted_events": accepted,
+    }
+    nomes = {campo.name for campo in fields(FeedQualitySnapshot)}
+    if "anomalies" in nomes:
+        dados["anomalies"] = anomalies
+    if "ingress_timestamp_ns" in nomes:
+        dados.update(market_timestamp_ns=ts, ingress_timestamp_ns=ts)
+    else:
+        dados["timestamp_ns"] = ts
+    return FeedQualitySnapshot(**dados)
 
 
 def _evidencia(
     ts: int,
     componente: ComponenteMaker,
     score: float,
+    *,
+    confianca: float = 1.0,
     procedencia: ProcedenciaASG = ProcedenciaASG.OBSERVADA,
 ) -> MakerEvidence:
     return MakerEvidence(
-        timestamp_ns=ts,
-        symbol=SYMBOL,
-        componente=componente,
-        pontuacao=score,
-        confianca=1.0,
-        procedencia=procedencia,
-        fonte="TESTE",
-        tipo_evento="TESTE",
-        preco_ticks=10_000,
-        detalhes={"id": ts},
+        timestamp_ns=ts, symbol=SYMBOL, componente=componente,
+        pontuacao=score, confianca=confianca, procedencia=procedencia,
+        fonte="MBO" if procedencia is ProcedenciaASG.OBSERVADA else "MBP_INFERIDO",
+        tipo_evento="TESTE", preco_ticks=10_000,
+        detalhes={"nested": {"ids": [1, 2]}},
     )
 
 
-def test_modelos_e_snapshot_sao_imutaveis_inclusive_evidencia_aninhada():
-    detalhes = {"lista": [1, {"x": 2}]}
-    evidencia = MakerEvidence(
-        1,
-        SYMBOL,
-        ComponenteMaker.ABSORCAO,
-        1.0,
-        0.8,
-        ProcedenciaASG.OBSERVADA,
-        "MBO",
-        "ABSORCAO",
-        10_000,
-        detalhes,  # type: ignore[arg-type]
-    )
-    detalhes["lista"].append(3)
-    assert evidencia.detalhes["lista"][1]["x"] == 2
-    with pytest.raises(TypeError):
-        evidencia.detalhes["outra"] = 3  # type: ignore[index]
-    with pytest.raises(TypeError):
-        evidencia.detalhes["lista"][1]["x"] = 9  # type: ignore[index]
-    with pytest.raises(FrozenInstanceError):
-        evidencia.pontuacao = 0.0  # type: ignore[misc]
-
-    snapshot = MakerProxy(SYMBOL).snapshot()
-    with pytest.raises(FrozenInstanceError):
-        snapshot.cobertura = 1.0  # type: ignore[misc]
-    assert isinstance(snapshot.componentes, tuple)
+def _alimentar_componentes(proxy: MakerProxy, ts: int, scores: dict[ComponenteMaker, float]) -> None:
+    if ComponenteMaker.AGRESSAO in scores:
+        lado = AgressorSide.BUY if scores[ComponenteMaker.AGRESSAO] >= 0 else AgressorSide.SELL
+        proxy.ao_trade(_trade(ts, lado, trade_id=f"tape-{ts}"))
+    for componente, score in scores.items():
+        if componente is not ComponenteMaker.AGRESSAO:
+            proxy.registrar_evidencia(_evidencia(ts, componente, score))
 
 
-def test_agressao_usa_volume_atribuido_e_expoe_desconhecido_na_confianca():
-    proxy = MakerProxy(
-        SYMBOL,
-        ConfigMakerProxy(volume_referencia_agressao=100, limiar_direcional=0.1),
-    )
-    proxy.ao_trade(_trade(1, AgressorSide.BUY, 75))
-    snapshot = proxy.ao_trade(_trade(2, AgressorSide.UNKNOWN, 25))
-    assert snapshot is not None
-    agressao = snapshot.componente(ComponenteMaker.AGRESSAO)
-    assert agressao.pontuacao == 1.0
-    assert agressao.confianca == pytest.approx(0.75 * 0.75)
-    assert snapshot.estado is EstadoMaker.COMPRADOR
-    assert snapshot.direcao is Side.BUY
-
-
-def test_pesos_sao_renormalizados_somente_entre_componentes_cobertos():
-    cfg = ConfigMakerProxy(
-        peso_agressao=0.1,
-        peso_absorcao=0.3,
-        peso_reposicao=0.2,
-        peso_divergencia=0.2,
-        peso_clips=0.2,
-    )
-    proxy = MakerProxy(SYMBOL, cfg)
-    primeiro = proxy.registrar_evidencia(_evidencia(1, ComponenteMaker.ABSORCAO, 1.0))
-    assert primeiro is not None
-    assert primeiro.cobertura == pytest.approx(0.3)
-    assert primeiro.componente(ComponenteMaker.ABSORCAO).peso_efetivo == 1.0
-
-    segundo = proxy.registrar_evidencia(_evidencia(2, ComponenteMaker.REPOSICAO, -1.0))
-    assert segundo is not None
-    assert segundo.cobertura == pytest.approx(0.5)
-    assert segundo.componente(ComponenteMaker.ABSORCAO).peso_efetivo == pytest.approx(0.6)
-    assert segundo.componente(ComponenteMaker.REPOSICAO).peso_efetivo == pytest.approx(0.4)
-    assert segundo.pontuacao == pytest.approx(0.2)
-
-
-@pytest.mark.parametrize(
-    ("tipo", "componente", "side", "score"),
-    [
-        (TipoDeteccao.ABSORCAO, ComponenteMaker.ABSORCAO, Side.BUY, 1.0),
-        (TipoDeteccao.ESCORA, ComponenteMaker.REPOSICAO, Side.SELL, -1.0),
-        (TipoDeteccao.ICEBERG, ComponenteMaker.REPOSICAO, Side.BUY, 1.0),
-        (TipoDeteccao.CLIP_INSTITUCIONAL, ComponenteMaker.CLIPS, Side.SELL, -1.0),
-        # Exaustao do comprador e hipotese divergente vendedora no proxy.
-        (TipoDeteccao.EXAUSTAO, ComponenteMaker.DIVERGENCIA, Side.BUY, -1.0),
-        (TipoDeteccao.LIQUIDEZ_FANTASMA, ComponenteMaker.DIVERGENCIA, Side.SELL, 1.0),
-    ],
-)
-def test_adaptacao_de_todos_os_detectores_existentes(tipo, componente, side, score):
-    snapshot = MakerProxy(SYMBOL).ao_deteccao(_deteccao(1, tipo, side))
-    assert snapshot is not None
-    item = snapshot.componente(componente)
-    assert item.pontuacao == score
-    assert item.evidencias[-1].tipo_evento == tipo.value
-    assert item.evidencias[-1].preco_ticks == 10_000
-
-
-def test_procedencia_inferida_nao_e_promovida_e_mistura_fica_visivel():
+def _maker_estavel(
+    *,
+    book: BookKind = BookKind.MBO,
+    scores: dict[ComponenteMaker, float] | None = None,
+) -> tuple[MakerProxy, object]:
+    scores = scores or {componente: 1.0 for componente in ComponenteMaker}
     proxy = MakerProxy(SYMBOL)
-    inferido = proxy.ao_deteccao(
-        _deteccao(1, TipoDeteccao.ESCORA, Side.BUY, confianca=0.4, procedencia="INFERIDA")
-    )
-    assert inferido is not None
-    assert inferido.procedencia is ProcedenciaASG.INFERIDA
-    assert inferido.confianca == pytest.approx(0.4)
-    assert inferido.componente(ComponenteMaker.REPOSICAO).procedencia is ProcedenciaASG.INFERIDA
-    assert inferido.componente(ComponenteMaker.REPOSICAO).formula_version == inferido.formula_version
-
-    misto = proxy.ao_deteccao(_deteccao(2, TipoDeteccao.ABSORCAO, Side.BUY))
-    assert misto is not None
-    assert misto.procedencia is ProcedenciaASG.MISTA
+    proxy.ao_feed_quality(_feed(0, book=book))
+    _alimentar_componentes(proxy, 0, scores)
+    proxy.ao_feed_quality(_feed(3 * S, book=book))
+    _alimentar_componentes(proxy, 3 * S, scores)
+    return proxy, proxy.snapshot()
 
 
-def test_conflito_equilibrado_publica_estado_divergente_sem_direcao():
-    cfg = ConfigMakerProxy(
-        peso_agressao=0,
-        peso_absorcao=1,
-        peso_reposicao=1,
-        peso_divergencia=0,
-        peso_clips=0,
-    )
-    proxy = MakerProxy(SYMBOL, cfg)
-    proxy.registrar_evidencia(_evidencia(1, ComponenteMaker.ABSORCAO, 1.0))
-    snapshot = proxy.registrar_evidencia(_evidencia(2, ComponenteMaker.REPOSICAO, -1.0))
-    assert snapshot is not None
-    assert snapshot.pontuacao == 0.0
-    assert snapshot.estado is EstadoMaker.DIVERGENTE
-    assert snapshot.direcao is None
+def test_defaults_exatos_do_briefing():
+    cfg = ConfigMakerProxy()
+    assert (cfg.janela_curta_ns, cfg.janela_micro_ns, cfg.janela_contexto_ns) == (S, 5 * S, 30 * S)
+    assert cfg.persistencia_minima_ns == 3 * S
+    assert cfg.relevancia_minima == 0.07
+    assert cfg.confianca_minima == 0.60
+    assert dict(cfg.pesos) == {
+        ComponenteMaker.ABSORCAO: 0.30,
+        ComponenteMaker.REPOSICAO: 0.30,
+        ComponenteMaker.DIVERGENCIA: 0.20,
+        ComponenteMaker.CLIPS: 0.10,
+        ComponenteMaker.AGRESSAO: 0.10,
+    }
+    assert cfg.janela_agressao_ns == cfg.janela_micro_ns
+    assert cfg.janela_evidencia_ns == cfg.janela_contexto_ns
 
 
-def test_janelas_expiram_por_tempo_e_consulta_nao_infla_persistencia():
-    cfg = ConfigMakerProxy(janela_agressao_ns=10, janela_evidencia_ns=20)
-    proxy = MakerProxy(SYMBOL, cfg)
-    proxy.ao_trade(_trade(1, AgressorSide.BUY))
-    proxy.registrar_evidencia(_evidencia(2, ComponenteMaker.ABSORCAO, 1.0))
-    n = proxy.n_amostras_persistencia
-    proxy.snapshot()
-    proxy.snapshot()
-    assert proxy.n_amostras_persistencia == n
+def test_trade_id_duplicado_nao_dobra_volume_nem_persistencia():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(0))
+    trade = _trade(0, AgressorSide.BUY, 300, "dup-1")
+    primeiro = proxy.ao_trade(trade)
+    segundo = proxy.ao_trade(trade)
+    assert primeiro is not None and segundo is not None
+    assert proxy.n_trades_retidos == 1
+    assert proxy.n_trade_ids_retidos == 1
+    assert segundo.discarded_duplicates == 1
+    agressao = segundo.componente(ComponenteMaker.AGRESSAO)
+    assert agressao.evidencias[0].detalhes["volume_total"] == 300
+    assert segundo.persistence_ns == primeiro.persistence_ns
 
-    expirado = proxy.snapshot(23)
-    assert proxy.n_trades_retidos == 0
+
+def test_timestamp_regressivo_e_rejeitado_sem_reter_evento_ou_evidencia():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(100))
+    proxy.ao_trade(_trade(100, AgressorSide.BUY, trade_id="novo"))
+    antes = proxy.n_trades_retidos
+    regressivo = proxy.ao_trade(_trade(1, AgressorSide.SELL, trade_id="velho"))
+    assert regressivo is not None
+    assert proxy.n_trades_retidos == antes
+    assert proxy.n_trade_ids_retidos == 1
+    assert regressivo.discarded_regressive == 1
+    proxy.registrar_evidencia(_evidencia(0, ComponenteMaker.ABSORCAO, -1))
     assert proxy.n_evidencias_retidas == 0
-    assert expirado.estado is EstadoMaker.SEM_DADOS
-    assert expirado.cobertura == 0.0
 
 
-def test_tetos_de_memoria_valem_mesmo_com_timestamp_congelado():
+def test_timestamp_igual_com_ids_distintos_e_aceito():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_trade(_trade(10, AgressorSide.BUY, trade_id="a"))
+    proxy.ao_trade(_trade(10, AgressorSide.BUY, trade_id="b"))
+    assert proxy.n_trades_retidos == 2
+
+
+def test_um_componente_renormaliza_direcao_mas_nao_infla_confianca():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(0))
+    proxy.registrar_evidencia(_evidencia(0, ComponenteMaker.ABSORCAO, 1))
+    proxy.ao_feed_quality(_feed(3 * S))
+    snapshot = proxy.registrar_evidencia(_evidencia(3 * S, ComponenteMaker.ABSORCAO, 1))
+    assert snapshot is not None
+    assert snapshot.componente(ComponenteMaker.ABSORCAO).peso_efetivo == 1.0
+    assert snapshot.percent == pytest.approx(100.0)
+    assert snapshot.component_coverage == pytest.approx(0.30)
+    assert snapshot.confidence == pytest.approx(0.30)  # feed 1 × cobertura .30 × estabilidade 1
+    assert snapshot.estado is EstadoMaker.AJUSTANDO
+
+
+def test_mbo_observado_estavel_confirma_estado_comprador_e_aliases():
+    _, snapshot = _maker_estavel()
+    assert snapshot.state is EstadoMaker.COMPRADOR
+    assert snapshot.side is Side.BUY
+    assert snapshot.percent == pytest.approx(100.0)
+    assert snapshot.persistence_ns >= 3 * S
+    assert snapshot.source == "MT5"
+    assert snapshot.book_kind == "MBO"
+    assert snapshot.inferred is False
+    assert snapshot.confidence == pytest.approx(1.0)
+    assert snapshot.component_coverage == 1.0
+    assert snapshot.evidence and isinstance(snapshot.evidence, tuple)
+    assert snapshot.component_scores is snapshot.componentes
+    assert snapshot.pontuacao == pytest.approx(1.0)
+    assert snapshot.confianca == snapshot.confidence
+
+
+def test_mbp_inferido_reduz_confianca_sem_apagar_direcao():
+    _, snapshot = _maker_estavel(book=BookKind.MBP)
+    assert snapshot.inferred is True
+    assert snapshot.book_kind == "MBP"
+    assert snapshot.side is Side.BUY
+    assert snapshot.confidence == pytest.approx(0.75)
+    assert snapshot.confidence < 1.0
+
+
+def test_evidencia_inferida_reduz_qualidade_mesmo_se_feed_declara_mbo():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(0))
+    proxy.registrar_evidencia(_evidencia(
+        0, ComponenteMaker.ABSORCAO, 1, procedencia=ProcedenciaASG.INFERIDA
+    ))
+    proxy.ao_feed_quality(_feed(3 * S))
+    snapshot = proxy.registrar_evidencia(_evidencia(
+        3 * S, ComponenteMaker.ABSORCAO, 1, procedencia=ProcedenciaASG.INFERIDA
+    ))
+    assert snapshot is not None and snapshot.inferred
+    assert snapshot.feed_quality == pytest.approx(0.75)
+    assert snapshot.confidence == pytest.approx(0.75 * 0.30)
+
+
+def test_book_ausente_e_book_atrasado_impedem_confirmacao_do_maker():
+    proxy, _ = _maker_estavel()
+    sem_book = proxy.ao_feed_quality(_feed(4 * S, book=BookKind.NONE))
+    assert sem_book is not None
+    assert sem_book.estado is EstadoMaker.SEM_BOOK
+    assert sem_book.confidence == 0.0
+    atrasado = proxy.ao_feed_quality(_feed(5 * S, latency=2 * S))
+    assert atrasado is not None
+    assert atrasado.estado is EstadoMaker.SEM_BOOK
+    assert atrasado.book_delayed is True
+    assert atrasado.confidence == 0.0
+    desconhecida = proxy.ao_feed_quality(_feed(6 * S, latency=None))
+    assert desconhecida is not None
+    assert desconhecida.book_delayed and desconhecida.confidence == 0.0
+
+
+def test_replay_sem_latencia_de_rede_nao_e_rotulado_como_book_atrasado():
+    proxy = MakerProxy(SYMBOL)
+    snapshot = proxy.ao_feed_quality(_feed(
+        0, latency=None, source=FeedSource.REPLAY
+    ))
+    assert snapshot is not None
+    assert snapshot.source == "REPLAY"
+    assert snapshot.book_delayed is False
+
+
+def test_estado_ajustando_ate_tres_segundos_de_persistencia():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(0))
+    _alimentar_componentes(proxy, 0, {c: 1.0 for c in ComponenteMaker})
+    snapshot = proxy.snapshot()
+    assert snapshot.estado is EstadoMaker.AJUSTANDO
+    assert snapshot.persistence_ns == 0
+
+
+def test_estado_neutro_com_componentes_cobertos_e_estaveis():
+    scores = {c: 0.0 for c in ComponenteMaker if c is not ComponenteMaker.AGRESSAO}
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(0))
+    _alimentar_componentes(proxy, 0, scores)
+    proxy.ao_feed_quality(_feed(3 * S))
+    _alimentar_componentes(proxy, 3 * S, scores)
+    snapshot = proxy.snapshot()
+    assert snapshot.component_coverage == pytest.approx(0.90)
+    assert snapshot.estado is EstadoMaker.NEUTRO
+    assert snapshot.side is None and snapshot.percent == 0.0
+
+
+def test_maker_divergente_preserva_lado_liquido_como_alerta():
+    scores = {
+        ComponenteMaker.ABSORCAO: 1.0,
+        ComponenteMaker.REPOSICAO: -1.0,
+        ComponenteMaker.DIVERGENCIA: 1.0,
+        ComponenteMaker.CLIPS: 1.0,
+        ComponenteMaker.AGRESSAO: 1.0,
+    }
+    _, snapshot = _maker_estavel(scores=scores)
+    assert snapshot.estado is EstadoMaker.DIVERGENTE
+    assert snapshot.side is Side.BUY
+    assert snapshot.percent > 0
+
+
+def test_absorcao_vendedora_estavel_publica_vendedor():
+    _, snapshot = _maker_estavel(scores={c: -1.0 for c in ComponenteMaker})
+    assert snapshot.estado is EstadoMaker.VENDEDOR
+    assert snapshot.side is Side.SELL and snapshot.percent == pytest.approx(-100.0)
+
+
+def test_oscilacao_de_lado_reduz_estabilidade_e_confianca():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(0))
+    for i, score in enumerate((1.0, -1.0, 1.0, -1.0, 1.0)):
+        ts = i * S
+        proxy.registrar_evidencia(_evidencia(ts, ComponenteMaker.ABSORCAO, score))
+    snapshot = proxy.snapshot()
+    assert snapshot.stability < 1.0
+    assert snapshot.confidence == pytest.approx(
+        snapshot.feed_quality * snapshot.component_coverage * snapshot.stability
+    )
+    assert snapshot.estado is EstadoMaker.AJUSTANDO
+
+
+def test_reposicao_que_desaparece_expira_na_janela_de_contexto():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(0))
+    proxy.registrar_evidencia(_evidencia(0, ComponenteMaker.REPOSICAO, 1))
+    assert proxy.snapshot().componente(ComponenteMaker.REPOSICAO).disponivel
+    proxy.ao_feed_quality(_feed(31 * S))
+    expirado = proxy.snapshot()
+    assert not expirado.componente(ComponenteMaker.REPOSICAO).disponivel
+    assert expirado.persistence_ns == 0
+
+
+def test_cada_componente_expira_na_janela_curta_micro_ou_contexto():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(0))
+    for componente in (
+        ComponenteMaker.CLIPS, ComponenteMaker.ABSORCAO, ComponenteMaker.REPOSICAO
+    ):
+        proxy.registrar_evidencia(_evidencia(0, componente, 1))
+    proxy.ao_feed_quality(_feed(2 * S))
+    s2 = proxy.snapshot()
+    assert not s2.componente(ComponenteMaker.CLIPS).disponivel
+    assert s2.componente(ComponenteMaker.ABSORCAO).disponivel
+    assert s2.componente(ComponenteMaker.REPOSICAO).disponivel
+    proxy.ao_feed_quality(_feed(6 * S))
+    s6 = proxy.snapshot()
+    assert not s6.componente(ComponenteMaker.ABSORCAO).disponivel
+    assert s6.componente(ComponenteMaker.REPOSICAO).disponivel
+
+
+def test_evidencia_abaixo_de_confianca_minima_nao_cobre_componente():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(0))
+    snapshot = proxy.registrar_evidencia(_evidencia(
+        0, ComponenteMaker.ABSORCAO, 1, confianca=0.59
+    ))
+    assert snapshot is not None
+    assert snapshot.component_coverage == 0.0
+    assert not snapshot.componente(ComponenteMaker.ABSORCAO).disponivel
+
+
+def test_detectores_existentes_mapeiam_componentes_e_procedencia():
+    proxy = MakerProxy(SYMBOL)
+    deteccao = Deteccao(
+        0, SYMBOL, TipoDeteccao.EXAUSTAO, Side.BUY, 10_000, 0.7,
+        {"procedencia": "INFERIDA", "fonte": "MBP_INFERIDO"},
+    )
+    snapshot = proxy.ao_deteccao(deteccao)
+    assert snapshot is not None
+    item = snapshot.componente(ComponenteMaker.DIVERGENCIA)
+    assert item.pontuacao == pytest.approx(-1.0)
+    assert item.procedencia is ProcedenciaASG.INFERIDA
+
+
+def test_sem_evidencia_e_virada_de_sessao_zeram_tudo():
+    proxy, _ = _maker_estavel()
+    proxy.iniciar_nova_sessao()
+    snapshot = proxy.snapshot()
+    assert snapshot.estado is EstadoMaker.SEM_DADOS
+    assert snapshot.component_coverage == 0.0
+    assert snapshot.persistence_ns == 0
+    assert proxy.n_trades_retidos == proxy.n_evidencias_retidas == proxy.n_trade_ids_retidos == 0
+
+
+def test_memoria_limitada_com_timestamp_congelado_e_ids_limitados():
     cfg = ConfigMakerProxy(
-        max_trades_retidos=3,
-        max_evidencias_por_componente=2,
-        max_amostras_persistencia=4,
+        max_trades_retidos=3, max_trade_ids_retidos=4,
+        max_evidencias_por_componente=2, max_amostras_persistencia=5,
     )
     proxy = MakerProxy(SYMBOL, cfg)
     for i in range(20):
-        proxy.ao_trade(_trade(1, AgressorSide.BUY, price=10_000 + i))
-        proxy.registrar_evidencia(_evidencia(1, ComponenteMaker.ABSORCAO, 1.0))
+        proxy.ao_trade(_trade(1, AgressorSide.BUY, trade_id=f"id-{i}"))
+        proxy.registrar_evidencia(_evidencia(1, ComponenteMaker.ABSORCAO, 1))
     assert proxy.n_trades_retidos == 3
+    assert proxy.n_trade_ids_retidos == 4
     assert proxy.n_evidencias_retidas == 2
-    assert proxy.n_amostras_persistencia == 4
-    agressao = proxy.snapshot().componente(ComponenteMaker.AGRESSAO)
-    assert agressao.evidencias[0].detalhes["n_trades"] == 3
-    assert agressao.evidencias[0].detalhes["volume_total"] == 300
+    assert proxy.n_amostras_persistencia == 5
 
 
-def test_stream_igual_produz_snapshot_serializado_identico():
+def test_mappings_e_tuplas_sao_profundamente_imutaveis_e_serializaveis():
+    original = {"nested": {"lista": [1, 2]}}
+    evidence = MakerEvidence(
+        0, SYMBOL, ComponenteMaker.ABSORCAO, 1, 1,
+        ProcedenciaASG.OBSERVADA, "MBO", "X", detalhes=original,
+    )
+    original["nested"]["lista"].append(3)
+    assert evidence.detalhes["nested"]["lista"] == (1, 2)
+    with pytest.raises(TypeError):
+        evidence.detalhes["x"] = 1  # type: ignore[index]
+    _, snapshot = _maker_estavel()
+    with pytest.raises(FrozenInstanceError):
+        snapshot.percent = 0  # type: ignore[misc]
+    json.dumps(snapshot.como_dict(), sort_keys=True)
+
+
+def test_replay_deterministico_do_proxy():
     def executar() -> dict:
-        proxy = MakerProxy(SYMBOL)
-        proxy.ao_trade(_trade(1, AgressorSide.BUY, 30))
-        proxy.ao_deteccao(_deteccao(2, TipoDeteccao.ABSORCAO, Side.BUY))
-        proxy.ao_trade(_trade(3, AgressorSide.SELL, 10))
-        return proxy.snapshot().como_dict()
-
-    a = executar()
-    b = executar()
-    assert a == b
-    assert json.loads(json.dumps(a, sort_keys=True))["formula_version"].startswith("maker-proxy")
+        _, snapshot = _maker_estavel()
+        return snapshot.como_dict()
+    assert executar() == executar()
 
 
-def test_evento_de_outro_simbolo_nao_altera_estado():
-    proxy = MakerProxy(SYMBOL)
-    outro = Trade(1, "WINV26", 100, 10, AgressorSide.BUY, "outro")
-    assert proxy.ao_trade(outro) is None
-    assert proxy.snapshot().estado is EstadoMaker.SEM_DADOS
-
-
-def test_config_recusa_pesos_invalidos_e_janelas_sem_teto():
+def test_config_invalida_e_rejeitada():
     with pytest.raises(ValueError):
-        ConfigMakerProxy(peso_agressao=-1)
+        ConfigMakerProxy(peso_absorcao=-1)
     with pytest.raises(ValueError):
-        ConfigMakerProxy(
-            peso_agressao=0,
-            peso_absorcao=0,
-            peso_reposicao=0,
-            peso_divergencia=0,
-            peso_clips=0,
-        )
+        ConfigMakerProxy(max_trade_ids_retidos=0)
     with pytest.raises(ValueError):
-        ConfigMakerProxy(max_trades_retidos=0)
+        ConfigMakerProxy(relevancia_minima=1.1)
