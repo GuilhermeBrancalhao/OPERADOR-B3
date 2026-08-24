@@ -34,18 +34,19 @@ T0 = 1_700_000_000_000_000_000
 
 def _workspace() -> WorkspaceASGSnapshot:
     dados = DadosASGSnapshot(
-        T0,
-        EstadoASG.AO_VIVO,
-        "MT5",
-        123,
-        2.4,
-        84.0,
-        20,
-        0,
-        0,
-        ConfiancaASG.ALTA,
-        ProcedenciaASG.OBSERVADO,
-        "SEQUENCIA CONTINUA",
+        timestamp_ns=T0,
+        estado=EstadoASG.AO_VIVO,
+        fonte="MT5",
+        sequencia=123,
+        atraso_ms=2.4,
+        trades_s=84.0,
+        niveis_book=20,
+        gaps=0,
+        anomalias=0,
+        descartados=0,
+        confianca=ConfiancaASG.ALTA,
+        procedencia=ProcedenciaASG.OBSERVADO,
+        detalhe="SEQUENCIA CONTINUA",
     )
     processamento = ProcessamentoASGSnapshot(
         T0,
@@ -96,7 +97,7 @@ def test_snapshots_sao_congelados_e_normalizam_colecoes_para_tuplas():
 def test_todo_estado_tem_palavra_e_simbolo(estado):
     rotulo = rotulo_estado(estado)
     assert estado.value in rotulo
-    assert rotulo[0] in "○●!×▶"
+    assert rotulo[0] in "?○●!×▶"
 
 
 @pytest.mark.parametrize(
@@ -145,6 +146,7 @@ def test_adaptador_de_feed_preserva_ausencia_e_procedencia():
         duplicates=2,
         sequence_regressions=1,
         regressive_timestamps=0,
+        dropped_events=4,
         latency_ns=12_500_000,
         last_sequence=44,
         detail="Livro indisponivel",
@@ -154,7 +156,23 @@ def test_adaptador_de_feed_preserva_ausencia_e_procedencia():
     assert visual.procedencia is ProcedenciaASG.INFERIDO
     assert visual.confianca is ConfiancaASG.BAIXA
     assert visual.gaps == 3
-    assert visual.descartados == 3
+    assert visual.anomalias == 3
+    assert visual.descartados == 4
+
+
+def test_feed_sem_contador_de_gap_publica_indisponivel_sem_falhar():
+    feed = SimpleNamespace(
+        timestamp_ns=T0,
+        state=SimpleNamespace(value="connected"),
+        source=SimpleNamespace(value="mt5"),
+        book_kind=SimpleNamespace(value="mbp"),
+        aggressor_quality=SimpleNamespace(value="native"),
+        depth=20,
+        sequence_gaps=None,
+        latency_ns=0,
+    )
+    visual = DadosASGSnapshot.de_feed(feed)
+    assert visual.gaps is None
 
 
 def test_adaptadores_do_maker_mantem_score_e_evidencia():

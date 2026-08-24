@@ -11,7 +11,7 @@ no proprio quadro e nao oferece sinal, callback ou API de envio de ordem.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from enum import Enum, unique
 
 from PySide6.QtCore import QRect, QSize, Qt
@@ -24,12 +24,14 @@ from fluxopro.ui.base.painel_denso import PainelDenso
 ALTURA_CABECALHO = 28
 ALTURA_LINHA = 24
 ALTURA_SELO = 18
+ALTURA_RODAPE = 20
 MARGEM = 8
 VAO = 4
 
 
 @unique
 class EstadoASG(Enum):
+    DESCONHECIDO = "DESCONHECIDO"
     AGUARDANDO = "AGUARDANDO"
     AO_VIVO = "AO VIVO"
     ATRASADO = "ATRASADO"
@@ -71,6 +73,7 @@ class ResultadoGate(Enum):
 
 
 _ROTULO_ESTADO = {
+    EstadoASG.DESCONHECIDO: "? DESCONHECIDO",
     EstadoASG.AGUARDANDO: "○ AGUARDANDO",
     EstadoASG.AO_VIVO: "● AO VIVO",
     EstadoASG.ATRASADO: "! ATRASADO",
@@ -80,6 +83,7 @@ _ROTULO_ESTADO = {
 }
 
 _COR_ESTADO = {
+    EstadoASG.DESCONHECIDO: tema_asg.ESTADO_DESCONHECIDO,
     EstadoASG.AGUARDANDO: tema_asg.ESTADO_AGUARDANDO,
     EstadoASG.AO_VIVO: tema_asg.ESTADO_AO_VIVO,
     EstadoASG.ATRASADO: tema_asg.ESTADO_ATRASADO,
@@ -138,7 +142,8 @@ class DadosASGSnapshot:
     atraso_ms: float | None = None
     trades_s: float = 0.0
     niveis_book: int = 0
-    gaps: int = 0
+    gaps: int | None = 0
+    anomalias: int = 0
     descartados: int = 0
     confianca: ConfiancaASG = ConfiancaASG.INDISPONIVEL
     procedencia: ProcedenciaASG = ProcedenciaASG.INDISPONIVEL
@@ -159,10 +164,14 @@ class DadosASGSnapshot:
         estado = _estado_do_feed(estado_feed, fonte, book)
         qualidade = _valor_enum(getattr(snapshot, "aggressor_quality", "unknown"))
         confianca, procedencia = _qualidade_do_agressor(qualidade, fonte)
-        descartados = sum(
-            int(getattr(snapshot, nome, 0))
+        anomalias = sum(
+            int(getattr(snapshot, nome, 0) or 0)
             for nome in ("duplicates", "sequence_regressions", "regressive_timestamps")
         )
+        gaps_bruto = getattr(snapshot, "sequence_gaps", None)
+        gaps = None if gaps_bruto is None else int(gaps_bruto)
+        descartados_bruto = getattr(snapshot, "dropped_events", 0)
+        descartados = 0 if descartados_bruto is None else int(descartados_bruto)
         detalhe = str(getattr(snapshot, "detail", "")).strip()
         if not detalhe:
             detalhe = f"BOOK {book.upper()} · AGRESSOR {qualidade.upper()}"
@@ -174,7 +183,8 @@ class DadosASGSnapshot:
             atraso_ms=float(getattr(snapshot, "latency_ns", 0)) / 1_000_000.0,
             trades_s=0.0,
             niveis_book=int(getattr(snapshot, "depth", getattr(snapshot, "profundidade", 0))),
-            gaps=int(getattr(snapshot, "sequence_gaps", 0)),
+            gaps=gaps,
+            anomalias=anomalias,
             descartados=descartados,
             confianca=confianca,
             procedencia=procedencia,
@@ -208,6 +218,7 @@ class ProcessamentoASGSnapshot:
     def de_maker(cls, snapshot: object) -> ProcessamentoASGSnapshot:
         """Adapta ``MakerProxySnapshot`` para o cano de processamento."""
 
+        estado_maker = _estado_do_maker(snapshot)
         etapas = []
         for item in tuple(getattr(snapshot, "componentes", ())):
             score = float(getattr(item, "pontuacao", getattr(item, "score", 0.0)))
@@ -215,15 +226,20 @@ class ProcessamentoASGSnapshot:
             etapas.append(
                 EtapaProcessamentoASG(
                     nome=nome,
-                    estado="ATIVO" if abs(score) > 1e-9 else "NEUTRO",
-                    confianca=_confianca_numerica(float(getattr(item, "confianca", 0.0))),
-                    procedencia=_procedencia_do_maker(getattr(snapshot, "procedencia", "")),
+                    estado=("BLOQUEADO · DESCONHECIDO" if estado_maker is EstadoASG.DESCONHECIDO
+                            else "ATIVO" if abs(score) > 1e-9 else "NEUTRO"),
+                    confianca=(ConfiancaASG.INDISPONIVEL
+                               if estado_maker is EstadoASG.DESCONHECIDO else
+                               _confianca_numerica(float(getattr(item, "confianca", 0.0)))),
+                    procedencia=(ProcedenciaASG.INDISPONIVEL
+                                 if estado_maker is EstadoASG.DESCONHECIDO else
+                                 _procedencia_do_maker(getattr(snapshot, "procedencia", ""))),
                     detalhe=f"score {score:+.2f}".replace(".", ","),
                 )
             )
         return cls(
             timestamp_ns=int(getattr(snapshot, "timestamp_ns")),
-            estado=_estado_do_maker(snapshot),
+            estado=estado_maker,
             versao=str(getattr(snapshot, "formula_version", "—")),
             etapas=tuple(etapas),
         )
@@ -251,24 +267,32 @@ class MatrizASGSnapshot:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "linhas", tuple(self.linhas))
+        if self.estado is EstadoASG.DESCONHECIDO and any(
+            linha.direcao in {DirecaoASG.COMPRA, DirecaoASG.VENDA} or linha.forca != 0
+            for linha in self.linhas
+        ):
+            raise ValueError("estado DESCONHECIDO exige matriz neutra e bloqueada")
 
     @classmethod
     def de_leitura(cls, leitura: object) -> MatrizASGSnapshot:
         """Adapta ``LeituraASG`` ou um ``MakerProxySnapshot`` diretamente."""
 
         maker = getattr(leitura, "maker", leitura)
+        estado = _estado_do_maker(maker)
         linhas = []
         procedencia = _procedencia_do_maker(getattr(maker, "procedencia", ""))
         for item in tuple(getattr(maker, "componentes", ())):
             score = float(getattr(item, "pontuacao", getattr(item, "score", 0.0)))
+            desconhecido = estado is EstadoASG.DESCONHECIDO
             linhas.append(
                 LinhaMatrizASG(
                     componente=_valor_enum(getattr(item, "componente", "COMPONENTE")).upper(),
-                    direcao=_direcao_de_score(score),
-                    valor=f"{score:+.2f}".replace(".", ","),
-                    forca=score,
-                    confianca=_confianca_numerica(float(getattr(item, "confianca", 0.0))),
-                    procedencia=procedencia,
+                    direcao=DirecaoASG.NEUTRA if desconhecido else _direcao_de_score(score),
+                    valor="INDISPONIVEL" if desconhecido else f"{score:+.2f}".replace(".", ","),
+                    forca=0.0 if desconhecido else score,
+                    confianca=(ConfiancaASG.INDISPONIVEL if desconhecido else
+                               _confianca_numerica(float(getattr(item, "confianca", 0.0)))),
+                    procedencia=(ProcedenciaASG.INDISPONIVEL if desconhecido else procedencia),
                     evidencias=int(getattr(item, "n_evidencias", 0)),
                     detalhe=(f"cobertura {100 * float(getattr(item, 'cobertura', 0.0)):.0f}%"),
                 )
@@ -276,7 +300,7 @@ class MatrizASGSnapshot:
         cobertura = 100 * float(getattr(maker, "cobertura", 0.0))
         return cls(
             timestamp_ns=int(getattr(maker, "timestamp_ns")),
-            estado=_estado_do_maker(maker),
+            estado=estado,
             linhas=tuple(linhas),
             cobertura=f"{cobertura:.0f}%",
             modelo="PROXY INDEPENDENTE · " + str(getattr(maker, "formula_version", "MAKER V1")),
@@ -307,6 +331,27 @@ class DecisaoASGSnapshot:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "gates", tuple(self.gates))
+        if self.estado not in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}:
+            if self.direcao is not DirecaoASG.AGUARDAR:
+                raise ValueError(
+                    f"estado {self.estado.value} exige decisao AGUARDAR, nunca confirmada"
+                )
+            if any(gate.resultado is ResultadoGate.PASSA for gate in self.gates):
+                raise ValueError(
+                    f"estado {self.estado.value} nao pode publicar gate saudavel PASSA"
+                )
+            if self.confianca is not ConfiancaASG.INDISPONIVEL:
+                raise ValueError(
+                    f"estado {self.estado.value} exige confianca INDISPONIVEL"
+                )
+            if any(valor != "—" for valor in (self.stop, self.alvo_1, self.alvo_2, self.alvo_3)):
+                raise ValueError(
+                    f"estado {self.estado.value} nao pode publicar STOP/A1/A2/A3"
+                )
+            if "CONFIRM" in self.titulo.upper():
+                raise ValueError(
+                    f"estado {self.estado.value} nao pode publicar titulo confirmado"
+                )
 
     @classmethod
     def de_decisao(cls, snapshot: object) -> DecisaoASGSnapshot:
@@ -315,9 +360,16 @@ class DecisaoASGSnapshot:
         leitura = getattr(snapshot, "leitura")
         maker = getattr(leitura, "maker", leitura)
         nivel = _valor_enum(getattr(snapshot, "nivel", "AGUARDAR")).upper()
+        estado = _estado_do_maker(maker)
         direcao = _direcao_externa(getattr(snapshot, "direcao", None))
+        if estado not in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}:
+            direcao = DirecaoASG.AGUARDAR
         motivos = tuple(str(item) for item in getattr(snapshot, "motivos", ()))
-        resultado = ResultadoGate.AGUARDA if nivel == "AGUARDAR" else ResultadoGate.PASSA
+        resultado = (
+            ResultadoGate.PASSA
+            if nivel != "AGUARDAR" and estado in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}
+            else ResultadoGate.AGUARDA
+        )
         gates = tuple(
             GateDecisaoASG(f"CRITERIO {i + 1}", resultado, motivo)
             for i, motivo in enumerate(motivos)
@@ -333,7 +385,7 @@ class DecisaoASGSnapshot:
         procedencias = tuple(str(item) for item in getattr(snapshot, "procedencia", ()))
         return cls(
             timestamp_ns=int(getattr(snapshot, "timestamp_ns")),
-            estado=_estado_do_maker(maker),
+            estado=estado,
             direcao=direcao,
             titulo=f"{nivel} {direcao.value}" if nivel != "AGUARDAR" else "SEM DECISAO",
             motivo=" · ".join(motivos) if motivos else "Aguardando evidencias suficientes",
@@ -373,6 +425,7 @@ class TrilhaEvidenciasASGSnapshot:
     def de_maker(cls, snapshot: object, limite: int = 64) -> TrilhaEvidenciasASGSnapshot:
         """Achata evidencias limitadas do MakerProxy, da mais nova para a antiga."""
 
+        estado_maker = _estado_do_maker(snapshot)
         itens = []
         for componente in tuple(getattr(snapshot, "componentes", ())):
             for evidencia in tuple(getattr(componente, "evidencias", ())):
@@ -383,13 +436,17 @@ class TrilhaEvidenciasASGSnapshot:
                         origem=str(getattr(evidencia, "fonte", "MAKER")),
                         evento=str(getattr(evidencia, "tipo_evento", "EVIDENCIA")),
                         leitura=f"{score:+.2f}".replace(".", ","),
-                        confianca=_confianca_numerica(
-                            float(getattr(evidencia, "confianca", 0.0))
-                        ),
-                        procedencia=_procedencia_do_maker(
-                            getattr(evidencia, "procedencia", "")
-                        ),
-                        estado=_estado_do_maker(snapshot),
+                        confianca=(ConfiancaASG.INDISPONIVEL
+                                   if estado_maker is EstadoASG.DESCONHECIDO else
+                                   _confianca_numerica(
+                                       float(getattr(evidencia, "confianca", 0.0))
+                                   )),
+                        procedencia=(ProcedenciaASG.INDISPONIVEL
+                                     if estado_maker is EstadoASG.DESCONHECIDO else
+                                     _procedencia_do_maker(
+                                         getattr(evidencia, "procedencia", "")
+                                     )),
+                        estado=estado_maker,
                     )
                 )
         itens.sort(key=lambda item: item.timestamp_ns, reverse=True)
@@ -397,7 +454,7 @@ class TrilhaEvidenciasASGSnapshot:
         retidos = tuple(itens[: max(0, limite)])
         return cls(
             timestamp_ns=int(getattr(snapshot, "timestamp_ns")),
-            estado=_estado_do_maker(snapshot),
+            estado=estado_maker,
             itens=retidos,
             total=total,
             retidos=len(retidos),
@@ -414,6 +471,7 @@ class WorkspaceASGSnapshot:
     matriz: MatrizASGSnapshot
     decisao: DecisaoASGSnapshot
     evidencias: TrilhaEvidenciasASGSnapshot
+    estado_operacional: EstadoASG | None = None
 
     def __post_init__(self) -> None:
         carimbos = {
@@ -425,6 +483,18 @@ class WorkspaceASGSnapshot:
         }
         if carimbos != {self.timestamp_ns}:
             raise ValueError("WorkspaceASGSnapshot exige um unico timestamp por quadro")
+        estado = self.dados.estado if self.estado_operacional is None else self.estado_operacional
+        object.__setattr__(self, "estado_operacional", estado)
+        estados = {
+            self.dados.estado,
+            self.processamento.estado,
+            self.matriz.estado,
+            self.decisao.estado,
+            self.evidencias.estado,
+        }
+        if estados != {estado}:
+            nomes = ", ".join(sorted(item.value for item in estados))
+            raise ValueError(f"estado operacional contraditorio: {nomes}")
 
 
 class _PainelASG(PainelDenso):
@@ -435,6 +505,8 @@ class _PainelASG(PainelDenso):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent, cor_fundo=tema_asg.PAINEL)
         self.setMinimumSize(240, 112)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._primeiro_visivel = 0
 
     def _cabecalho(self, painter: QPainter, estado: EstadoASG, meta: str = "") -> None:
         rect = QRect(0, 0, self.width(), ALTURA_CABECALHO)
@@ -492,15 +564,116 @@ class _PainelASG(PainelDenso):
         x = self._chip(painter, x, y, conf, _COR_CONFIANCA[confianca])
         return self._chip(painter, x, y, proc, tema_asg.EVIDENCIAS)
 
+    def _textos_qualidade(
+        self,
+        confianca: ConfiancaASG,
+        procedencia: ProcedenciaASG,
+        completos: bool,
+    ) -> tuple[str, str]:
+        return (
+            confianca.value if completos else confianca.value.replace("CONF ", ""),
+            procedencia.value if completos else _abreviar_procedencia(procedencia),
+        )
+
     def _vazio(self, painter: QPainter, mensagem: str) -> None:
         painter.setFont(tokens.fonte_ui(12))
         painter.setPen(tokens.TEXT_SECONDARY)
         painter.drawText(
             QRect(MARGEM, ALTURA_CABECALHO, self.width() - 2 * MARGEM,
-                  self.height() - ALTURA_CABECALHO),
+                  max(0, self.faixa_rodape().top() - ALTURA_CABECALHO)),
             Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
             "○ " + mensagem,
         )
+
+    def total_itens(self) -> int:
+        return 0
+
+    def capacidade_pagina(self) -> int:
+        return 0
+
+    @property
+    def primeiro_visivel(self) -> int:
+        self._limitar_primeiro()
+        return self._primeiro_visivel
+
+    def intervalo_visivel(self) -> tuple[int, int]:
+        total = self.total_itens()
+        capacidade = self.capacidade_pagina()
+        self._limitar_primeiro()
+        fim = min(total, self._primeiro_visivel + capacidade)
+        return self._primeiro_visivel, fim
+
+    def indices_visiveis(self) -> range:
+        primeiro, fim = self.intervalo_visivel()
+        return range(primeiro, fim)
+
+    def faixa_rodape(self) -> QRect:
+        return QRect(0, max(ALTURA_CABECALHO, self.height() - ALTURA_RODAPE),
+                     self.width(), ALTURA_RODAPE)
+
+    def texto_visibilidade(self) -> str:
+        total = self.total_itens()
+        primeiro, fim = self.intervalo_visivel()
+        if not total or fim <= primeiro:
+            return f"VISIVEIS 0/{total}"
+        return f"VISIVEIS {fim - primeiro}/{total} · ITENS {primeiro + 1}-{fim}"
+
+    def _desenhar_rodape(self, painter: QPainter, texto_esquerda: str = "") -> None:
+        rect = self.faixa_rodape()
+        painter.fillRect(rect, tema_asg.CABECALHO)
+        painter.setPen(tema_asg.BORDA)
+        painter.drawLine(rect.left(), rect.top(), rect.right(), rect.top())
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.DemiBold))
+        painter.setPen(tokens.TEXT_SECONDARY)
+        interno = rect.adjusted(MARGEM, 0, -MARGEM, 0)
+        if texto_esquerda:
+            painter.drawText(interno, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                             texto_esquerda)
+        painter.drawText(interno, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                         self.texto_visibilidade())
+
+    def _limitar_primeiro(self) -> None:
+        maximo = max(0, self.total_itens() - max(1, self.capacidade_pagina()))
+        self._primeiro_visivel = min(maximo, max(0, self._primeiro_visivel))
+
+    def _mover_para(self, primeiro: int) -> None:
+        anterior = self._primeiro_visivel
+        self._primeiro_visivel = primeiro
+        self._limitar_primeiro()
+        if self._primeiro_visivel != anterior:
+            self.marcar_tudo_sujo()
+
+    def keyPressEvent(self, evento) -> None:  # noqa: N802
+        tecla = evento.key()
+        pagina = max(1, self.capacidade_pagina())
+        if tecla == Qt.Key.Key_Up:
+            self._mover_para(self._primeiro_visivel - 1)
+        elif tecla == Qt.Key.Key_Down:
+            self._mover_para(self._primeiro_visivel + 1)
+        elif tecla == Qt.Key.Key_PageUp:
+            self._mover_para(self._primeiro_visivel - pagina)
+        elif tecla == Qt.Key.Key_PageDown:
+            self._mover_para(self._primeiro_visivel + pagina)
+        elif tecla == Qt.Key.Key_Home:
+            self._mover_para(0)
+        elif tecla == Qt.Key.Key_End:
+            self._mover_para(self.total_itens())
+        else:
+            super().keyPressEvent(evento)
+            return
+        evento.accept()
+
+    def wheelEvent(self, evento) -> None:  # noqa: N802
+        delta = evento.angleDelta().y()
+        if delta:
+            passos = max(1, abs(delta) // 120) * 3
+            self._mover_para(self._primeiro_visivel + (-passos if delta > 0 else passos))
+            evento.accept()
+            return
+        super().wheelEvent(evento)
+
+    def ao_redimensionar(self, largura: int, altura: int) -> None:
+        self._limitar_primeiro()
 
 
 class PainelDadosASG(_PainelASG):
@@ -518,8 +691,10 @@ class PainelDadosASG(_PainelASG):
         return self._snapshot
 
     def aplicar(self, snapshot: DadosASGSnapshot) -> None:
-        if snapshot != self._snapshot:
-            self._snapshot = snapshot
+        mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
+        self._snapshot = snapshot
+        self._limitar_primeiro()
+        if mudou:
             self.marcar_tudo_sujo()
 
     def n_colunas(self) -> int:
@@ -538,15 +713,49 @@ class PainelDadosASG(_PainelASG):
             MetricaASG("ATRASO", atraso, "ms"),
             MetricaASG("TRADES/S", f"{s.trades_s:.1f}".replace(".", ",")),
             MetricaASG("BOOK", formato.formatar_inteiro(s.niveis_book), "niveis"),
-            MetricaASG("GAPS", formato.formatar_inteiro(s.gaps)),
+            MetricaASG(
+                "GAPS",
+                "INDISPONIVEL" if s.gaps is None else formato.formatar_inteiro(s.gaps),
+            ),
+            MetricaASG("ANOMALIAS", formato.formatar_inteiro(s.anomalias)),
             MetricaASG("DESCARTADOS", formato.formatar_inteiro(s.descartados)),
         )
 
+    def total_itens(self) -> int:
+        return len(self.metricas())
+
+    def capacidade_pagina(self) -> int:
+        altura = max(0, self.faixa_rodape().top() - (ALTURA_CABECALHO + 46))
+        return (altura // 34) * self.n_colunas()
+
+    def retangulos_visiveis(self) -> tuple[tuple[int, QRect], ...]:
+        colunas = self.n_colunas()
+        largura = max(1, (self.width() - 2 * MARGEM - (colunas - 1) * VAO) // colunas)
+        y = ALTURA_CABECALHO + 46
+        resultado = []
+        for posicao, indice in enumerate(self.indices_visiveis()):
+            coluna, linha = posicao % colunas, posicao // colunas
+            rect = QRect(MARGEM + coluna * (largura + VAO), y + linha * 34, largura, 30)
+            if rect.bottom() < self.faixa_rodape().top():
+                resultado.append((indice, rect))
+        return tuple(resultado)
+
     def textos_visiveis(self) -> tuple[str, ...]:
         s = self._snapshot
-        return (rotulo_estado(s.estado), s.fonte, s.detalhe) + tuple(
-            f"{m.nome} {m.valor} {m.unidade}".strip() for m in self.metricas()
-        ) + (s.confianca.value, s.procedencia.value)
+        detalhe = s.fonte if self.width() < 420 else s.detalhe
+        metricas = self.metricas()
+        textos = [rotulo_estado(s.estado), detalhe]
+        textos.extend(self._textos_qualidade(
+            s.confianca, s.procedencia, completos=True
+        ))
+        if self.width() >= 420:
+            textos.append(s.fonte)
+        textos.extend(
+            f"{metricas[i].nome} {metricas[i].valor} {metricas[i].unidade}".strip()
+            for i, _ in self.retangulos_visiveis()
+        )
+        textos.append(self.texto_visibilidade())
+        return tuple(textos)
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
         painter.fillRect(regiao, self.cor_fundo)
@@ -560,30 +769,24 @@ class PainelDadosASG(_PainelASG):
         painter.drawText(QRect(MARGEM, y, self.width() - 2 * MARGEM, 16),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, detalhe)
         self._chips_qualidade(painter, MARGEM, y + 18, s.confianca, s.procedencia,
-                              completos=self.width() >= 380)
-        y += 40
-
-        colunas = self.n_colunas()
-        largura = max(1, (self.width() - 2 * MARGEM - (colunas - 1) * VAO) // colunas)
-        linhas = (len(self.metricas()) + colunas - 1) // colunas
-        altura = max(30, (self.height() - y - 6 - (linhas - 1) * VAO) // linhas)
-        for i, metrica in enumerate(self.metricas()):
-            coluna, linha = i % colunas, i // colunas
-            rect = QRect(MARGEM + coluna * (largura + VAO), y + linha * (altura + VAO),
-                         largura, altura)
+                              completos=True)
+        metricas = self.metricas()
+        for i, rect in self.retangulos_visiveis():
+            metrica = metricas[i]
             painter.fillRect(rect, tema_asg.FUNDO_NEUTRO)
             painter.setPen(tema_asg.BORDA)
             painter.drawRect(rect.adjusted(0, 0, -1, -1))
             painter.setFont(tokens.fonte_rotulo(9))
             painter.setPen(tokens.TEXT_SECONDARY)
-            painter.drawText(rect.adjusted(6, 2, -6, -altura // 2),
+            painter.drawText(rect.adjusted(6, 1, -6, -15),
                              Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                              metrica.nome)
             painter.setFont(tokens.fonte_numero(13, QFont.Weight.DemiBold))
             painter.setPen(tokens.TEXT_PRIMARY)
             valor = f"{metrica.valor} {metrica.unidade}".rstrip()
-            painter.drawText(rect.adjusted(6, altura // 2 - 2, -6, -2),
+            painter.drawText(rect.adjusted(6, 13, -6, -1),
                              Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, valor)
+        self._desenhar_rodape(painter)
 
 
 class PainelProcessamentoASG(_PainelASG):
@@ -597,17 +800,40 @@ class PainelProcessamentoASG(_PainelASG):
         self.setMinimumHeight(150)
 
     def aplicar(self, snapshot: ProcessamentoASGSnapshot) -> None:
-        if snapshot != self._snapshot:
-            self._snapshot = snapshot
+        mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
+        self._snapshot = snapshot
+        self._limitar_primeiro()
+        if mudou:
             self.marcar_tudo_sujo()
+
+    def total_itens(self) -> int:
+        return len(self._snapshot.etapas)
+
+    def altura_item(self) -> int:
+        return 38 if self.width() < 500 else ALTURA_LINHA
+
+    def capacidade_pagina(self) -> int:
+        return max(0, self.faixa_rodape().top() - ALTURA_CABECALHO) // self.altura_item()
+
+    def retangulos_visiveis(self) -> tuple[tuple[int, QRect], ...]:
+        altura = self.altura_item()
+        return tuple(
+            (indice, QRect(0, ALTURA_CABECALHO + posicao * altura, self.width(), altura))
+            for posicao, indice in enumerate(self.indices_visiveis())
+        )
 
     def textos_visiveis(self) -> tuple[str, ...]:
         s = self._snapshot
-        textos = [rotulo_estado(s.estado), f"VERSAO {s.versao}", f"FILA {s.fila}",
-                  f"PERDAS {s.perdas}"]
-        for etapa in s.etapas:
-            textos.extend((etapa.nome, etapa.estado, etapa.detalhe,
-                           etapa.confianca.value, etapa.procedencia.value))
+        textos = [rotulo_estado(s.estado), f"FILA {s.fila}", f"PERDAS {s.perdas}",
+                  self.texto_visibilidade()]
+        if self.width() >= 420:
+            textos.append(f"v{s.versao}")
+        for indice, _ in self.retangulos_visiveis():
+            etapa = s.etapas[indice]
+            textos.extend((etapa.nome, _simbolo_estado_livre(etapa.estado)))
+            textos.extend(self._textos_qualidade(
+                etapa.confianca, etapa.procedencia, completos=True
+            ))
         return tuple(textos)
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
@@ -616,15 +842,13 @@ class PainelProcessamentoASG(_PainelASG):
         self._cabecalho(painter, s.estado, f"v{s.versao}")
         if not s.etapas:
             self._vazio(painter, "PROCESSAMENTO NAO INICIADO")
+            self._desenhar_rodape(painter, f"FILA {s.fila} · PERDAS {s.perdas}")
             return
 
         estreito = self.width() < 500
-        altura = 38 if estreito else ALTURA_LINHA
-        y = ALTURA_CABECALHO
-        for indice, etapa in enumerate(s.etapas):
-            if y >= self.height():
-                break
-            linha = QRect(0, y, self.width(), altura)
+        for indice, linha in self.retangulos_visiveis():
+            etapa = s.etapas[indice]
+            y = linha.y()
             if indice % 2:
                 painter.fillRect(linha, tema_asg.FUNDO_NEUTRO)
             painter.setFont(tokens.fonte_numero(10, QFont.Weight.DemiBold))
@@ -642,19 +866,17 @@ class PainelProcessamentoASG(_PainelASG):
             painter.drawText(QRect(self.width() // 2, y, self.width() // 4, 22),
                              Qt.AlignmentFlag.AlignVCenter, latencia)
             painter.setPen(_cor_resultado_texto(etapa.estado))
-            painter.drawText(QRect(0, y, self.width() - MARGEM, 22),
+            limite_estado = self.width() - (196 if not estreito else MARGEM)
+            painter.drawText(QRect(0, y, limite_estado, 22),
                              Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                              _simbolo_estado_livre(etapa.estado))
             if estreito:
                 self._chips_qualidade(painter, 36, y + 20, etapa.confianca,
-                                      etapa.procedencia, completos=False)
-            y += altura
-
-        painter.setFont(tokens.fonte_numero(10))
-        painter.setPen(tokens.TEXT_SECONDARY)
-        painter.drawText(QRect(MARGEM, self.height() - 20, self.width() - 2 * MARGEM, 18),
-                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                         f"FILA {s.fila}  ·  PERDAS {s.perdas}")
+                                      etapa.procedencia, completos=True)
+            else:
+                self._chips_qualidade(painter, self.width() - 190, y + 4,
+                                      etapa.confianca, etapa.procedencia, completos=True)
+        self._desenhar_rodape(painter, f"FILA {s.fila} · PERDAS {s.perdas}")
 
 
 class PainelMatrizASG(_PainelASG):
@@ -670,20 +892,53 @@ class PainelMatrizASG(_PainelASG):
         self.setMinimumHeight(210)
 
     def aplicar(self, snapshot: MatrizASGSnapshot) -> None:
-        if snapshot != self._snapshot:
-            self._snapshot = snapshot
+        mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
+        self._snapshot = snapshot
+        self._limitar_primeiro()
+        if mudou:
             self.marcar_tudo_sujo()
 
     def modo_tabela(self) -> bool:
         return self.width() >= 640
 
+    def total_itens(self) -> int:
+        return len(self._snapshot.linhas)
+
+    def topo_itens(self) -> int:
+        return ALTURA_CABECALHO + ALTURA_SELO + (20 if self.modo_tabela() else VAO)
+
+    def altura_item(self) -> int:
+        return 28 if self.modo_tabela() else 48
+
+    def capacidade_pagina(self) -> int:
+        return max(0, self.faixa_rodape().top() - self.topo_itens()) // self.altura_item()
+
+    def retangulos_visiveis(self) -> tuple[tuple[int, QRect], ...]:
+        topo = self.topo_itens()
+        altura = self.altura_item()
+        if self.modo_tabela():
+            return tuple(
+                (indice, QRect(0, topo + posicao * altura, self.width(), altura))
+                for posicao, indice in enumerate(self.indices_visiveis())
+            )
+        return tuple(
+            (indice, QRect(MARGEM, topo + posicao * altura,
+                           self.width() - 2 * MARGEM, 44))
+            for posicao, indice in enumerate(self.indices_visiveis())
+        )
+
     def textos_visiveis(self) -> tuple[str, ...]:
         s = self._snapshot
-        textos = [rotulo_estado(s.estado), s.modelo, f"COBERTURA {s.cobertura}"]
-        for linha in s.linhas:
-            textos.extend((linha.componente, rotulo_direcao(linha.direcao), linha.valor,
-                           linha.detalhe, linha.confianca.value,
-                           linha.procedencia.value, f"EVID {linha.evidencias}"))
+        textos = [rotulo_estado(s.estado), "PROXY INDEPENDENTE", self.texto_visibilidade()]
+        if self.width() >= 420:
+            textos.append(f"COBERTURA {s.cobertura}")
+        for indice, _ in self.retangulos_visiveis():
+            linha = s.linhas[indice]
+            textos.extend((linha.componente, rotulo_direcao(linha.direcao), linha.valor))
+            textos.extend(self._textos_qualidade(
+                linha.confianca, linha.procedencia, completos=True
+            ))
+            textos.append(f"EVID {linha.evidencias}")
         return tuple(textos)
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
@@ -700,15 +955,17 @@ class PainelMatrizASG(_PainelASG):
             painter.setPen(tokens.TEXT_SECONDARY)
             painter.drawText(
                 QRect(MARGEM, selo.bottom(), self.width() - 2 * MARGEM,
-                      self.height() - selo.bottom()),
+                      max(0, self.faixa_rodape().top() - selo.bottom())),
                 Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
                 "○ SEM LEITURA · MATRIZ AGUARDANDO EVIDENCIAS",
             )
+            self._desenhar_rodape(painter)
             return
         if self.modo_tabela():
             self._desenhar_tabela(painter)
         else:
             self._desenhar_cartoes(painter)
+        self._desenhar_rodape(painter)
 
     def _desenhar_tabela(self, painter: QPainter) -> None:
         y = ALTURA_CABECALHO + ALTURA_SELO
@@ -719,11 +976,8 @@ class PainelMatrizASG(_PainelASG):
         painter.setPen(tokens.TEXT_SECONDARY)
         for nome, rect in zip(("COMPONENTE", "LEITURA", "FORCA", "QUALIDADE", "EVID"), colunas):
             painter.drawText(rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, nome)
-        y += cab.height()
-        for indice, linha in enumerate(self._snapshot.linhas):
-            rect = QRect(0, y + indice * 28, self.width(), 28)
-            if rect.top() >= self.height():
-                break
+        for indice, rect in self.retangulos_visiveis():
+            linha = self._snapshot.linhas[indice]
             if indice % 2:
                 painter.fillRect(rect, tema_asg.FUNDO_NEUTRO)
             colunas = tuple(QRect(r.x(), rect.y(), r.width(), rect.height()) for r in self._colunas())
@@ -737,7 +991,7 @@ class PainelMatrizASG(_PainelASG):
                              f"{rotulo_direcao(linha.direcao)}  {linha.valor}")
             self._barra_forca(painter, colunas[2].adjusted(0, 9, -8, -9), linha.forca)
             self._chips_qualidade(painter, colunas[3].x(), rect.y() + 6,
-                                  linha.confianca, linha.procedencia, completos=False)
+                                  linha.confianca, linha.procedencia, completos=True)
             painter.setFont(tokens.fonte_numero(10))
             painter.setPen(tokens.TEXT_SECONDARY)
             painter.drawText(colunas[4], Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
@@ -756,11 +1010,8 @@ class PainelMatrizASG(_PainelASG):
         return tuple(rects)
 
     def _desenhar_cartoes(self, painter: QPainter) -> None:
-        y = ALTURA_CABECALHO + ALTURA_SELO + VAO
-        for indice, linha in enumerate(self._snapshot.linhas):
-            rect = QRect(MARGEM, y + indice * 48, self.width() - 2 * MARGEM, 44)
-            if rect.top() >= self.height():
-                break
+        for indice, rect in self.retangulos_visiveis():
+            linha = self._snapshot.linhas[indice]
             painter.fillRect(rect, tema_asg.FUNDO_NEUTRO)
             painter.setPen(tema_asg.BORDA)
             painter.drawRect(rect.adjusted(0, 0, -1, -1))
@@ -772,8 +1023,13 @@ class PainelMatrizASG(_PainelASG):
             painter.setPen(_cor_direcao(linha.direcao, self.paleta))
             painter.drawText(rect.adjusted(6, 20, -6, -2), Qt.AlignmentFlag.AlignVCenter,
                              f"{rotulo_direcao(linha.direcao)}  {linha.valor}")
-            self._chips_qualidade(painter, max(rect.x() + 100, rect.right() - 120), rect.y() + 4,
-                                  linha.confianca, linha.procedencia, completos=False)
+            self._chips_qualidade(painter, max(rect.x() + 100, rect.right() - 190), rect.y() + 4,
+                                  linha.confianca, linha.procedencia, completos=True)
+            painter.setFont(tokens.fonte_numero(8, QFont.Weight.DemiBold))
+            painter.setPen(tokens.TEXT_SECONDARY)
+            painter.drawText(rect.adjusted(6, 22, -6, -2),
+                             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                             f"EVID {linha.evidencias}")
 
     def _barra_forca(self, painter: QPainter, rect: QRect, valor: float) -> None:
         painter.fillRect(rect, tema_asg.FUNDO_NEUTRO)
@@ -807,17 +1063,41 @@ class PainelDecisaoASG(_PainelASG):
         self.setMinimumHeight(210)
 
     def aplicar(self, snapshot: DecisaoASGSnapshot) -> None:
-        if snapshot != self._snapshot:
-            self._snapshot = snapshot
+        mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
+        self._snapshot = snapshot
+        self._limitar_primeiro()
+        if mudou:
             self.marcar_tudo_sujo()
+
+    def total_itens(self) -> int:
+        return len(self._snapshot.gates)
+
+    def faixa_rodape(self) -> QRect:
+        altura = 38
+        return QRect(0, max(ALTURA_CABECALHO, self.height() - altura), self.width(), altura)
+
+    def topo_gates(self) -> int:
+        return 136
+
+    def capacidade_pagina(self) -> int:
+        return max(0, self.faixa_rodape().top() - self.topo_gates()) // ALTURA_LINHA
+
+    def retangulos_visiveis(self) -> tuple[tuple[int, QRect], ...]:
+        return tuple(
+            (indice, QRect(0, self.topo_gates() + posicao * ALTURA_LINHA,
+                           self.width(), ALTURA_LINHA))
+            for posicao, indice in enumerate(self.indices_visiveis())
+        )
 
     def textos_visiveis(self) -> tuple[str, ...]:
         s = self._snapshot
         textos = [rotulo_estado(s.estado), "CONSULTIVO · SEM ENVIO DE ORDENS",
                   rotulo_direcao(s.direcao), s.titulo, s.motivo,
-                  s.confianca.value, s.procedencia.value,
-                  f"STOP {s.stop}", f"A1 {s.alvo_1}", f"A2 {s.alvo_2}", f"A3 {s.alvo_3}"]
-        for gate in s.gates:
+                  f"STOP {s.stop}", f"A1 {s.alvo_1}", f"A2 {s.alvo_2}", f"A3 {s.alvo_3}",
+                  self.texto_visibilidade()]
+        textos.extend(self._textos_qualidade(s.confianca, s.procedencia, completos=True))
+        for indice, _ in self.retangulos_visiveis():
+            gate = s.gates[indice]
             textos.extend((gate.nome, gate.resultado.value, gate.motivo))
         return tuple(textos)
 
@@ -847,8 +1127,8 @@ class PainelDecisaoASG(_PainelASG):
         painter.drawText(veredito.adjusted(8, 24, -8, -2),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                          s.titulo)
-        self._chips_qualidade(painter, max(MARGEM, self.width() - 150),
-                              veredito.y() + 4, s.confianca, s.procedencia, completos=False)
+        self._chips_qualidade(painter, max(MARGEM, self.width() - 200),
+                              veredito.y() + 4, s.confianca, s.procedencia, completos=True)
 
         y = veredito.bottom() + VAO
         painter.setFont(tokens.fonte_ui(10))
@@ -856,10 +1136,9 @@ class PainelDecisaoASG(_PainelASG):
         painter.drawText(QRect(MARGEM, y, self.width() - 2 * MARGEM, 30),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter |
                          Qt.TextFlag.TextWordWrap, s.motivo)
-        y += 32
-        for gate in s.gates:
-            if y + ALTURA_LINHA >= self.height() - 24:
-                break
+        for indice, rect_gate in self.retangulos_visiveis():
+            gate = s.gates[indice]
+            y = rect_gate.y()
             painter.setFont(tokens.fonte_ui(9, QFont.Weight.DemiBold))
             painter.setPen(tokens.TEXT_PRIMARY)
             painter.drawText(QRect(MARGEM, y, self.width() // 3, ALTURA_LINHA),
@@ -874,13 +1153,22 @@ class PainelDecisaoASG(_PainelASG):
                                    self.width() // 3 - MARGEM, ALTURA_LINHA),
                              Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                              gate.motivo)
-            y += ALTURA_LINHA
+        self._desenhar_rodape_decisao(painter)
 
-        painter.setFont(tokens.fonte_numero(10, QFont.Weight.DemiBold))
+    def _desenhar_rodape_decisao(self, painter: QPainter) -> None:
+        s = self._snapshot
+        rect = self.faixa_rodape()
+        painter.fillRect(rect, tema_asg.CABECALHO)
+        painter.setPen(tema_asg.BORDA)
+        painter.drawLine(rect.left(), rect.top(), rect.right(), rect.top())
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.DemiBold))
         painter.setPen(tokens.TEXT_PRIMARY)
-        painter.drawText(QRect(MARGEM, self.height() - 22, self.width() - 2 * MARGEM, 20),
+        painter.drawText(QRect(MARGEM, rect.y(), self.width() - 2 * MARGEM, 19),
                          Qt.AlignmentFlag.AlignCenter,
-                         f"STOP {s.stop}  ·  A1 {s.alvo_1}  ·  A2 {s.alvo_2}  ·  A3 {s.alvo_3}")
+                         f"STOP {s.stop} · A1 {s.alvo_1} · A2 {s.alvo_2} · A3 {s.alvo_3}")
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(QRect(MARGEM, rect.y() + 19, self.width() - 2 * MARGEM, 18),
+                         Qt.AlignmentFlag.AlignCenter, self.texto_visibilidade())
 
 
 class PainelEvidenciasASG(_PainelASG):
@@ -894,21 +1182,42 @@ class PainelEvidenciasASG(_PainelASG):
         self.setMinimumHeight(140)
 
     def aplicar(self, snapshot: TrilhaEvidenciasASGSnapshot) -> None:
-        if snapshot != self._snapshot:
-            self._snapshot = snapshot
+        mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
+        self._snapshot = snapshot
+        self._limitar_primeiro()
+        if mudou:
             self.marcar_tudo_sujo()
 
     @property
     def n_linhas(self) -> int:
-        return max(0, (self.height() - ALTURA_CABECALHO) // ALTURA_LINHA)
+        return self.capacidade_pagina()
+
+    def total_itens(self) -> int:
+        return len(self._snapshot.itens)
+
+    def capacidade_pagina(self) -> int:
+        return max(0, self.faixa_rodape().top() - ALTURA_CABECALHO) // ALTURA_LINHA
+
+    def retangulos_visiveis(self) -> tuple[tuple[int, QRect], ...]:
+        return tuple(
+            (indice, QRect(0, ALTURA_CABECALHO + posicao * ALTURA_LINHA,
+                           self.width(), ALTURA_LINHA))
+            for posicao, indice in enumerate(self.indices_visiveis())
+        )
 
     def textos_visiveis(self) -> tuple[str, ...]:
         s = self._snapshot
-        textos = [rotulo_estado(s.estado), f"{s.retidos} RETIDOS DE {s.total}"]
-        for item in s.itens[:self.n_linhas]:
-            textos.extend((item.origem, item.evento, item.leitura,
-                           rotulo_estado(item.estado), item.confianca.value,
-                           item.procedencia.value))
+        textos = [rotulo_estado(s.estado), self.texto_visibilidade()]
+        if self.width() >= 420:
+            textos.append(f"{s.retidos}/{s.total} RETIDOS")
+        for indice, _ in self.retangulos_visiveis():
+            item = s.itens[indice]
+            textos.extend((formato.formatar_hora_ns(item.timestamp_ns), item.origem,
+                           _simbolo_estado_livre(item.evento), item.leitura))
+            if self.width() >= 640:
+                textos.extend(self._textos_qualidade(
+                    item.confianca, item.procedencia, completos=True
+                ))
         return tuple(textos)
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
@@ -917,10 +1226,11 @@ class PainelEvidenciasASG(_PainelASG):
         self._cabecalho(painter, s.estado, f"{s.retidos}/{s.total} RETIDOS")
         if not s.itens:
             self._vazio(painter, "SEM EVIDENCIAS RETIDAS")
+            self._desenhar_rodape(painter)
             return
-        for indice, item in enumerate(s.itens[:self.n_linhas]):
-            y = ALTURA_CABECALHO + indice * ALTURA_LINHA
-            linha = QRect(0, y, self.width(), ALTURA_LINHA)
+        for indice, linha in self.retangulos_visiveis():
+            item = s.itens[indice]
+            y = linha.y()
             if indice % 2:
                 painter.fillRect(linha, tema_asg.FUNDO_NEUTRO)
             painter.setFont(tokens.fonte_numero(9))
@@ -935,13 +1245,14 @@ class PainelEvidenciasASG(_PainelASG):
             painter.setFont(tokens.fonte_ui(9))
             painter.setPen(tokens.TEXT_SECONDARY)
             x = 82 + max(60, self.width() // 7)
-            largura = max(20, self.width() - x - (170 if self.width() >= 640 else 8))
-            texto = f"{_simbolo_estado_livre(item.evento)} {item.evento} · {item.leitura}"
+            largura = max(20, self.width() - x - (224 if self.width() >= 640 else 8))
+            texto = f"{_simbolo_estado_livre(item.evento)} · {item.leitura}"
             painter.drawText(QRect(x, y, largura, ALTURA_LINHA),
                              Qt.AlignmentFlag.AlignVCenter, texto)
             if self.width() >= 640:
-                self._chips_qualidade(painter, self.width() - 166, y + 4,
-                                      item.confianca, item.procedencia, completos=False)
+                self._chips_qualidade(painter, self.width() - 220, y + 4,
+                                      item.confianca, item.procedencia, completos=True)
+        self._desenhar_rodape(painter)
 
 
 class WorkspaceASG(QWidget):
@@ -982,6 +1293,8 @@ class WorkspaceASG(QWidget):
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         """Aplica exatamente um snapshot tipado e coerente por quadro."""
 
+        if not isinstance(snapshot, WorkspaceASGSnapshot):
+            raise TypeError("WorkspaceASG.aplicar exige WorkspaceASGSnapshot tipado")
         self._snapshot = snapshot
         self.dados.aplicar(snapshot.dados)
         self.processamento.aplicar(snapshot.processamento)
@@ -1081,11 +1394,13 @@ def _estado_do_feed(estado: str, fonte: str, book: str) -> EstadoASG:
         return EstadoASG.REPLAY
     if estado in {"degraded", "reconnecting"}:
         return EstadoASG.ATRASADO
+    if estado in {"stopped", "connecting", "closed", ""}:
+        return EstadoASG.AGUARDANDO
     if estado == "connected" and book == "none":
         return EstadoASG.SEM_BOOK
-    if estado == "connected":
+    if estado == "connected" and book in {"mbp", "mbo"}:
         return EstadoASG.AO_VIVO
-    return EstadoASG.AGUARDANDO
+    return EstadoASG.DESCONHECIDO
 
 
 def _qualidade_do_agressor(qualidade: str, fonte: str) -> tuple[ConfiancaASG, ProcedenciaASG]:
@@ -1164,7 +1479,27 @@ def _direcao_externa(valor: object) -> DirecaoASG:
 
 def _estado_do_maker(snapshot: object) -> EstadoASG:
     texto = _valor_enum(getattr(snapshot, "estado", "SEM_DADOS")).upper()
-    return EstadoASG.AGUARDANDO if texto in {"SEM_DADOS", "AGUARDANDO"} else EstadoASG.AO_VIVO
+    if texto in {"SEM_DADOS", "AGUARDANDO"}:
+        return EstadoASG.AGUARDANDO
+    if texto in {"NEUTRO", "DIVERGENTE", "COMPRADOR", "VENDEDOR"}:
+        return EstadoASG.AO_VIVO
+    return EstadoASG.DESCONHECIDO
+
+
+def _chave_visual(snapshot: object) -> tuple[tuple[str, object], ...]:
+    """Conteudo pintado do snapshot, sem o carimbo do quadro.
+
+    ``timestamp_ns`` do snapshot agrega coerencia entre produtores, mas nao e
+    desenhado em nenhum cabecalho. Evidencias aninhadas continuam carregando
+    seus proprios timestamps, que sao texto visivel e portanto fazem parte da
+    igualdade normal da tupla ``itens``.
+    """
+
+    return tuple(
+        (campo.name, getattr(snapshot, campo.name))
+        for campo in fields(snapshot)
+        if campo.name != "timestamp_ns"
+    )
 
 
 __all__ = [

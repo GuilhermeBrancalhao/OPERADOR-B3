@@ -48,8 +48,10 @@ def qapp():
 
 def _snapshots(estado: EstadoASG = EstadoASG.AO_VIVO):
     dados = DadosASGSnapshot(
-        T0, estado, "REPLAY ARQUIVO", 98_765, 12.7, 320.4, 40, 2, 1,
-        ConfiancaASG.MEDIA, ProcedenciaASG.REPLAY, "GAP DE 2 EVENTOS VISIVEL",
+        timestamp_ns=T0, estado=estado, fonte="REPLAY ARQUIVO", sequencia=98_765,
+        atraso_ms=12.7, trades_s=320.4, niveis_book=40, gaps=2, anomalias=1,
+        descartados=0, confianca=ConfiancaASG.MEDIA,
+        procedencia=ProcedenciaASG.REPLAY, detalhe="GAP DE 2 EVENTOS VISIVEL",
     )
     proc = ProcessamentoASGSnapshot(
         T0, estado, "proxy-v1",
@@ -62,25 +64,37 @@ def _snapshots(estado: EstadoASG = EstadoASG.AO_VIVO):
         3,
         0,
     )
+    desconhecido = estado is EstadoASG.DESCONHECIDO
     matriz = MatrizASGSnapshot(
         T0, estado,
         (
-            LinhaMatrizASG("ABSORCAO", DirecaoASG.COMPRA, "+0,72", .72,
-                            ConfiancaASG.ALTA, ProcedenciaASG.DERIVADO, 12),
-            LinhaMatrizASG("DIVERGENCIA", DirecaoASG.VENDA, "-0,31", -.31,
-                            ConfiancaASG.MEDIA, ProcedenciaASG.INFERIDO, 4),
+            LinhaMatrizASG("ABSORCAO", DirecaoASG.NEUTRA if desconhecido else DirecaoASG.COMPRA,
+                            "INDISPONIVEL" if desconhecido else "+0,72", 0 if desconhecido else .72,
+                            ConfiancaASG.INDISPONIVEL if desconhecido else ConfiancaASG.ALTA,
+                            ProcedenciaASG.INDISPONIVEL if desconhecido else ProcedenciaASG.DERIVADO,
+                            12),
+            LinhaMatrizASG("DIVERGENCIA", DirecaoASG.NEUTRA if desconhecido else DirecaoASG.VENDA,
+                            "INDISPONIVEL" if desconhecido else "-0,31", 0 if desconhecido else -.31,
+                            ConfiancaASG.INDISPONIVEL if desconhecido else ConfiancaASG.MEDIA,
+                            ProcedenciaASG.INDISPONIVEL if desconhecido else ProcedenciaASG.INFERIDO,
+                            4),
         ),
         "5/6",
     )
+    saudavel = estado in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}
     decisao = DecisaoASGSnapshot(
-        T0, estado, DirecaoASG.COMPRA, "PRE-SINAL COMPRADOR",
-        "Book confirma reposicao; agressao ainda precisa persistir",
-        ConfiancaASG.MEDIA, ProcedenciaASG.DERIVADO,
+        T0, estado, DirecaoASG.COMPRA if saudavel else DirecaoASG.AGUARDAR,
+        "PRE-SINAL COMPRADOR" if saudavel else "SEM DECISAO",
+        ("Book confirma reposicao; agressao ainda precisa persistir" if saudavel
+         else f"Estado {estado.value} bloqueia decisao"),
+        ConfiancaASG.MEDIA if saudavel else ConfiancaASG.INDISPONIVEL,
+        ProcedenciaASG.DERIVADO if saudavel else ProcedenciaASG.INDISPONIVEL,
         (
-            GateDecisaoASG("BOOK", ResultadoGate.PASSA, "20 niveis"),
+            GateDecisaoASG("BOOK", ResultadoGate.PASSA if saudavel else ResultadoGate.AGUARDA,
+                           "20 niveis" if saudavel else estado.value),
             GateDecisaoASG("PERSISTENCIA", ResultadoGate.AGUARDA, "2/3 janelas"),
         ),
-        "5.082,0", "5.088,0", "5.091,0", "5.096,0",
+        *(('5.082,0', '5.088,0', '5.091,0', '5.096,0') if saudavel else ('—',) * 4),
     )
     evid = TrilhaEvidenciasASGSnapshot(
         T0, estado,
