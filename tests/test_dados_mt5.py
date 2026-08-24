@@ -38,6 +38,7 @@ from fluxopro.core.eventos import (
 )
 from fluxopro.dados import mt5 as mt5_mod
 from fluxopro.dados.eventos_captura import FalhaCaptura, TipoFalha
+from fluxopro.dados.feed_observavel import FeedQualityMonitor, FeedQualityObserver
 from fluxopro.dados.mt5 import (
     _AMOSTRAS_PARA_REGRESSAO,
     _JANELA_OFFSET_S,
@@ -50,6 +51,7 @@ from fluxopro.dados.mt5 import (
     _RelogioServidor,
     derivar_deltas,
 )
+from fluxopro.dados.qualidade import FeedSource, FeedState
 
 _TICK_DTYPE = [
     ("time", "i8"), ("bid", "f8"), ("ask", "f8"), ("last", "f8"),
@@ -934,6 +936,145 @@ def test_adaptador_mt5_publica_trades_via_fila_ate_thread_principal():
     assert trades[0].qty == 3
     assert fake.encerrado is True
     assert fake.book_liberado is True
+
+
+def test_excecao_de_assinante_fecha_thread_e_terminal_mt5():
+    fake = _FakeMT5(
+        tape=_linhas([(1_000, 4999.5, 5000.5, 5000.5, 3, TICK_FLAG_BUY, 0.0)])
+    )
+    barramento = Barramento()
+
+    def falhar(_trade: Trade) -> None:
+        raise RuntimeError("assinante quebrou")
+
+    barramento.assinar(Trade, falhar)
+    adaptador = AdaptadorMT5(
+        barramento,
+        "WDOV26",
+        WDO_GRID,
+        mt5_module=fake,
+        intervalo_poll_s=0.001,
+        fila_maxsize=2,
+    )
+
+    with pytest.raises(RuntimeError, match="assinante quebrou"):
+        adaptador.iniciar()
+
+    assert adaptador._thread is not None and not adaptador._thread.is_alive()
+    assert fake.encerrado is True
+    assert fake.book_liberado is True
+
+
+def test_fila_mt5_e_limitada_e_parametros_de_backpressure_sao_validados():
+    adaptador = AdaptadorMT5(
+        Barramento(),
+        "WDOV26",
+        WDO_GRID,
+        mt5_module=_FakeMT5(),
+        fila_maxsize=3,
+        backpressure_timeout_s=0.01,
+    )
+
+    assert adaptador._fila.maxsize == 3
+    with pytest.raises(ValueError, match="fila_maxsize"):
+        AdaptadorMT5(
+            Barramento(), "WDOV26", WDO_GRID, mt5_module=_FakeMT5(), fila_maxsize=0
+        )
+    with pytest.raises(ValueError, match="backpressure_timeout_s"):
+        AdaptadorMT5(
+            Barramento(),
+            "WDOV26",
+            WDO_GRID,
+            mt5_module=_FakeMT5(),
+            backpressure_timeout_s=0,
+        )
+
+
+def test_backpressure_mt5_e_interrompivel_e_descarte_vira_falha_captura():
+    barramento = Barramento()
+    trades: list[Trade] = []
+    falhas: list[FalhaCaptura] = []
+    barramento.assinar(Trade, trades.append)
+    barramento.assinar(FalhaCaptura, falhas.append)
+    adaptador = AdaptadorMT5(
+        barramento,
+        "WDOV26",
+        WDO_GRID,
+        mt5_module=_FakeMT5(),
+        fila_maxsize=1,
+        backpressure_timeout_s=0.01,
+    )
+    primeiro = Trade(100, "WDOV26", 10_000, 1, AgressorSide.BUY, "T1")
+    tardio = Trade(101, "WDOV26", 10_001, 1, AgressorSide.BUY, "T2")
+    assert adaptador._enfileirar(primeiro)
+    resultado: list[bool] = []
+
+    produtor = threading.Thread(
+        target=lambda: resultado.append(adaptador._enfileirar(tardio))
+    )
+    adaptador._thread = produtor
+    produtor.start()
+    time.sleep(0.03)
+    assert produtor.is_alive(), "fila cheia deve aplicar backpressure, nao descartar cedo"
+
+    adaptador._parar_evt.set()
+    produtor.join(timeout=1)
+    assert resultado == [False]
+
+    # Drena o evento aceito e, antes de sair, materializa o descarte pendente.
+    adaptador._loop_consumo()
+
+    assert trades == [primeiro]
+    assert len(falhas) == 1
+    assert falhas[0].tipo is TipoFalha.GAP_TICKS
+    assert "dropped_events=1" in falhas[0].detalhe
+    assert "queue_maxsize=1" in falhas[0].detalhe
+
+
+def test_falha_polling_mt5_emite_desconexao_erro_e_reconexao_observaveis():
+    class _FakeInstavel(_FakeMT5):
+        def __init__(self):
+            super().__init__()
+            self._falhou = False
+
+        def copy_ticks_from(self, symbol, de, count, flags):
+            if not self._falhou:
+                self._falhou = True
+                raise OSError("rede caiu")
+            return super().copy_ticks_from(symbol, de, count, flags)
+
+    fake = _FakeInstavel()
+    barramento = Barramento()
+    falhas: list[FalhaCaptura] = []
+    barramento.assinar(FalhaCaptura, falhas.append)
+    monitor = FeedQualityMonitor(source=FeedSource.MT5, clock_ns=time.time_ns)
+    observer = FeedQualityObserver(barramento, monitor)
+    observer.iniciar()
+    adaptador = AdaptadorMT5(
+        barramento,
+        "WDOV26",
+        WDO_GRID,
+        mt5_module=fake,
+        intervalo_poll_s=0.005,
+        fila_maxsize=8,
+    )
+
+    thread = threading.Thread(target=adaptador.iniciar, daemon=True)
+    thread.start()
+    time.sleep(0.08)
+    adaptador.parar()
+    thread.join(timeout=2)
+
+    tipos = [falha.tipo for falha in falhas]
+    assert tipos.count(TipoFalha.DESCONEXAO) == 1
+    assert tipos.count(TipoFalha.ERRO_FONTE) == 1
+    assert tipos.count(TipoFalha.RECONEXAO) == 1
+    snap = monitor.snapshot()
+    assert snap.disconnects == 1
+    assert snap.source_errors == 1
+    assert snap.reconnections == 1
+    assert snap.state is FeedState.CONNECTED
+    assert snap.reconnect_attempts == 0
 
 
 def test_adaptador_mt5_deriva_book_delta_entre_polls_consecutivos():

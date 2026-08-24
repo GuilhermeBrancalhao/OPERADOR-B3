@@ -272,6 +272,13 @@ _TICKS_POR_CHAMADA_PADRAO = 10_000
 # congelar em silêncio.
 _TETO_TICKS_POR_CHAMADA = 500_000
 
+# A thread de borda nunca pode se afastar sem limite da thread que publica no
+# barramento. O produtor espera por espaço em fatias curtas para que ``parar``
+# continue responsivo. 8.192 comporta várias centenas de ms no pico da barra
+# sem transformar uma pane do consumidor em crescimento ilimitado de memória.
+_FILA_MAXSIZE_PADRAO = 8_192
+_BACKPRESSURE_TIMEOUT_S = 0.05
+
 # --- Limiares do estimador de offset do relogio de servidor ---------------
 # A justificativa de cada numero esta em "UM RELOGIO SO NA BORDA" no topo.
 # Memoria finita do maximo: teto do erro residual de uma regressao de
@@ -635,6 +642,8 @@ class AdaptadorMT5(AdaptadorDados):
         profundidade_maxima: int = 10,
         ticks_por_chamada: int = _TICKS_POR_CHAMADA_PADRAO,
         teto_ticks_por_chamada: int = _TETO_TICKS_POR_CHAMADA,
+        fila_maxsize: int = _FILA_MAXSIZE_PADRAO,
+        backpressure_timeout_s: float = _BACKPRESSURE_TIMEOUT_S,
         mt5_module: ModuleType | None = None,
     ) -> None:
         super().__init__(barramento)
@@ -647,11 +656,21 @@ class AdaptadorMT5(AdaptadorDados):
         self._profundidade_maxima = profundidade_maxima
         self._ticks_por_chamada = max(1, ticks_por_chamada)
         self._teto_ticks_por_chamada = max(self._ticks_por_chamada, teto_ticks_por_chamada)
+        if fila_maxsize < 1:
+            raise ValueError("fila_maxsize deve ser >= 1")
+        if backpressure_timeout_s <= 0:
+            raise ValueError("backpressure_timeout_s deve ser > 0")
+        self._fila_maxsize = fila_maxsize
+        self._backpressure_timeout_s = backpressure_timeout_s
         self._mt5_injetado = mt5_module
 
-        self._fila: "queue.Queue[EventoBruto]" = queue.Queue()
+        self._fila: "queue.Queue[EventoBruto]" = queue.Queue(maxsize=fila_maxsize)
         self._thread: threading.Thread | None = None
         self._parar_evt = threading.Event()
+        self._shutdown_lock = threading.Lock()
+        self._shutdown_done = False
+        self._descartes_lock = threading.Lock()
+        self._descartes_pendentes = 0
         self._book_habilitado = False
         self._mt5: ModuleType | None = None
         self._relogio = _RelogioServidor()
@@ -664,6 +683,8 @@ class AdaptadorMT5(AdaptadorDados):
     def iniciar(self) -> None:
         mt5 = self._mt5_injetado if self._mt5_injetado is not None else _importar_mt5()
         self._mt5 = mt5
+        with self._shutdown_lock:
+            self._shutdown_done = False
 
         kwargs = {}
         if self._login is not None:
@@ -696,16 +717,27 @@ class AdaptadorMT5(AdaptadorDados):
         )
         self._thread.start()
 
-        self._loop_consumo()
+        try:
+            self._loop_consumo()
+        finally:
+            # Exceção de assinante propaga pelo barramento, mas não pode
+            # deixar a thread de polling presa em backpressure nem o terminal
+            # inicializado. ``parar`` é idempotente para a chamada concorrente
+            # usual da thread que controla a sessão.
+            self.parar()
 
     def parar(self) -> None:
         self._parar_evt.set()
-        if self._thread is not None:
+        if self._thread is not None and self._thread is not threading.current_thread():
             self._thread.join(timeout=5.0)
-        if self._mt5 is not None:
-            if self._book_habilitado:
-                self._mt5.market_book_release(self._symbol)
-            self._mt5.shutdown()
+        with self._shutdown_lock:
+            if self._shutdown_done:
+                return
+            if self._mt5 is not None:
+                if self._book_habilitado:
+                    self._mt5.market_book_release(self._symbol)
+                self._mt5.shutdown()
+            self._shutdown_done = True
 
     # ------------------------------------------------------------------
     # Tempo — um relógio só para tudo que sai daqui
@@ -800,44 +832,83 @@ class AdaptadorMT5(AdaptadorDados):
 
                 novos_ticks, cursor, falhas = self._puxar_ticks(mt5, cursor)
                 for trade in novos_ticks:
-                    self._fila.put(trade)
+                    if not self._enfileirar(trade):
+                        return
                 for falha in falhas:
-                    self._fila.put(falha)
+                    if not self._enfileirar(falha):
+                        return
 
                 if self._book_habilitado:
                     snapshot = self._puxar_book(mt5)
                     if snapshot is not None:
-                        self._fila.put(snapshot)
+                        if not self._enfileirar(snapshot):
+                            return
                         if snapshot_anterior is not None:
                             for delta in derivar_deltas(snapshot_anterior, snapshot):
-                                self._fila.put(delta)
+                                if not self._enfileirar(delta):
+                                    return
                         snapshot_anterior = snapshot
 
                 if not conectado:
-                    self._fila.put(
+                    if not self._enfileirar(
                         self._falha(TipoFalha.RECONEXAO, "polling voltou a responder")
-                    )
+                    ):
+                        return
                     conectado = True
 
                 gap_s = agora - ultimo_poll_ok
                 if gap_s > _LIMIAR_GAP_S:
-                    self._fila.put(
+                    if not self._enfileirar(
                         self._falha(
                             TipoFalha.GAP_TICKS,
                             f"intervalo entre polls de {gap_s:.2f}s excedeu o "
                             f"limiar de {_LIMIAR_GAP_S:.2f}s — ticks/book podem "
                             "ter sido perdidos nessa janela",
                         )
-                    )
+                    ):
+                        return
                 ultimo_poll_ok = agora
             except Exception as erro:  # defesa: nunca deixar a thread morrer muda
+                if conectado and not self._enfileirar(
+                    self._falha(
+                        TipoFalha.DESCONEXAO,
+                        f"polling MT5 falhou: {type(erro).__name__}: {erro}",
+                    )
+                ):
+                    return
                 conectado = False
-                self._fila.put(
+                if not self._enfileirar(
                     self._falha(TipoFalha.ERRO_FONTE, f"{type(erro).__name__}: {erro}")
-                )
+                ):
+                    return
                 _logger.exception("erro no polling do MT5")
 
-            time.sleep(self._intervalo_poll_s)
+            if self._parar_evt.wait(self._intervalo_poll_s):
+                return
+
+    def _enfileirar(self, evento: EventoBruto) -> bool:
+        """Aplica backpressure limitada no tempo de espera, não nos dados.
+
+        Enquanto a sessão está viva, fila cheia faz o produtor esperar em
+        fatias interrompíveis. Só há descarte quando ``parar`` interrompe uma
+        espera já iniciada; esse descarte fica num acumulador O(1) e a thread
+        de consumo o publica como ``FalhaCaptura`` antes de encerrar.
+        """
+        while not self._parar_evt.is_set():
+            try:
+                self._fila.put(evento, timeout=self._backpressure_timeout_s)
+                return True
+            except queue.Full:
+                continue
+        with self._descartes_lock:
+            self._descartes_pendentes += 1
+        return False
+
+    def _consumir_descartes(self) -> int:
+        with self._descartes_lock:
+            total = self._descartes_pendentes
+            self._descartes_pendentes = 0
+            return total
 
     def _copiar_ticks_paginado(self, mt5: ModuleType, de_s: int):
         """Puxa o segundo `de_s` inteiro, escalando `count` enquanto saturar.
@@ -1005,12 +1076,43 @@ class AdaptadorMT5(AdaptadorDados):
     # ------------------------------------------------------------------
 
     def _loop_consumo(self) -> None:
-        while not (self._parar_evt.is_set() and self._fila.empty()):
+        while True:
             try:
-                evento = self._fila.get(timeout=0.1)
+                evento = self._fila.get(timeout=self._backpressure_timeout_s)
             except queue.Empty:
+                evento = None
+            if evento is not None:
+                self._barramento.publicar(evento)
                 continue
-            self._barramento.publicar(evento)
+
+            descartados = self._consumir_descartes()
+            if descartados:
+                self._barramento.publicar(
+                    self._falha(
+                        TipoFalha.GAP_TICKS,
+                        f"dropped_events={descartados}; "
+                        "motivo=backpressure_interrompido_por_stop; "
+                        f"queue_maxsize={self._fila_maxsize}",
+                    )
+                )
+                continue
+
+            produtor_vivo = self._thread is not None and self._thread.is_alive()
+            if self._parar_evt.is_set() and not produtor_vivo and self._fila.empty():
+                # O produtor já terminou: uma última leitura fecha a corrida
+                # entre ``is_alive`` e o registro do descarte no ``finally``.
+                descartados = self._consumir_descartes()
+                if descartados:
+                    self._barramento.publicar(
+                        self._falha(
+                            TipoFalha.GAP_TICKS,
+                            f"dropped_events={descartados}; "
+                            "motivo=backpressure_interrompido_por_stop; "
+                            f"queue_maxsize={self._fila_maxsize}",
+                        )
+                    )
+                    continue
+                return
 
 
 def derivar_deltas(anterior: BookSnapshot, atual: BookSnapshot) -> list[BookDelta]:

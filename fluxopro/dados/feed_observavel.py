@@ -1,20 +1,22 @@
 """Observabilidade não intrusiva para eventos de mercado existentes.
 
-O monitor recebe apenas ``Trade``, ``BookSnapshot`` e ``BookDelta`` que a
-fonte já aceitou. Ele mede e publica qualidade, mas nunca decide se o evento
-segue: a sequência canônica de simulador, replay e MT5 permanece intocada.
-Não há conversão de texto, imagem ou resposta de LLM em tick.
+O monitor recebe eventos que a fonte já aceitou e mantém o último snapshot
+em memória. Ele nunca publica ``FeedQualitySnapshot`` no barramento: fazê-lo
+dentro do callback de ``Trade`` criaria publicação aninhada e permitiria que
+um assinante de saúde impedisse a entrega do evento de domínio. A sessão lê
+``monitor.snapshot()`` diretamente.
 
-Deduplicação de entrega e reconexão genérica existem como políticas separadas
-e opt-in. Em particular, o adaptador não deve envolver MT5 com reconexão: o
-adaptador MT5 já possui seu próprio ciclo de conexão e sinalização de falhas.
+Deduplicação de entrega e reconexão genérica permanecem políticas separadas
+e opt-in. O MT5 já tem ciclo próprio de reconexão e só é observado por seus
+``FalhaCaptura``; ele não deve ser envolvido pela reconexão genérica daqui.
 """
 
 from __future__ import annotations
 
+import re
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from typing import TypeAlias
@@ -22,6 +24,7 @@ from typing import TypeAlias
 from fluxopro.core.barramento import Barramento
 from fluxopro.core.eventos import AgressorSide, BookDelta, BookSnapshot, Trade
 from fluxopro.dados.adaptador import AdaptadorDados
+from fluxopro.dados.eventos_captura import FalhaCaptura, TipoFalha
 from fluxopro.dados.qualidade import (
     AggressorQuality,
     BookKind,
@@ -32,7 +35,9 @@ from fluxopro.dados.qualidade import (
 )
 
 MarketEvent: TypeAlias = Trade | BookSnapshot | BookDelta
-SnapshotSink: TypeAlias = Callable[[FeedQualitySnapshot], None]
+ObservedEvent: TypeAlias = MarketEvent | FalhaCaptura
+
+_DROPPED_PATTERN = re.compile(r"(?:^|[ ;])dropped_events=(\d+)(?:[ ;]|$)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,21 +46,38 @@ class FeedEnvelope:
 
     event: MarketEvent
     sequence: int | None = None
+    ingress_timestamp_ns: int | None = None
+    # Nome antigo mantido para consumidores da rodada anterior.
     received_ns: int | None = None
+
+    def ingress_ns(self) -> int | None:
+        if self.ingress_timestamp_ns is not None and self.received_ns is not None:
+            raise ValueError(
+                "use ingress_timestamp_ns ou received_ns, nunca os dois"
+            )
+        return (
+            self.ingress_timestamp_ns
+            if self.ingress_timestamp_ns is not None
+            else self.received_ns
+        )
 
 
 @dataclass(frozen=True, slots=True)
 class FeedQualityConfig:
-    """Limites explícitos e pequenos para o caminho quente do observador."""
+    """Limites explícitos para o observador; nenhum cresce com o pregão."""
 
     max_delay_ns: int = 1_000_000_000
     dedup_capacity: int = 4_096
+    max_sequence_streams: int = 64
+    latency_comparable: bool | None = None
 
     def __post_init__(self) -> None:
         if self.max_delay_ns < 0:
             raise ValueError("max_delay_ns deve ser >= 0")
         if self.dedup_capacity < 1:
             raise ValueError("dedup_capacity deve ser >= 1")
+        if self.max_sequence_streams < 1:
+            raise ValueError("max_sequence_streams deve ser >= 1")
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,13 +97,7 @@ class ReconnectPolicy:
             raise ValueError("initial_backoff_s deve ser <= max_backoff_s")
 
 
-def _event_key(event: MarketEvent) -> tuple[object, ...]:
-    if isinstance(event, Trade) and event.trade_id:
-        return (Trade, event.symbol, event.trade_id)
-    return (type(event), event)
-
-
-class _BoundedSeenEvents:
+class _BoundedSeenKeys:
     def __init__(self, capacity: int) -> None:
         if capacity < 1:
             raise ValueError("capacity deve ser >= 1")
@@ -100,11 +116,17 @@ class _BoundedSeenEvents:
         return False
 
 
+def _event_key(event: MarketEvent) -> tuple[object, ...]:
+    if isinstance(event, Trade) and event.trade_id:
+        return (Trade, event.symbol, event.trade_id)
+    return (type(event), event)
+
+
 class BoundedEventDeduplicator:
-    """Filtro separado e opt-in; não faz parte do monitor de qualidade."""
+    """Filtro separado e opt-in; o monitor observador nunca o aplica."""
 
     def __init__(self, capacity: int = 4_096) -> None:
-        self._seen = _BoundedSeenEvents(capacity)
+        self._seen = _BoundedSeenKeys(capacity)
         self._lock = threading.Lock()
 
     @property
@@ -112,21 +134,26 @@ class BoundedEventDeduplicator:
         with self._lock:
             return len(self._seen.keys)
 
-    def accept(self, event: MarketEvent) -> bool:
+    def accept(
+        self,
+        event: MarketEvent,
+        *,
+        source: FeedSource = FeedSource.OTHER,
+        sequence: int | None = None,
+    ) -> bool:
         if not isinstance(event, (Trade, BookSnapshot, BookDelta)):
             raise TypeError("deduplicador aceita Trade, BookSnapshot e BookDelta")
+        key = (
+            (FeedSource(source), event.symbol, sequence)
+            if sequence is not None
+            else _event_key(event)
+        )
         with self._lock:
-            return not self._seen.remember(_event_key(event))
+            return not self._seen.remember(key)
 
 
 class FeedQualityMonitor:
-    """Observa perda, repetição, desordem, timestamp e atraso sem filtrar.
-
-    A janela usada para reconhecer repetição tem tamanho fixo. ``observe``
-    sempre contabiliza o evento como aceito porque este monitor fica depois
-    da fronteira de aceitação da fonte; seu retorno é o snapshot produzido,
-    jamais uma decisão de encaminhamento.
-    """
+    """Observa qualidade sem filtrar, publicar ou reconectar a fonte."""
 
     def __init__(
         self,
@@ -138,7 +165,6 @@ class FeedQualityMonitor:
         symbol: str = "",
         config: FeedQualityConfig | None = None,
         clock_ns: Callable[[], int] = time.time_ns,
-        sink: SnapshotSink | None = None,
     ) -> None:
         if depth < 0:
             raise ValueError("depth deve ser >= 0")
@@ -150,11 +176,17 @@ class FeedQualityMonitor:
         self._depth = depth
         self._config = config or FeedQualityConfig()
         self._clock_ns = clock_ns
-        self._sink = sink
         self._lock = threading.RLock()
+        self._latency_comparable = (
+            self._source is FeedSource.MT5
+            if self._config.latency_comparable is None
+            else self._config.latency_comparable
+        )
 
         self._state = FeedState.STOPPED
         self._received_events = 0
+        self._anomalies = 0
+        self._dropped_events = 0
         self._duplicates = 0
         self._sequence_gaps = 0
         self._missing_events = 0
@@ -164,33 +196,44 @@ class FeedQualityMonitor:
         self._regressive_timestamps = 0
         self._delayed_events = 0
         self._unknown_aggressors = 0
+        self._capture_gaps = 0
+        self._source_errors = 0
+        self._disconnects = 0
+        self._reconnections = 0
+        self._clock_regressions = 0
         self._reconnect_attempts = 0
-        self._latency_ns = 0
+        self._market_timestamp_ns: int | None = None
+        self._ingress_timestamp_ns = self._clock_ns()
+        self._latency_ns: int | None = None
+        self._scheduler_delay_ns: int | None = None
         self._last_event_timestamp_ns: int | None = None
         self._last_sequence: int | None = None
         self._next_backoff_ns = 0
         self._detail = ""
-        self._seen = _BoundedSeenEvents(self._config.dedup_capacity)
+        self._seen_sequences = _BoundedSeenKeys(self._config.dedup_capacity)
+        self._high_watermarks: OrderedDict[tuple[FeedSource, str], int] = (
+            OrderedDict()
+        )
 
     @property
-    def dedup_size(self) -> int:
-        with self._lock:
-            return len(self._seen.keys)
+    def source(self) -> FeedSource:
+        return self._source
 
     @property
-    def sink(self) -> SnapshotSink | None:
+    def sequence_window_size(self) -> int:
         with self._lock:
-            return self._sink
+            return len(self._seen_sequences.keys)
 
-    def set_sink(self, sink: SnapshotSink | None) -> None:
+    @property
+    def sequence_streams(self) -> int:
         with self._lock:
-            self._sink = sink
+            return len(self._high_watermarks)
 
-    def snapshot(self, timestamp_ns: int | None = None) -> FeedQualitySnapshot:
+    def snapshot(self, ingress_timestamp_ns: int | None = None) -> FeedQualitySnapshot:
         with self._lock:
-            return self._snapshot_locked(
-                self._clock_ns() if timestamp_ns is None else timestamp_ns
-            )
+            if ingress_timestamp_ns is not None:
+                self._ingress_timestamp_ns = ingress_timestamp_ns
+            return self._snapshot_locked()
 
     def connecting(self, detail: str = "") -> FeedQualitySnapshot:
         return self._transition(FeedState.CONNECTING, detail=detail)
@@ -225,69 +268,151 @@ class FeedQualityMonitor:
 
     def observe(
         self,
-        event: MarketEvent,
+        event: ObservedEvent,
         *,
         sequence: int | None = None,
+        ingress_timestamp_ns: int | None = None,
         received_ns: int | None = None,
     ) -> FeedQualitySnapshot:
-        """Observa um evento já aceito e devolve seu retrato de qualidade."""
-        if not isinstance(event, (Trade, BookSnapshot, BookDelta)):
-            raise TypeError("feed aceita apenas Trade, BookSnapshot e BookDelta")
+        """Observa um evento aceito e devolve o snapshot, sem efeitos externos."""
+        if not isinstance(event, (Trade, BookSnapshot, BookDelta, FalhaCaptura)):
+            raise TypeError(
+                "feed aceita Trade, BookSnapshot, BookDelta e FalhaCaptura"
+            )
         if sequence is not None and sequence < 0:
             raise ValueError("sequence deve ser >= 0")
-        received = self._clock_ns() if received_ns is None else received_ns
+        if ingress_timestamp_ns is not None and received_ns is not None:
+            raise ValueError(
+                "use ingress_timestamp_ns ou received_ns, nunca os dois"
+            )
+        supplied_ingress = (
+            ingress_timestamp_ns
+            if ingress_timestamp_ns is not None
+            else received_ns
+        )
+        observed_ns = self._clock_ns()
+        ingress_ns = observed_ns if supplied_ingress is None else supplied_ingress
 
         with self._lock:
-            self._received_events += 1
             self._symbol = event.symbol
-            issues: list[str] = []
-
-            duplicate_event = self._seen.remember(_event_key(event))
-            duplicate_sequence = False
-            if sequence is None:
-                self._events_without_sequence += 1
+            self._market_timestamp_ns = event.timestamp_ns
+            self._ingress_timestamp_ns = ingress_ns
+            self._scheduler_delay_ns = (
+                None
+                if supplied_ingress is None
+                else max(0, observed_ns - supplied_ingress)
+            )
+            if isinstance(event, FalhaCaptura):
+                self._observe_failure_locked(event)
             else:
-                self._events_with_sequence += 1
-                if self._last_sequence is not None:
-                    if sequence == self._last_sequence:
-                        duplicate_sequence = True
-                    elif sequence < self._last_sequence:
-                        self._sequence_regressions += 1
-                        issues.append("sequencia regressiva")
-                    elif sequence > self._last_sequence + 1:
-                        self._sequence_gaps += 1
-                        self._missing_events += sequence - self._last_sequence - 1
-                        issues.append("lacuna de sequencia")
-                self._last_sequence = sequence
-
-            if duplicate_event or duplicate_sequence:
-                self._duplicates += 1
-                issues.append("evento duplicado")
-
-            if (
-                self._last_event_timestamp_ns is not None
-                and event.timestamp_ns < self._last_event_timestamp_ns
-            ):
-                self._regressive_timestamps += 1
-                issues.append("timestamp regressivo")
-            self._last_event_timestamp_ns = event.timestamp_ns
-
-            self._latency_ns = max(0, received - event.timestamp_ns)
-            if self._latency_ns > self._config.max_delay_ns:
-                self._delayed_events += 1
-                issues.append("evento atrasado")
-
-            self._observe_payload_locked(event)
-            if issues:
-                self._degrade_locked(", ".join(issues))
-            snap = self._snapshot_locked(received)
-            sink = self._sink
-
-        if sink is not None:
-            sink(snap)
-        return snap
+                self._observe_market_locked(event, sequence, ingress_ns)
+            return self._snapshot_locked()
 
     observar = observe
+
+    def _observe_market_locked(
+        self, event: MarketEvent, sequence: int | None, ingress_ns: int
+    ) -> None:
+        self._received_events += 1
+        issues: list[str] = []
+
+        if sequence is None:
+            self._events_without_sequence += 1
+        else:
+            self._events_with_sequence += 1
+            stream = (self._source, event.symbol)
+            key = (self._source, event.symbol, sequence)
+            duplicate = self._seen_sequences.remember(key)
+            high = self._touch_high_watermark_locked(stream)
+            if duplicate:
+                self._duplicates += 1
+                self._anomalies += 1
+                issues.append("sequencia duplicada")
+                if high is None or sequence > high:
+                    self._high_watermarks[stream] = sequence
+            else:
+                if high is not None and sequence > high + 1:
+                    self._sequence_gaps += 1
+                    self._missing_events += sequence - high - 1
+                    self._anomalies += 1
+                    issues.append("lacuna de sequencia")
+                elif high is not None and sequence < high:
+                    self._sequence_regressions += 1
+                    self._anomalies += 1
+                    issues.append("sequencia regressiva")
+                if high is None or sequence > high:
+                    self._high_watermarks[stream] = sequence
+            self._last_sequence = sequence
+
+        if (
+            self._last_event_timestamp_ns is not None
+            and event.timestamp_ns < self._last_event_timestamp_ns
+        ):
+            self._regressive_timestamps += 1
+            self._anomalies += 1
+            issues.append("timestamp regressivo")
+        self._last_event_timestamp_ns = event.timestamp_ns
+
+        self._latency_ns = (
+            max(0, ingress_ns - event.timestamp_ns)
+            if self._latency_comparable
+            else None
+        )
+        if (
+            self._latency_ns is not None
+            and self._latency_ns > self._config.max_delay_ns
+        ):
+            self._delayed_events += 1
+            self._anomalies += 1
+            issues.append("evento atrasado")
+
+        self._observe_payload_locked(event)
+        if issues:
+            self._degrade_locked(", ".join(issues))
+
+    def _touch_high_watermark_locked(
+        self, stream: tuple[FeedSource, str]
+    ) -> int | None:
+        high = self._high_watermarks.get(stream)
+        if high is not None:
+            self._high_watermarks.move_to_end(stream)
+            return high
+        if len(self._high_watermarks) == self._config.max_sequence_streams:
+            self._high_watermarks.popitem(last=False)
+        self._high_watermarks[stream] = -1
+        return None
+
+    def _observe_failure_locked(self, failure: FalhaCaptura) -> None:
+        self._latency_ns = (
+            max(0, self._ingress_timestamp_ns - failure.timestamp_ns)
+            if self._latency_comparable
+            else None
+        )
+        dropped = _dropped_from_detail(failure.detalhe)
+        if dropped:
+            self._dropped_events += dropped
+
+        tipo = failure.tipo
+        if tipo in (TipoFalha.GAP_TICKS, TipoFalha.GAP_BOOK):
+            self._capture_gaps += 1
+            self._anomalies += 1
+            self._degrade_locked(failure.detalhe)
+        elif tipo is TipoFalha.DESCONEXAO:
+            self._disconnects += 1
+            self._anomalies += 1
+            self._degrade_locked(failure.detalhe)
+        elif tipo is TipoFalha.ERRO_FONTE:
+            self._source_errors += 1
+            self._anomalies += 1
+            self._degrade_locked(failure.detalhe)
+        elif tipo is TipoFalha.RELOGIO_REGREDIU:
+            self._clock_regressions += 1
+            self._anomalies += 1
+            self._degrade_locked(failure.detalhe)
+        elif tipo is TipoFalha.RECONEXAO:
+            self._reconnections += 1
+            self._state = FeedState.CONNECTED
+            self._detail = failure.detalhe
 
     def _observe_payload_locked(self, event: MarketEvent) -> None:
         if isinstance(event, BookSnapshot):
@@ -307,6 +432,9 @@ class FeedQualityMonitor:
             return SequenceAvailability.AVAILABLE
         return SequenceAvailability.PARTIAL
 
+    def _current_high_watermark_locked(self) -> int | None:
+        return self._high_watermarks.get((self._source, self._symbol))
+
     def _degrade_locked(self, detail: str) -> None:
         if self._state not in (FeedState.ERROR, FeedState.CLOSED):
             self._state = FeedState.DEGRADED
@@ -320,25 +448,22 @@ class FeedQualityMonitor:
         reconnect_attempts: int | None = None,
         next_backoff_ns: int | None = None,
     ) -> FeedQualitySnapshot:
-        now = self._clock_ns()
         with self._lock:
+            self._ingress_timestamp_ns = self._clock_ns()
             self._state = state
             self._detail = detail
             if reconnect_attempts is not None:
                 self._reconnect_attempts = reconnect_attempts
             if next_backoff_ns is not None:
                 self._next_backoff_ns = next_backoff_ns
-            snap = self._snapshot_locked(now)
-            sink = self._sink
-        if sink is not None:
-            sink(snap)
-        return snap
+            return self._snapshot_locked()
 
-    def _snapshot_locked(self, timestamp_ns: int) -> FeedQualitySnapshot:
+    def _snapshot_locked(self) -> FeedQualitySnapshot:
         availability = self._sequence_availability_locked()
         sequence_known = availability is not SequenceAvailability.UNAVAILABLE
         return FeedQualitySnapshot(
-            timestamp_ns=timestamp_ns,
+            market_timestamp_ns=self._market_timestamp_ns,
+            ingress_timestamp_ns=self._ingress_timestamp_ns,
             symbol=self._symbol,
             state=self._state,
             source=self._source,
@@ -348,6 +473,8 @@ class FeedQualityMonitor:
             sequence_availability=availability,
             received_events=self._received_events,
             accepted_events=self._received_events,
+            anomalies=self._anomalies,
+            dropped_events=self._dropped_events,
             duplicates=self._duplicates,
             sequence_gaps=self._sequence_gaps if sequence_known else None,
             missing_events=self._missing_events if sequence_known else None,
@@ -355,11 +482,18 @@ class FeedQualityMonitor:
                 self._sequence_regressions if sequence_known else None
             ),
             events_without_sequence=self._events_without_sequence,
+            sequence_high_watermark=self._current_high_watermark_locked(),
             regressive_timestamps=self._regressive_timestamps,
             delayed_events=self._delayed_events,
             unknown_aggressors=self._unknown_aggressors,
+            capture_gaps=self._capture_gaps,
+            source_errors=self._source_errors,
+            disconnects=self._disconnects,
+            reconnections=self._reconnections,
+            clock_regressions=self._clock_regressions,
             reconnect_attempts=self._reconnect_attempts,
             latency_ns=self._latency_ns,
+            scheduler_delay_ns=self._scheduler_delay_ns,
             last_event_timestamp_ns=self._last_event_timestamp_ns,
             last_sequence=self._last_sequence,
             next_backoff_ns=self._next_backoff_ns,
@@ -367,20 +501,19 @@ class FeedQualityMonitor:
         )
 
 
+def _dropped_from_detail(detail: str) -> int:
+    match = _DROPPED_PATTERN.search(detail)
+    return int(match.group(1)) if match is not None else 0
+
+
 FeedItem: TypeAlias = MarketEvent | FeedEnvelope
 Connector: TypeAlias = Callable[[], Iterable[FeedItem]]
 
 
 class FeedQualityObserver:
-    """Assina o barramento depois da aceitação, sem envolver a fonte.
+    """Assina eventos aceitos e atualiza o monitor sem publicar nada."""
 
-    É o encaixe indicado para simulador, replay e MT5 existentes. Como esses
-    eventos não carregam sequência, o snapshot declara ``UNAVAILABLE``. Uma
-    integração de borda que realmente possua sequência pode chamar o monitor
-    com ``FeedEnvelope`` antes de publicar, sem alterar o evento de domínio.
-    """
-
-    _EVENT_TYPES = (Trade, BookSnapshot, BookDelta)
+    _EVENT_TYPES = (Trade, BookSnapshot, BookDelta, FalhaCaptura)
 
     def __init__(
         self,
@@ -388,21 +521,11 @@ class FeedQualityObserver:
         monitor: FeedQualityMonitor,
         *,
         priority: int = 0,
-        publish_quality: bool = True,
     ) -> None:
         self._barramento = barramento
         self.monitor = monitor
         self._priority = priority
         self._started = False
-        previous_sink = monitor.sink
-
-        def sink(snapshot: FeedQualitySnapshot) -> None:
-            if previous_sink is not None:
-                previous_sink(snapshot)
-            if publish_quality:
-                barramento.publicar(snapshot)
-
-        monitor.set_sink(sink)
 
     def iniciar(self) -> None:
         if self._started:
@@ -424,17 +547,12 @@ class FeedQualityObserver:
             self._started = False
         self.monitor.close("observador removido do barramento")
 
-    def _observe(self, event: MarketEvent) -> None:
+    def _observe(self, event: ObservedEvent) -> None:
         self.monitor.observe(event)
 
 
 class ObservableFeedAdapter(AdaptadorDados):
-    """Observa e repassa uma fonte iterável sem mudar sua sequência padrão.
-
-    ``deduplicator=None`` mantém cada evento, inclusive repetidos. Da mesma
-    forma, ``reconnect_policy=None`` não cria um segundo ciclo de reconexão.
-    As duas mudanças de comportamento exigem opt-in explícito do integrador.
-    """
+    """Observa e repassa uma fonte iterável sem mudar sua sequência padrão."""
 
     def __init__(
         self,
@@ -445,7 +563,6 @@ class ObservableFeedAdapter(AdaptadorDados):
         deduplicator: BoundedEventDeduplicator | None = None,
         reconnect_policy: ReconnectPolicy | None = None,
         wait: Callable[[float], object] | None = None,
-        publish_quality: bool = True,
     ) -> None:
         super().__init__(barramento)
         self._connector = connector
@@ -454,20 +571,9 @@ class ObservableFeedAdapter(AdaptadorDados):
         self._reconnect_policy = reconnect_policy
         self._stop = threading.Event()
         self._wait = wait or self._stop.wait
-        self._publish_quality = publish_quality
         self._active: Iterator[FeedItem] | None = None
         self._active_lock = threading.Lock()
         self.last_error: Exception | None = None
-
-        previous_sink = monitor.sink
-
-        def sink(snapshot: FeedQualitySnapshot) -> None:
-            if previous_sink is not None:
-                previous_sink(snapshot)
-            if self._publish_quality:
-                self._barramento.publicar(snapshot)
-
-        monitor.set_sink(sink)
 
     def iniciar(self) -> None:
         self._stop.clear()
@@ -503,17 +609,26 @@ class ObservableFeedAdapter(AdaptadorDados):
                         except Exception as error:
                             source_error = error
                             break
+                        # ``parar`` pode ocorrer enquanto ``next`` está
+                        # bloqueado. Checar de novo impede evento tardio.
+                        if self._stop.is_set():
+                            break
                         envelope = (
                             item if isinstance(item, FeedEnvelope) else FeedEnvelope(item)
                         )
+                        ingress_ns = envelope.ingress_ns()
                         self.monitor.observe(
                             envelope.event,
                             sequence=envelope.sequence,
-                            received_ns=envelope.received_ns,
+                            ingress_timestamp_ns=ingress_ns,
                         )
                         if (
                             self._deduplicator is None
-                            or self._deduplicator.accept(envelope.event)
+                            or self._deduplicator.accept(
+                                envelope.event,
+                                source=self.monitor.source,
+                                sequence=envelope.sequence,
+                            )
                         ):
                             self._barramento.publicar(envelope.event)
                 finally:
@@ -595,6 +710,7 @@ __all__ = [
     "MarketEvent",
     "MonitorQualidadeFeed",
     "ObservableFeedAdapter",
+    "ObservedEvent",
     "ObservadorQualidadeFeed",
     "PoliticaReconexao",
     "ReconnectPolicy",

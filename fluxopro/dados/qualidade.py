@@ -90,11 +90,14 @@ class FeedQualitySnapshot:
     Quando disponível, ``sequence_gaps`` conta ocorrências e
     ``missing_events`` conta quantos números faltaram.
     ``accepted_events`` conta eventos que já chegaram aceitos pela fonte; o
-    observador nunca reduz esse total. ``latency_ns`` é o atraso do último
-    evento e fica em zero quando o relógio da fonte está à frente do receptor.
+    observador nunca reduz esse total. ``anomalies`` conta sinais de qualidade
+    (gap, repetição, regressão ou falha da fonte), enquanto ``dropped_events``
+    conta somente descarte local confirmado. Replay não tem latência de rede:
+    nesse caso ``latency_ns`` é ``None``, não um número gigantesco.
     """
 
-    timestamp_ns: int
+    market_timestamp_ns: int | None
+    ingress_timestamp_ns: int
     symbol: str
     state: FeedState
     source: FeedSource
@@ -104,20 +107,34 @@ class FeedQualitySnapshot:
     sequence_availability: SequenceAvailability = SequenceAvailability.UNAVAILABLE
     received_events: int = 0
     accepted_events: int = 0
+    anomalies: int = 0
+    dropped_events: int = 0
     duplicates: int = 0
     sequence_gaps: int | None = None
     missing_events: int | None = None
     sequence_regressions: int | None = None
     events_without_sequence: int = 0
+    sequence_high_watermark: int | None = None
     regressive_timestamps: int = 0
     delayed_events: int = 0
     unknown_aggressors: int = 0
+    capture_gaps: int = 0
+    source_errors: int = 0
+    disconnects: int = 0
+    reconnections: int = 0
+    clock_regressions: int = 0
     reconnect_attempts: int = 0
-    latency_ns: int = 0
+    latency_ns: int | None = None
+    scheduler_delay_ns: int | None = None
     last_event_timestamp_ns: int | None = None
     last_sequence: int | None = None
     next_backoff_ns: int = 0
     detail: str = ""
+
+    @property
+    def timestamp_ns(self) -> int:
+        """Compatibilidade: snapshot é carimbado no ingresso, não no mercado."""
+        return self.ingress_timestamp_ns
 
     @property
     def healthy(self) -> bool:
