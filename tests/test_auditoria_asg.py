@@ -92,11 +92,12 @@ def _particao_valida(raiz: Path) -> Path:
     lado = SidecarShadow(
         raiz,
         ConfigShadow(intervalo_amostra_ns=100_000_000_000, horizontes_s=(1,)),
+        run_id="teste-auditoria",
     )
     lado.observar(AmostraFeatures(t0, "WDOQ26", 100, "NENHUM"))
     lado.observar(AmostraFeatures(t0 + 1_000_000_000, "WDOQ26", 101, "NENHUM"))
     lado.finalizar()
-    return raiz / "2026-05-05" / "WDOQ26"
+    return raiz / "runs" / "teste-auditoria" / "2026-05-05" / "WDOQ26"
 
 
 def test_auditoria_confirma_colecoes_e_arquivos_esperados(tmp_path):
@@ -104,6 +105,16 @@ def test_auditoria_confirma_colecoes_e_arquivos_esperados(tmp_path):
     achados, n = auditar_particoes_shadow(tmp_path)
     assert achados == []
     assert n == 1
+
+
+def test_auditoria_exige_run_persistido_e_reports_da_finalizacao(tmp_path):
+    pasta = _particao_valida(tmp_path)
+    (pasta.parent.parent / "run.json").unlink()
+    (pasta / "report.md").unlink()
+    achados, _ = auditar_particoes_shadow(tmp_path)
+    assert {"RUN_MANIFEST_AUSENTE", "RELATORIO_AUSENTE"} <= {
+        achado.codigo for achado in achados
+    }
 
 
 def test_auditoria_reprova_arquivo_ausente_label_orfao_e_promocao(tmp_path):
@@ -129,7 +140,7 @@ def test_auditoria_reprova_label_sem_feature_da_mesma_particao(tmp_path):
 
 
 def test_auditoria_nao_ignora_particao_sem_manifesto(tmp_path):
-    pasta = tmp_path / "2026-08-24" / "WDOQ26"
+    pasta = tmp_path / "runs" / "quebrado" / "2026-08-24" / "WDOQ26"
     pasta.mkdir(parents=True)
     achados, n = auditar_particoes_shadow(tmp_path)
     assert n == 1
@@ -220,6 +231,9 @@ def test_workflow_ci_executa_guardrail_testes_e_publica_reports():
         encoding="utf-8"
     )
     assert "scripts/auditoria_asg.py" in workflow
+    assert "scripts/gerar_shadow_congelado.py" in workflow
+    assert "--shadow-dir" in workflow
+    assert "--exigir-shadow" in workflow
     assert "tests/test_shadow_*.py" in workflow
     assert "tests/test_sem_execucao.py" in workflow
     assert "actions/upload-artifact@v4" in workflow

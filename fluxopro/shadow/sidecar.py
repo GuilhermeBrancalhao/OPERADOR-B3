@@ -6,6 +6,8 @@ import gzip
 import json
 import math
 import os
+import re
+import uuid
 from collections import deque
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
@@ -21,12 +23,15 @@ from fluxopro.shadow.modelos import (
 )
 from fluxopro.shadow.governanca import politica_promocao_manifesto
 from fluxopro.shadow.rotulos import RotuladorCausal
+from fluxopro.shadow.relatorios import gerar_relatorio_particao
 from fluxopro.shadow.schema import validar_manifesto, validar_registro
 
 
 ARQUIVO_FEATURES = "features.jsonl.gz"
 ARQUIVO_LABELS = "labels.jsonl.gz"
 ARQUIVO_MANIFESTO = "shadow_manifest.json"
+ARQUIVO_RUN = "run.json"
+_RUN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
 class BufferShadowCheio(BufferError):
@@ -41,9 +46,23 @@ class SidecarShadow:
     ``promocao_automatica: false``.
     """
 
-    def __init__(self, saida_dir: str | Path, config: ConfigShadow | None = None) -> None:
+    def __init__(
+        self,
+        saida_dir: str | Path,
+        config: ConfigShadow | None = None,
+        *,
+        run_id: str | None = None,
+    ) -> None:
         self.saida_dir = Path(saida_dir)
         self.config = config or ConfigShadow()
+        self.run_id = run_id or uuid.uuid4().hex
+        if not _RUN_ID.fullmatch(self.run_id):
+            raise ValueError("run_id deve ser identificador seguro de ate 64 caracteres")
+        self.run_dir = self.saida_dir / "runs" / self.run_id
+        if self.run_dir.exists():
+            raise FileExistsError(
+                f"execucao shadow imutavel ja existe: {self.run_dir}"
+            )
         self._rotulador = RotuladorCausal(self.config)
         self._ultimo_timestamp: dict[str, int] = {}
         self._ultimo_estado: dict[str, str] = {}
@@ -52,6 +71,8 @@ class SidecarShadow:
         self._sessao_id: dict[str, int] = {}
         self._proxima_sessao_id = 0
         self._buffer: deque[tuple[str, str, str, dict]] = deque()
+        self._particoes_tocadas: set[tuple[str, str]] = set()
+        self._finalizado = False
         self.amostras_gravadas = 0
         self.amostras_sem_label_por_capacidade = 0
         self.rotulos_gravados = 0
@@ -70,6 +91,8 @@ class SidecarShadow:
 
     def observar(self, amostra: AmostraFeatures) -> bool:
         """Consome um snapshot causal; retorna se ele foi persistido como feature."""
+        if self._finalizado:
+            raise RuntimeError("execucao shadow ja finalizada")
         self._validar_relogio_e_capacidade(amostra)
 
         motivos = self._motivos(amostra)
@@ -116,7 +139,8 @@ class SidecarShadow:
         sequencia = self._sequencia.get(amostra.symbol, 0) + 1
         self._sequencia[amostra.symbol] = sequencia
         id_amostra = (
-            f"{data_amostra}:{amostra.symbol}:s{self._sessao_id[amostra.symbol]}:"
+            f"{self.run_id}:{data_amostra}:{amostra.symbol}:"
+            f"s{self._sessao_id[amostra.symbol]}:"
             f"{amostra.timestamp_ns}:{sequencia}"
         )
 
@@ -177,7 +201,9 @@ class SidecarShadow:
         return n
 
     def finalizar(self) -> None:
-        """Censura todas as sessoes e drena o buffer no caminho offline."""
+        """Censura, drena e materializa relatórios imutáveis por partição."""
+        if self._finalizado:
+            return
         for symbol in self._rotulador.simbolos_pendentes:
             try:
                 self.resetar_sessao(symbol)
@@ -185,6 +211,14 @@ class SidecarShadow:
                 self.flush()
                 self.resetar_sessao(symbol)
         self.flush()
+        for symbol, data in sorted(self._particoes_tocadas):
+            gerar_relatorio_particao(
+                self.run_dir / data / symbol,
+                run_id=self.run_id,
+            )
+        if self._particoes_tocadas:
+            self._finalizar_run()
+        self._finalizado = True
 
     def fechar(self) -> None:
         self.finalizar()
@@ -240,8 +274,10 @@ class SidecarShadow:
         self._buffer.append((symbol, data, nome, registro))
 
     def _escrever(self, symbol: str, data: str, nome: str, registro: dict) -> None:
-        diretorio = self.saida_dir / data / symbol
+        self._garantir_run()
+        diretorio = self.run_dir / data / symbol
         diretorio.mkdir(parents=True, exist_ok=True)
+        self._particoes_tocadas.add((symbol, data))
         self._garantir_manifesto(diretorio, symbol, data)
         caminho = diretorio / nome
         # Abrir por registro cria membros gzip concatenados, previstos pelo
@@ -300,6 +336,38 @@ class SidecarShadow:
                 with gzip.open(arquivo, "wb"):
                     pass
 
+    def _garantir_run(self) -> None:
+        caminho = self.run_dir / ARQUIVO_RUN
+        if caminho.exists():
+            return
+        self.run_dir.mkdir(parents=True, exist_ok=False)
+        payload = {
+            "schema_versao": SCHEMA_VERSAO,
+            "run_id": self.run_id,
+            "status": "OPEN",
+            "modo": "shadow",
+            "promocao_automatica": False,
+            "config_versao": self.config.config_versao,
+        }
+        _escrever_json_atomico(caminho, payload)
+
+    def _finalizar_run(self) -> None:
+        caminho = self.run_dir / ARQUIVO_RUN
+        payload = json.loads(caminho.read_text(encoding="utf-8"))
+        payload.update(
+            status="FINALIZED",
+            particoes=[
+                {"data": data, "symbol": symbol}
+                for symbol, data in sorted(self._particoes_tocadas)
+            ],
+            amostras_gravadas=self.amostras_gravadas,
+            rotulos_gravados=self.rotulos_gravados,
+            amostras_sem_label_por_capacidade=(
+                self.amostras_sem_label_por_capacidade
+            ),
+        )
+        _escrever_json_atomico(caminho, payload)
+
 
 def _data_utc(timestamp_ns: int) -> str:
     # Divisao inteira evita arredondar 23:59:59.999999999 para o dia seguinte.
@@ -322,6 +390,15 @@ def _json_compativel(valor: object) -> object:
     if isinstance(valor, (str, int, float, bool)) or valor is None:
         return valor
     raise TypeError(f"feature nao serializavel em JSON: {type(valor).__name__}")
+
+
+def _escrever_json_atomico(caminho: Path, payload: dict) -> None:
+    temporario = caminho.with_suffix(caminho.suffix + ".tmp")
+    temporario.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+    os.replace(temporario, caminho)
 
 
 # Nome alternativo explicito para integradores que usam o substantivo primeiro.

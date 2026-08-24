@@ -50,7 +50,9 @@ def ler(caminho):
 
 
 def particao(tmp_path, symbol="WDOQ26", data="2026-08-24"):
-    return tmp_path / data / symbol
+    runs = list((tmp_path / "runs").iterdir())
+    assert len(runs) == 1
+    return runs[0] / data / symbol
 
 
 def test_amostra_a_cada_segundo_sem_mudancas_reiniciarem_a_cadencia(tmp_path):
@@ -325,6 +327,42 @@ def test_particiona_por_data_e_simbolo_utc_e_declara_shadow_sem_promocao(tmp_pat
             "features": "features.jsonl.gz",
             "labels": "labels.jsonl.gz",
         }
+        assert (pasta / "report.json").is_file()
+        assert (pasta / "report.md").is_file()
+
+
+def test_replays_repetidos_ficam_isolados_por_run_e_sem_ids_duplicados(tmp_path):
+    for run_id in ("replay-001", "replay-002"):
+        sidecar = SidecarShadow(
+            tmp_path,
+            ConfigShadow(intervalo_amostra_ns=100 * S, horizontes_s=(1,)),
+            run_id=run_id,
+        )
+        sidecar.observar(amostra(T0, 100))
+        sidecar.observar(amostra(T0 + S, 101))
+        sidecar.finalizar()
+
+    ids_por_run = []
+    for run_id in ("replay-001", "replay-002"):
+        pasta = tmp_path / "runs" / run_id / "2026-08-24" / "WDOQ26"
+        ids = {registro["id_amostra"] for registro in ler(pasta / "features.jsonl.gz")}
+        ids_por_run.append(ids)
+        run = json.loads(
+            (tmp_path / "runs" / run_id / "run.json").read_text(encoding="utf-8")
+        )
+        assert run["status"] == "FINALIZED"
+        assert json.loads((pasta / "report.json").read_text(encoding="utf-8"))[
+            "run_id"
+        ] == run_id
+    assert ids_por_run[0].isdisjoint(ids_por_run[1])
+
+
+def test_run_id_finalizado_e_imutavel(tmp_path):
+    sidecar = SidecarShadow(tmp_path, run_id="imutavel-1")
+    sidecar.observar(amostra(T0))
+    sidecar.finalizar()
+    with pytest.raises(FileExistsError, match="imutavel"):
+        SidecarShadow(tmp_path, run_id="imutavel-1")
 
 
 def test_rejeita_evento_fora_de_ordem_e_limita_numero_de_simbolos(tmp_path):

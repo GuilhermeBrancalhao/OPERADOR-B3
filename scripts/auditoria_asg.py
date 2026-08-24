@@ -30,6 +30,8 @@ from fluxopro.shadow.schema import validar_manifesto, validar_registro
 COLECOES_ESPERADAS = frozenset({"features", "labels"})
 ARQUIVOS_ESPERADOS = {"features": "features.jsonl.gz", "labels": "labels.jsonl.gz"}
 ARQUIVO_MANIFESTO = "shadow_manifest.json"
+ARQUIVOS_RELATORIO = ("report.json", "report.md")
+_DATA_PARTICAO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 MAX_ACHADOS = 1_000
 MAX_LINHA_BYTES = 4 * 1024 * 1024
 
@@ -152,8 +154,13 @@ def _auditar_particoes_detalhado(
     if not shadow_dir.exists():
         return [Achado("SHADOW_AUSENTE", str(shadow_dir), "diretorio nao existe")], 0, 0
     n_particoes = n_registros = 0
-    for data_dir in (item for item in shadow_dir.iterdir() if item.is_dir()):
-        for symbol_dir in (item for item in data_dir.iterdir() if item.is_dir()):
+    candidatos: set[Path] = set()
+    for item in shadow_dir.rglob("*"):
+        if item.is_dir() and _DATA_PARTICAO.fullmatch(item.parent.name):
+            candidatos.add(item)
+    for symbol_dir in sorted(candidatos):
+        data_dir = symbol_dir.parent
+        if symbol_dir.is_dir():
             n_particoes += 1
             n_registros += _auditar_particao(
                 shadow_dir, data_dir, symbol_dir, achados
@@ -206,6 +213,30 @@ def _auditar_particao(
                 "layout deve ser data/symbol e coincidir com manifesto",
             ),
         )
+    run_path = data_dir.parent / "run.json"
+    run_meta = _ler_json(run_path, shadow_dir, achados) if run_path.is_file() else None
+    if run_meta is None:
+        _add(
+            achados,
+            Achado(
+                "RUN_MANIFEST_AUSENTE",
+                data_dir.parent.relative_to(shadow_dir).as_posix(),
+                "particao deve pertencer a uma execucao isolada e persistida",
+            ),
+        )
+    elif not isinstance(run_meta, dict) or (
+        run_meta.get("status") != "FINALIZED"
+        or run_meta.get("run_id") != data_dir.parent.name
+        or run_meta.get("promocao_automatica") is not False
+    ):
+        _add(
+            achados,
+            Achado(
+                "RUN_MANIFEST_INVALIDO",
+                run_path.relative_to(shadow_dir).as_posix(),
+                "run_id, status final ou bloqueio de promocao invalido",
+            ),
+        )
     paths = {
         nome: symbol_dir / arquivo for nome, arquivo in ARQUIVOS_ESPERADOS.items()
     }
@@ -221,6 +252,38 @@ def _auditar_particao(
             )
     if not all(caminho.is_file() for caminho in paths.values()):
         return 0
+    for nome in ARQUIVOS_RELATORIO:
+        caminho = symbol_dir / nome
+        if not caminho.is_file():
+            _add(
+                achados,
+                Achado(
+                    "RELATORIO_AUSENTE",
+                    caminho.relative_to(shadow_dir).as_posix(),
+                    "finalizacao shadow deve produzir report.json e report.md",
+                ),
+            )
+    report_json = symbol_dir / "report.json"
+    if report_json.is_file():
+        relatorio = _ler_json(report_json, shadow_dir, achados)
+        if not isinstance(relatorio, dict) or (
+            relatorio.get("status") != "FINALIZED"
+            or relatorio.get("data") != data_dir.name
+            or relatorio.get("symbol") != symbol_dir.name
+            or (
+                isinstance(run_meta, dict)
+                and relatorio.get("run_id") != run_meta.get("run_id")
+            )
+            or relatorio.get("promocao", {}).get("aplicacao_automatica") is not False
+        ):
+            _add(
+                achados,
+                Achado(
+                    "RELATORIO_INVALIDO",
+                    report_json.relative_to(shadow_dir).as_posix(),
+                    "status, particao ou bloqueio de promocao invalido",
+                ),
+            )
     return _validar_streams_exatos(paths, shadow_dir, achados, manifesto)
 
 
@@ -664,6 +727,11 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--raiz", type=Path, default=Path.cwd())
     parser.add_argument("--shadow-dir", type=Path)
     parser.add_argument("--report-dir", type=Path)
+    parser.add_argument(
+        "--exigir-shadow",
+        action="store_true",
+        help="falha quando --shadow-dir não foi fornecido ou não foi aprovado",
+    )
     parser.add_argument("--permitir-teste", action="append", default=[])
     return parser
 
@@ -686,7 +754,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.report_dir is not None:
         report_json, report_md = gerar_relatorios(relatorio, args.report_dir)
         print(f"REPORTS: {report_json} | {report_md}")
-    return 0 if relatorio.aprovado else 1
+    aprovado = relatorio.aprovado and (
+        not args.exigir_shadow or relatorio.status_shadow == "PASS"
+    )
+    return 0 if aprovado else 1
 
 
 if __name__ == "__main__":
