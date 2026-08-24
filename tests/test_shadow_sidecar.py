@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import math
 from datetime import datetime, timezone
 
 import pytest
@@ -28,6 +29,7 @@ def amostra(
     direcao: Side | None = None,
     alvo: int | None = None,
     invalidacao: int | None = None,
+    qualidade: dict | None = None,
 ) -> AmostraFeatures:
     return AmostraFeatures(
         timestamp_ns=timestamp_ns,
@@ -36,7 +38,7 @@ def amostra(
         estado=estado,
         direcao=direcao,
         features={"delta": price - 100},
-        qualidade_origem={"feed": "OK"},
+        qualidade_origem=qualidade if qualidade is not None else {"feed": "OK"},
         alvo_preco_ticks=alvo,
         invalidacao_preco_ticks=invalidacao,
     )
@@ -48,7 +50,7 @@ def ler(caminho):
 
 
 def particao(tmp_path, symbol="WDOQ26", data="2026-08-24"):
-    return tmp_path / symbol / data
+    return tmp_path / data / symbol
 
 
 def test_amostra_a_cada_segundo_sem_mudancas_reiniciarem_a_cadencia(tmp_path):
@@ -138,6 +140,118 @@ def test_mfe_mae_alvo_invalidacao_duracao_e_qualidade(tmp_path):
     assert label["duracao_observada_ns"] == S
     assert label["qualidade"] == "COMPLETA"
     assert label["qualidade_origem"] == {"feed": "OK"}
+    assert label["primeiro_toque"] == "ALVO"
+
+
+def test_qualidade_feed_e_agregada_durante_horizonte_sem_lookahead(tmp_path):
+    lado = SidecarShadow(
+        tmp_path,
+        ConfigShadow(intervalo_amostra_ns=100 * S, horizontes_s=(1,)),
+    )
+    lado.observar(
+        amostra(
+            T0,
+            qualidade={"state": "connected", "latency_ns": 10, "sequence_gaps": 0},
+        )
+    )
+    lado.observar(
+        amostra(
+            T0 + 500_000_000,
+            qualidade={"state": "degraded", "latency_ns": 30, "sequence_gaps": 2},
+        )
+    )
+    # Esta qualidade esta depois de 1s: fecha a janela, mas nao entra nela.
+    lado.observar(
+        amostra(
+            T0 + 1_200_000_000,
+            qualidade={"state": "error", "latency_ns": 999, "sequence_gaps": 99},
+        )
+    )
+    lado.flush()
+
+    qualidade = ler(particao(tmp_path) / "labels.jsonl.gz")[0][
+        "qualidade_feed_horizonte"
+    ]
+    assert qualidade == {
+        "n_observacoes": 2,
+        "n_sem_snapshot": 0,
+        "estado_pior": "DEGRADADA",
+        "estados": {"OK": 1, "DEGRADADA": 1, "ERRO": 0, "DESCONHECIDA": 0},
+        "latencia_min_ns": 10,
+        "latencia_max_ns": 30,
+        "latencia_media_ns": 20.0,
+        "sequence_gaps_max": 2,
+        "missing_events_max": None,
+        "duplicates_max": None,
+        "delayed_events_max": None,
+        "unknown_aggressors_max": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "direcao,alvo,invalidacao",
+    [
+        (Side.BUY, 100, 98),
+        (Side.BUY, 103, 100),
+        (Side.SELL, 100, 103),
+        (Side.SELL, 98, 100),
+        (None, 103, 98),
+    ],
+)
+def test_niveis_buy_sell_invertidos_ou_sem_direcao_sao_rejeitados(
+    direcao, alvo, invalidacao
+):
+    with pytest.raises(ValueError):
+        amostra(T0, 100, direcao=direcao, alvo=alvo, invalidacao=invalidacao)
+
+
+def test_timestamp_de_admissao_nunca_conta_como_toque(tmp_path):
+    lado = SidecarShadow(
+        tmp_path,
+        ConfigShadow(intervalo_amostra_ns=100 * S, horizontes_s=(1,)),
+    )
+    lado.observar(amostra(T0, 100, direcao=Side.BUY, alvo=103, invalidacao=98))
+    lado.observar(amostra(T0, 103))  # mesmo timestamp: nao e futuro
+    lado.observar(amostra(T0 + 100_000_000, 103))
+    lado.observar(amostra(T0 + S, 101))
+    lado.flush()
+    label = ler(particao(tmp_path) / "labels.jsonl.gz")[0]
+    assert label["alvo_timestamp_ns"] == T0 + 100_000_000
+    assert label["duracao_ate_alvo_ns"] == 100_000_000
+
+
+@pytest.mark.parametrize(
+    "eventos,esperado",
+    [
+        ([(100_000_000, 103), (200_000_000, 98)], "ALVO"),
+        ([(100_000_000, 98), (200_000_000, 103)], "INVALIDACAO"),
+        ([(100_000_000, 103), (100_000_000, 98)], "EMPATE"),
+        ([(100_000_000, 101)], "NENHUM"),
+    ],
+)
+def test_primeiro_toque_explicito(tmp_path, eventos, esperado):
+    lado = SidecarShadow(
+        tmp_path,
+        ConfigShadow(intervalo_amostra_ns=100 * S, horizontes_s=(1,)),
+    )
+    lado.observar(amostra(T0, 100, direcao=Side.BUY, alvo=103, invalidacao=98))
+    for deslocamento, preco in eventos:
+        lado.observar(amostra(T0 + deslocamento, preco))
+    lado.observar(amostra(T0 + S, 100))
+    lado.flush()
+    label = ler(particao(tmp_path) / "labels.jsonl.gz")[0]
+    assert label["primeiro_toque"] == esperado
+
+
+def test_horizontes_exigem_inteiros_e_json_rejeita_nao_finitos(tmp_path):
+    with pytest.raises(ValueError, match="inteiros positivos"):
+        ConfigShadow(horizontes_s=(1, 3.5))
+    with pytest.raises(ValueError, match="NaN|infinito"):
+        AmostraFeatures(T0, "WDOQ26", 100, "NENHUM", features={"x": math.nan})
+    with pytest.raises(ValueError, match="NaN|infinito"):
+        AmostraFeatures(
+            T0, "WDOQ26", 100, "NENHUM", qualidade_origem={"latency": math.inf}
+        )
 
 
 def test_cinco_horizontes_padrao_sao_emitidos_somente_quando_conhecidos(tmp_path):
@@ -184,7 +298,7 @@ def test_fila_pendente_e_limitada_e_descarte_fica_visivel_no_feature(tmp_path):
     assert [f["label_admitida"] for f in features] == [True, True, False, False, False]
 
 
-def test_particiona_por_simbolo_e_data_utc_e_declara_shadow_sem_promocao(tmp_path):
+def test_particiona_por_data_e_simbolo_utc_e_declara_shadow_sem_promocao(tmp_path):
     t_fim = int(datetime(2026, 8, 24, 23, 59, 59, tzinfo=timezone.utc).timestamp() * S)
     sidecar = SidecarShadow(
         tmp_path, ConfigShadow(intervalo_amostra_ns=1, horizontes_s=(1,))
@@ -205,6 +319,8 @@ def test_particiona_por_simbolo_e_data_utc_e_declara_shadow_sem_promocao(tmp_pat
         manifesto = json.loads((pasta / "shadow_manifest.json").read_text(encoding="utf-8"))
         assert manifesto["modo"] == "shadow"
         assert manifesto["promocao_automatica"] is False
+        assert manifesto["config_versao"] == "shadow-v2"
+        assert manifesto["politica_promocao"]["aplicacao_automatica"] is False
         assert manifesto["colecoes"] == {
             "features": "features.jsonl.gz",
             "labels": "labels.jsonl.gz",

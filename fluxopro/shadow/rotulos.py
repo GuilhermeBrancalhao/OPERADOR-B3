@@ -4,9 +4,90 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+from enum import Enum
+from typing import Mapping
 
 from fluxopro.core.eventos import Side
-from fluxopro.shadow.modelos import AmostraFeatures, ConfigShadow, QualidadeRotulo
+from fluxopro.shadow.modelos import (
+    SCHEMA_VERSAO,
+    AmostraFeatures,
+    ConfigShadow,
+    QualidadeRotulo,
+)
+
+
+_ESTADOS_QUALIDADE = ("OK", "DEGRADADA", "ERRO", "DESCONHECIDA")
+_CONTADORES_QUALIDADE = (
+    "sequence_gaps",
+    "missing_events",
+    "duplicates",
+    "delayed_events",
+    "unknown_aggressors",
+)
+
+
+@dataclass(slots=True)
+class _QualidadeHorizonte:
+    n_observacoes: int = 0
+    n_sem_snapshot: int = 0
+    estados: dict[str, int] = field(
+        default_factory=lambda: {estado: 0 for estado in _ESTADOS_QUALIDADE}
+    )
+    latencia_min_ns: int | None = None
+    latencia_max_ns: int | None = None
+    latencia_soma_ns: int = 0
+    latencia_n: int = 0
+    maximos: dict[str, int | None] = field(
+        default_factory=lambda: {nome: None for nome in _CONTADORES_QUALIDADE}
+    )
+
+    def incorporar(self, snapshot: Mapping[str, object]) -> None:
+        self.n_observacoes += 1
+        if not snapshot:
+            self.n_sem_snapshot += 1
+        estado = _estado_qualidade(snapshot)
+        self.estados[estado] += 1
+        latencia = _inteiro_qualidade(snapshot, "latency_ns", "latencia_ns")
+        if latencia is not None:
+            self.latencia_min_ns = (
+                latencia
+                if self.latencia_min_ns is None
+                else min(self.latencia_min_ns, latencia)
+            )
+            self.latencia_max_ns = (
+                latencia
+                if self.latencia_max_ns is None
+                else max(self.latencia_max_ns, latencia)
+            )
+            self.latencia_soma_ns += latencia
+            self.latencia_n += 1
+        for nome in _CONTADORES_QUALIDADE:
+            valor = _inteiro_qualidade(snapshot, nome)
+            if valor is not None:
+                atual = self.maximos[nome]
+                self.maximos[nome] = valor if atual is None else max(atual, valor)
+
+    def registro(self) -> dict[str, object]:
+        pior = max(
+            _ESTADOS_QUALIDADE,
+            key=lambda estado: (_rank_qualidade(estado) if self.estados[estado] else -1),
+        )
+        return {
+            "n_observacoes": self.n_observacoes,
+            "n_sem_snapshot": self.n_sem_snapshot,
+            "estado_pior": pior,
+            "estados": dict(self.estados),
+            "latencia_min_ns": self.latencia_min_ns,
+            "latencia_max_ns": self.latencia_max_ns,
+            "latencia_media_ns": (
+                self.latencia_soma_ns / self.latencia_n if self.latencia_n else None
+            ),
+            "sequence_gaps_max": self.maximos["sequence_gaps"],
+            "missing_events_max": self.maximos["missing_events"],
+            "duplicates_max": self.maximos["duplicates"],
+            "delayed_events_max": self.maximos["delayed_events"],
+            "unknown_aggressors_max": self.maximos["unknown_aggressors"],
+        }
 
 
 @dataclass(slots=True)
@@ -17,6 +98,7 @@ class _Horizonte:
     maximo: int
     ultimo_preco: int
     ultimo_timestamp_ns: int
+    qualidade_feed: _QualidadeHorizonte = field(default_factory=_QualidadeHorizonte)
     alvo_timestamp_ns: int | None = None
     invalidacao_timestamp_ns: int | None = None
 
@@ -83,12 +165,22 @@ class RotuladorCausal:
         )
         for horizonte in horizontes:
             self._incorporar(
-                amostra, horizonte, amostra.timestamp_ns, amostra.price_ticks
+                amostra,
+                horizonte,
+                amostra.timestamp_ns,
+                amostra.price_ticks,
+                amostra.qualidade_origem,
             )
         fila.append(_Pendente(id_amostra, amostra, data_amostra, horizontes))
         return True
 
-    def avancar(self, symbol: str, timestamp_ns: int, price_ticks: int) -> list[dict]:
+    def avancar(
+        self,
+        symbol: str,
+        timestamp_ns: int,
+        price_ticks: int,
+        qualidade_feed: Mapping[str, object],
+    ) -> list[dict]:
         """Avanca o relogio de um simbolo e devolve rotulos agora conhecidos."""
         fila = self._pendentes.get(symbol)
         if not fila:
@@ -103,7 +195,13 @@ class RotuladorCausal:
                 if timestamp_ns > horizonte.limite_ns:
                     prontos.append(self._fechar(pendente, horizonte, censurada=False))
                     continue
-                self._incorporar(pendente.amostra, horizonte, timestamp_ns, price_ticks)
+                self._incorporar(
+                    pendente.amostra,
+                    horizonte,
+                    timestamp_ns,
+                    price_ticks,
+                    qualidade_feed,
+                )
                 if timestamp_ns == horizonte.limite_ns:
                     prontos.append(self._fechar(pendente, horizonte, censurada=False))
                 else:
@@ -137,11 +235,17 @@ class RotuladorCausal:
         horizonte: _Horizonte,
         timestamp_ns: int,
         price_ticks: int,
+        qualidade_feed: Mapping[str, object],
     ) -> None:
         horizonte.minimo = min(horizonte.minimo, price_ticks)
         horizonte.maximo = max(horizonte.maximo, price_ticks)
         horizonte.ultimo_preco = price_ticks
         horizonte.ultimo_timestamp_ns = timestamp_ns
+        horizonte.qualidade_feed.incorporar(qualidade_feed)
+        # O retrato de admissao define preco e qualidade de origem, mas nao e
+        # futuro. Nem alvo nem invalidacao podem nascer com duracao zero.
+        if timestamp_ns <= amostra.timestamp_ns:
+            return
         if (
             horizonte.alvo_timestamp_ns is None
             and amostra.alvo_preco_ticks is not None
@@ -190,7 +294,7 @@ class RotuladorCausal:
             mae = a.price_ticks - horizonte.minimo
 
         return {
-            "schema_versao": 1,
+            "schema_versao": SCHEMA_VERSAO,
             "tipo": "label_futuro",
             "id_amostra": pendente.id_amostra,
             "symbol": a.symbol,
@@ -220,6 +324,7 @@ class RotuladorCausal:
             "invalidacao_atingida": horizonte.invalidacao_timestamp_ns is not None,
             "alvo_timestamp_ns": horizonte.alvo_timestamp_ns,
             "invalidacao_timestamp_ns": horizonte.invalidacao_timestamp_ns,
+            "primeiro_toque": _primeiro_toque(horizonte),
             "duracao_ate_alvo_ns": _duracao(a, horizonte.alvo_timestamp_ns),
             "duracao_ate_invalidacao_ns": _duracao(
                 a, horizonte.invalidacao_timestamp_ns
@@ -227,9 +332,11 @@ class RotuladorCausal:
             "qualidade": qualidade.value,
             "atraso_endpoint_ns": atraso_ns,
             "qualidade_origem": dict(a.qualidade_origem),
+            "qualidade_feed_horizonte": horizonte.qualidade_feed.registro(),
             "causal": True,
             "modo": "shadow",
             "promocao_automatica": False,
+            "config_versao": self.config.config_versao,
         }
 
 
@@ -243,3 +350,50 @@ def _tocou(direcao: Side | None, price: int, nivel: int, *, alvo: bool) -> bool:
     if direcao is Side.SELL:
         return price <= nivel if alvo else price >= nivel
     return price == nivel
+
+
+def _primeiro_toque(horizonte: _Horizonte) -> str:
+    alvo = horizonte.alvo_timestamp_ns
+    invalidacao = horizonte.invalidacao_timestamp_ns
+    if alvo is None and invalidacao is None:
+        return "NENHUM"
+    if alvo is not None and invalidacao is not None:
+        if alvo == invalidacao:
+            return "EMPATE"
+        return "ALVO" if alvo < invalidacao else "INVALIDACAO"
+    return "ALVO" if alvo is not None else "INVALIDACAO"
+
+
+def _valor_texto(valor: object) -> str:
+    if isinstance(valor, Enum):
+        valor = valor.value
+    return str(valor).strip().upper()
+
+
+def _estado_qualidade(snapshot: Mapping[str, object]) -> str:
+    bruto = next(
+        (snapshot[chave] for chave in ("state", "estado", "feed") if chave in snapshot),
+        None,
+    )
+    texto = _valor_texto(bruto) if bruto is not None else ""
+    if texto in {"OK", "CONNECTED", "CONECTADO", "HEALTHY", "SAUDAVEL"}:
+        return "OK"
+    if texto in {"DEGRADED", "DEGRADADO", "DEGRADADA", "DELAYED", "ATRASADO"}:
+        return "DEGRADADA"
+    if texto in {"ERROR", "ERRO", "CLOSED", "ENCERRADO", "STOPPED", "PARADO"}:
+        return "ERRO"
+    return "DESCONHECIDA"
+
+
+def _rank_qualidade(estado: str) -> int:
+    return {"OK": 0, "DESCONHECIDA": 1, "DEGRADADA": 2, "ERRO": 3}[estado]
+
+
+def _inteiro_qualidade(
+    snapshot: Mapping[str, object], *chaves: str
+) -> int | None:
+    for chave in chaves:
+        valor = snapshot.get(chave)
+        if type(valor) is int and valor >= 0:
+            return valor
+    return None

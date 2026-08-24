@@ -1,16 +1,7 @@
-"""Auditoria automatizada dos guardrails ASG-like.
+"""Auditoria ASG: ordem, schema shadow streaming, reports e Human Gate.
 
-Verifica duas fronteiras independentes:
-
-* chamadas de execucao de ordens (inclusive nomes equivalentes e ``getattr``
-  dinamico) fora de uma allowlist fechada de testes;
-* particoes do sidecar com manifesto shadow e as colecoes JSONL.GZ esperadas.
-
-Uso::
-
-    python scripts/auditoria_asg.py --raiz . --shadow-dir dados/shadow
-
-O codigo de saida e 0 somente quando nenhuma violacao for encontrada.
+Sem ``--shadow-dir`` o resultado shadow e explicitamente ``SKIPPED``. Use
+``--report-dir`` para materializar ``report.json`` e ``report.md``.
 """
 
 from __future__ import annotations
@@ -21,20 +12,27 @@ import fnmatch
 import gzip
 import json
 import re
-from dataclasses import dataclass
+import sqlite3
+import sys
+import tempfile
+from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Iterator
+
+_RAIZ_SCRIPT = Path(__file__).resolve().parent.parent
+if str(_RAIZ_SCRIPT) not in sys.path:
+    sys.path.insert(0, str(_RAIZ_SCRIPT))
+
+from fluxopro.shadow.governanca import politica_promocao_manifesto
+from fluxopro.shadow.schema import validar_manifesto, validar_registro
 
 
 COLECOES_ESPERADAS = frozenset({"features", "labels"})
-ARQUIVOS_ESPERADOS = {
-    "features": "features.jsonl.gz",
-    "labels": "labels.jsonl.gz",
-}
+ARQUIVOS_ESPERADOS = {"features": "features.jsonl.gz", "labels": "labels.jsonl.gz"}
 ARQUIVO_MANIFESTO = "shadow_manifest.json"
+MAX_ACHADOS = 1_000
+MAX_LINHA_BYTES = 4 * 1024 * 1024
 
-# Lista fechada: estes testes precisam citar APIs proibidas para provar que a
-# propria auditoria reprova mutacoes. Um teste novo nao ganha excecao por estar
-# sob tests/; precisa entrar conscientemente aqui.
 ALLOWLIST_TESTES_PADRAO = (
     "tests/test_sem_execucao.py",
     "tests/test_auditoria_asg.py",
@@ -42,38 +40,27 @@ ALLOWLIST_TESTES_PADRAO = (
 
 _NOMES_EXECUCAO = frozenset(
     {
-        "order_send",
-        "order_check",
-        "send_order",
-        "place_order",
-        "submit_order",
-        "create_order",
-        "new_order",
-        "cancel_order",
-        "delete_order",
-        "replace_order",
-        "modify_order",
-        "execute_order",
-        "placeorder",
-        "submitorder",
-        "cancelorder",
-        "open_position",
-        "close_position",
-        "enviar_ordem",
-        "criar_ordem",
-        "cancelar_ordem",
-        "alterar_ordem",
-        "executar_ordem",
-        "abrir_posicao",
-        "fechar_posicao",
+        "order_send", "order_check", "send_order", "place_order",
+        "submit_order", "create_order", "new_order", "cancel_order",
+        "delete_order", "replace_order", "modify_order", "execute_order",
+        "placeorder", "submitorder", "cancelorder", "open_position",
+        "close_position", "enviar_ordem", "criar_ordem", "cancelar_ordem",
+        "alterar_ordem", "executar_ordem", "abrir_posicao", "fechar_posicao",
     }
+)
+_PACOTES_CORRETORA = (
+    "MetaTrader5", "alpaca", "alpaca_trade_api", "ib_insync", "ibapi",
+    "ccxt", "binance",
 )
 _CONSTANTE_EXECUCAO = re.compile(
     r"^(TRADE_ACTION_(DEAL|PENDING|MODIFY|REMOVE)|ORDER_TYPE_(BUY|SELL).*)$",
     re.IGNORECASE,
 )
-_RADICAL_DINAMICO = re.compile(
-    r"(order|ordem|position|posicao|posição|trade_action)", re.IGNORECASE
+_RADICAL_CORRETORA = re.compile(
+    r"(mt5|broker|brokerage|corretora|exchange|trading|order|ordem)", re.IGNORECASE
+)
+_ENDPOINT_ORDEM = re.compile(
+    r"/(orders?|positions?|trades?)(?:[/?#]|$)", re.IGNORECASE
 )
 
 
@@ -94,10 +81,13 @@ class RelatorioAuditoria:
     achados: tuple[Achado, ...]
     arquivos_python_inspecionados: int
     particoes_shadow_inspecionadas: int
+    registros_shadow_inspecionados: int
+    status_ordens: str
+    status_shadow: str
 
     @property
     def aprovado(self) -> bool:
-        return not self.achados
+        return self.status_ordens == "PASS" and self.status_shadow != "FAIL"
 
 
 def auditar_repositorio(
@@ -108,14 +98,24 @@ def auditar_repositorio(
     raiz = Path(raiz).resolve()
     achados_ordem, n_python = auditar_ausencia_ordens(raiz, allowlist_testes)
     achados_shadow: list[Achado] = []
-    n_particoes = 0
+    n_particoes = n_registros = 0
+    status_shadow = "SKIPPED"
     if shadow_dir is not None:
         caminho_shadow = Path(shadow_dir)
         if not caminho_shadow.is_absolute():
             caminho_shadow = raiz / caminho_shadow
-        achados_shadow, n_particoes = auditar_particoes_shadow(caminho_shadow)
+        achados_shadow, n_particoes, n_registros = _auditar_particoes_detalhado(
+            caminho_shadow
+        )
+        status_shadow = "FAIL" if achados_shadow else "PASS"
+    achados = tuple((achados_ordem + achados_shadow)[:MAX_ACHADOS])
     return RelatorioAuditoria(
-        tuple(achados_ordem + achados_shadow), n_python, n_particoes
+        achados,
+        n_python,
+        n_particoes,
+        n_registros,
+        "FAIL" if achados_ordem else "PASS",
+        status_shadow,
     )
 
 
@@ -133,65 +133,450 @@ def auditar_ausencia_ordens(
         try:
             arvore = ast.parse(caminho.read_text(encoding="utf-8"), str(caminho))
         except (OSError, UnicodeDecodeError, SyntaxError) as erro:
-            achados.append(Achado("PY_INVALIDO", relativo, str(erro)))
+            _add(achados, Achado("PY_INVALIDO", relativo, str(erro)))
             continue
-        achados.extend(_achados_execucao(arvore, relativo))
+        for achado in _achados_execucao(arvore, relativo):
+            _add(achados, achado)
     return achados, inspecionados
 
 
 def auditar_particoes_shadow(shadow_dir: Path) -> tuple[list[Achado], int]:
+    achados, particoes, _registros = _auditar_particoes_detalhado(shadow_dir)
+    return achados, particoes
+
+
+def _auditar_particoes_detalhado(
+    shadow_dir: Path,
+) -> tuple[list[Achado], int, int]:
     achados: list[Achado] = []
     if not shadow_dir.exists():
-        return [Achado("SHADOW_AUSENTE", str(shadow_dir), "diretorio nao existe")], 0
-
-    particoes = sorted(
-        dia
-        for symbol in shadow_dir.iterdir()
-        if symbol.is_dir()
-        for dia in symbol.iterdir()
-        if dia.is_dir()
-    )
-    if not particoes:
-        return [
+        return [Achado("SHADOW_AUSENTE", str(shadow_dir), "diretorio nao existe")], 0, 0
+    n_particoes = n_registros = 0
+    for data_dir in (item for item in shadow_dir.iterdir() if item.is_dir()):
+        for symbol_dir in (item for item in data_dir.iterdir() if item.is_dir()):
+            n_particoes += 1
+            n_registros += _auditar_particao(
+                shadow_dir, data_dir, symbol_dir, achados
+            )
+    if n_particoes == 0:
+        _add(
+            achados,
             Achado(
-                "PARTICAO_AUSENTE",
-                str(shadow_dir),
-                "nenhuma particao symbol/data com manifesto foi encontrada",
-            )
-        ], 0
+                "PARTICAO_AUSENTE", str(shadow_dir),
+                "nenhuma particao data/symbol foi encontrada",
+            ),
+        )
+    return achados, n_particoes, n_registros
 
-    for particao in particoes:
-        manifesto_path = particao / ARQUIVO_MANIFESTO
-        relativo = manifesto_path.relative_to(shadow_dir).as_posix()
-        if not manifesto_path.is_file():
-            achados.append(
+
+def _auditar_particao(
+    shadow_dir: Path, data_dir: Path, symbol_dir: Path, achados: list[Achado]
+) -> int:
+    relativo_dir = symbol_dir.relative_to(shadow_dir).as_posix()
+    manifesto_path = symbol_dir / ARQUIVO_MANIFESTO
+    if not manifesto_path.is_file():
+        _add(
+            achados,
+            Achado(
+                "MANIFESTO_AUSENTE", f"{relativo_dir}/{ARQUIVO_MANIFESTO}",
+                "particao sem manifesto",
+            ),
+        )
+        return 0
+    manifesto = _ler_json(manifesto_path, shadow_dir, achados)
+    if manifesto is None:
+        return 0
+    for erro in validar_manifesto(manifesto):
+        codigo = (
+            "PROMOCAO_AUTOMATICA"
+            if erro == "promocao_automatica deve ser false"
+            else "POLITICA_PROMOCAO_INVALIDA"
+            if "politica_promocao" in erro
+            else "MANIFESTO_SCHEMA"
+        )
+        _add(achados, Achado(codigo, relativo_dir, erro))
+    if isinstance(manifesto, dict) and (
+        manifesto.get("data") != data_dir.name
+        or manifesto.get("symbol") != symbol_dir.name
+    ):
+        _add(
+            achados,
+            Achado(
+                "PARTICAO_DIVERGENTE", relativo_dir,
+                "layout deve ser data/symbol e coincidir com manifesto",
+            ),
+        )
+    paths = {
+        nome: symbol_dir / arquivo for nome, arquivo in ARQUIVOS_ESPERADOS.items()
+    }
+    for colecao, caminho in paths.items():
+        if not caminho.is_file():
+            _add(
+                achados,
                 Achado(
-                    "MANIFESTO_AUSENTE",
-                    relativo,
-                    "particao sem shadow_manifest.json",
-                )
+                    "ARQUIVO_AUSENTE",
+                    caminho.relative_to(shadow_dir).as_posix(),
+                    f"colecao {colecao} ausente",
+                ),
             )
-            continue
-        try:
-            manifesto = json.loads(manifesto_path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as erro:
-            achados.append(Achado("MANIFESTO_INVALIDO", relativo, str(erro)))
-            continue
-        _validar_manifesto(manifesto_path, relativo, manifesto, achados)
-        _validar_colecoes(manifesto_path.parent, manifesto, achados, shadow_dir)
-    return achados, len(particoes)
+    if not all(caminho.is_file() for caminho in paths.values()):
+        return 0
+    return _validar_streams_exatos(paths, shadow_dir, achados, manifesto)
 
 
-def _arquivos_python(raiz: Path):
+def _validar_streams_exatos(
+    paths: dict[str, Path],
+    shadow_dir: Path,
+    achados: list[Achado],
+    manifesto: object,
+) -> int:
+    n_registros = 0
+    with tempfile.TemporaryDirectory(prefix="auditoria-asg-") as temporario:
+        banco = sqlite3.connect(str(Path(temporario) / "ids.sqlite3"))
+        banco.execute("CREATE TABLE features (id TEXT PRIMARY KEY)")
+        for n, registro in _iter_jsonl_gz(paths["features"], shadow_dir, achados):
+            n_registros += 1
+            _validar_linha(
+                "features", paths["features"], n, registro, shadow_dir, achados,
+                manifesto,
+            )
+            id_amostra = registro.get("id_amostra") if isinstance(registro, dict) else None
+            if isinstance(id_amostra, str):
+                try:
+                    banco.execute("INSERT INTO features(id) VALUES (?)", (id_amostra,))
+                except sqlite3.IntegrityError:
+                    _add(
+                        achados,
+                        Achado(
+                            "ID_DUPLICADO",
+                            paths["features"].relative_to(shadow_dir).as_posix(),
+                            id_amostra,
+                            n,
+                        ),
+                    )
+        banco.commit()
+        for n, registro in _iter_jsonl_gz(paths["labels"], shadow_dir, achados):
+            n_registros += 1
+            _validar_linha(
+                "labels", paths["labels"], n, registro, shadow_dir, achados,
+                manifesto,
+            )
+            id_amostra = registro.get("id_amostra") if isinstance(registro, dict) else None
+            if isinstance(id_amostra, str):
+                existe = banco.execute(
+                    "SELECT 1 FROM features WHERE id = ?", (id_amostra,)
+                ).fetchone()
+                if existe is None:
+                    _add(
+                        achados,
+                        Achado(
+                            "LABEL_ORFAO",
+                            paths["labels"].relative_to(shadow_dir).as_posix(),
+                            id_amostra,
+                            n,
+                        ),
+                    )
+        banco.close()
+    return n_registros
+
+
+def _validar_linha(
+    colecao: str,
+    caminho: Path,
+    linha: int,
+    registro: object,
+    shadow_dir: Path,
+    achados: list[Achado],
+    manifesto: object,
+) -> None:
+    for erro in validar_registro(colecao, registro):
+        codigo = (
+            "PROMOCAO_AUTOMATICA"
+            if erro == "promocao_automatica deve ser false"
+            else "REGISTRO_SCHEMA"
+        )
+        _add(
+            achados,
+            Achado(
+                codigo,
+                caminho.relative_to(shadow_dir).as_posix(),
+                erro,
+                linha,
+            ),
+        )
+    if not isinstance(registro, dict) or not isinstance(manifesto, dict):
+        return
+    data = registro.get("data", registro.get("data_amostra"))
+    if registro.get("symbol") != caminho.parent.name or data != caminho.parent.parent.name:
+        _add(
+            achados,
+            Achado(
+                "REGISTRO_PARTICAO",
+                caminho.relative_to(shadow_dir).as_posix(),
+                "symbol/data do registro divergem da particao",
+                linha,
+            ),
+        )
+    if registro.get("config_versao") != manifesto.get("config_versao"):
+        _add(
+            achados,
+            Achado(
+                "CONFIG_DIVERGENTE",
+                caminho.relative_to(shadow_dir).as_posix(),
+                "config_versao diverge do manifesto",
+                linha,
+            ),
+        )
+    horizontes = manifesto.get("horizontes_s")
+    if colecao == "features" and registro.get("horizontes_s") != horizontes:
+        _add(
+            achados,
+            Achado(
+                "HORIZONTES_DIVERGENTES",
+                caminho.relative_to(shadow_dir).as_posix(),
+                "feature diverge do manifesto",
+                linha,
+            ),
+        )
+    if colecao == "labels" and registro.get("horizonte_s") not in (horizontes or []):
+        _add(
+            achados,
+            Achado(
+                "HORIZONTE_NAO_DECLARADO",
+                caminho.relative_to(shadow_dir).as_posix(),
+                "label usa horizonte ausente do manifesto",
+                linha,
+            ),
+        )
+
+
+def _iter_jsonl_gz(
+    caminho: Path, shadow_dir: Path, achados: list[Achado]
+) -> Iterator[tuple[int, object]]:
+    relativo = caminho.relative_to(shadow_dir).as_posix()
+    try:
+        with gzip.open(caminho, "rb") as arquivo:
+            n = 0
+            while True:
+                bruto = arquivo.readline(MAX_LINHA_BYTES + 1)
+                if not bruto:
+                    break
+                n += 1
+                if len(bruto) > MAX_LINHA_BYTES and not bruto.endswith(b"\n"):
+                    _add(
+                        achados,
+                        Achado(
+                            "LINHA_EXCESSIVA", relativo,
+                            f"linha excede {MAX_LINHA_BYTES} bytes", n,
+                        ),
+                    )
+                    while bruto and not bruto.endswith(b"\n"):
+                        bruto = arquivo.readline(MAX_LINHA_BYTES + 1)
+                    continue
+                if not bruto.strip():
+                    continue
+                try:
+                    valor = json.loads(
+                        bruto.decode("utf-8"), parse_constant=_rejeitar_constante_json
+                    )
+                except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as erro:
+                    _add(achados, Achado("JSONL_INVALIDO", relativo, str(erro), n))
+                    continue
+                yield n, valor
+    except OSError as erro:
+        _add(achados, Achado("GZIP_INVALIDO", relativo, str(erro)))
+
+
+def _ler_json(caminho: Path, raiz: Path, achados: list[Achado]) -> object | None:
+    try:
+        return json.loads(
+            caminho.read_text(encoding="utf-8"),
+            parse_constant=_rejeitar_constante_json,
+        )
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as erro:
+        _add(
+            achados,
+            Achado(
+                "MANIFESTO_INVALIDO",
+                caminho.relative_to(raiz).as_posix(),
+                str(erro),
+            ),
+        )
+        return None
+
+
+def _rejeitar_constante_json(valor: str) -> None:
+    raise ValueError(f"constante JSON nao finita: {valor}")
+
+
+def _arquivos_python(raiz: Path) -> Iterator[Path]:
     ignorados = {".git", ".claude", ".venv", "venv", "build", "dist", "__pycache__"}
-    for caminho in sorted(raiz.rglob("*.py")):
-        try:
-            partes = caminho.relative_to(raiz).parts
-        except ValueError:
-            continue
+    for caminho in raiz.rglob("*.py"):
+        partes = caminho.relative_to(raiz).parts
         if any(parte in ignorados or parte.startswith(".") for parte in partes):
             continue
         yield caminho
+
+
+def _achados_execucao(arvore: ast.AST, caminho: str) -> list[Achado]:
+    achados: list[Achado] = []
+    taint, tem_corretora = _taint_corretora(arvore)
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Call):
+            _auditar_chamada(no, caminho, taint, tem_corretora, achados)
+        elif isinstance(no, ast.Attribute):
+            nome = no.attr.lower()
+            if nome in _NOMES_EXECUCAO or (
+                nome in {"buy", "sell", "market_order"}
+                and _expr_tainted(no.value, taint)
+            ):
+                _add(
+                    achados,
+                    Achado("API_ORDEM", caminho, f"referencia a {no.attr}", no.lineno),
+                )
+            elif _CONSTANTE_EXECUCAO.match(no.attr):
+                _add(
+                    achados,
+                    Achado("CONSTANTE_ORDEM", caminho, f"uso de {no.attr}", no.lineno),
+                )
+        elif isinstance(no, ast.Name) and _CONSTANTE_EXECUCAO.match(no.id):
+            _add(achados, Achado("CONSTANTE_ORDEM", caminho, f"uso de {no.id}", no.lineno))
+        elif isinstance(no, ast.ImportFrom):
+            for alias in no.names:
+                if alias.name.lower() in _NOMES_EXECUCAO:
+                    _add(
+                        achados,
+                        Achado("API_ORDEM", caminho, f"import de {alias.name}", no.lineno),
+                    )
+        elif isinstance(no, ast.Subscript) and _subscript_corretora(no, taint):
+            _add(
+                achados,
+                Achado(
+                    "API_CORRETORA_DINAMICA", caminho,
+                    "acesso por dicionario/indice sobre cliente de corretora", no.lineno,
+                ),
+            )
+    return list(dict.fromkeys(achados))
+
+
+def _auditar_chamada(
+    no: ast.Call,
+    caminho: str,
+    taint: set[str],
+    tem_corretora: bool,
+    achados: list[Achado],
+) -> None:
+    nome = _nome_chamada(no.func)
+    if isinstance(no.func, ast.Name) and nome and nome.lower() in _NOMES_EXECUCAO:
+        _add(achados, Achado("API_ORDEM", caminho, f"chamada de {nome}", no.lineno))
+    if (
+        tem_corretora
+        and isinstance(no.func, ast.Name)
+        and no.func.id in {"eval", "exec", "compile"}
+    ):
+        _add(
+            achados,
+            Achado("EXECUCAO_DINAMICA", caminho, f"uso de {no.func.id}", no.lineno),
+        )
+    base_reflexao: ast.expr | None = None
+    nome_reflexao: ast.expr | None = None
+    if nome == "getattr" and len(no.args) >= 2:
+        base_reflexao, nome_reflexao = no.args[0], no.args[1]
+    elif nome == "__getattribute__" and isinstance(no.func, ast.Attribute) and no.args:
+        base_reflexao, nome_reflexao = no.func.value, no.args[0]
+    elif nome == "attrgetter" and no.args:
+        nome_reflexao = no.args[0]
+    if nome_reflexao is not None:
+        alvo = _texto_constante(nome_reflexao)
+        base_suspeita = (
+            (base_reflexao is not None and _expr_tainted(base_reflexao, taint))
+            or tem_corretora
+        )
+        if alvo is not None and alvo.lower() in _NOMES_EXECUCAO:
+            _add(
+                achados,
+                Achado("API_ORDEM_DINAMICA", caminho, f"reflexao para {alvo}", no.lineno),
+            )
+        elif alvo is None and base_suspeita:
+            _add(
+                achados,
+                Achado(
+                    "API_CORRETORA_DINAMICA", caminho,
+                    "reflexao dinamica em modulo que importa corretora", no.lineno,
+                ),
+            )
+    if nome in {"__import__", "import_module"} and no.args:
+        modulo = _texto_constante(no.args[0])
+        if modulo is None or modulo.startswith(_PACOTES_CORRETORA):
+            _add(
+                achados,
+                Achado(
+                    "IMPORT_DINAMICO_CORRETORA", caminho,
+                    "import dinamico pode carregar API de corretora", no.lineno,
+                ),
+            )
+    if isinstance(no.func, ast.Attribute) and no.func.attr.lower() == "post" and no.args:
+        endpoint = _texto_constante(no.args[0])
+        if endpoint and _ENDPOINT_ORDEM.search(endpoint):
+            _add(achados, Achado("ENDPOINT_ORDEM", caminho, endpoint, no.lineno))
+
+
+def _taint_corretora(arvore: ast.AST) -> tuple[set[str], bool]:
+    taint: set[str] = set()
+    for no in ast.walk(arvore):
+        if isinstance(no, ast.Import):
+            for alias in no.names:
+                if alias.name.startswith(_PACOTES_CORRETORA):
+                    taint.add(alias.asname or alias.name.split(".")[0])
+        elif (
+            isinstance(no, ast.ImportFrom)
+            and no.module
+            and no.module.startswith(_PACOTES_CORRETORA)
+        ):
+            taint.update(alias.asname or alias.name for alias in no.names)
+    mudou = True
+    while mudou:
+        mudou = False
+        for no in ast.walk(arvore):
+            if isinstance(no, (ast.Assign, ast.AnnAssign)):
+                valor = no.value
+                alvos = no.targets if isinstance(no, ast.Assign) else [no.target]
+                if valor is not None and _expr_tainted(valor, taint):
+                    for alvo in alvos:
+                        nome = _alvo_nome(alvo)
+                        if nome and nome not in taint:
+                            taint.add(nome)
+                            mudou = True
+    return taint, bool(taint)
+
+
+def _expr_tainted(no: ast.expr, taint: set[str]) -> bool:
+    if isinstance(no, ast.Name):
+        return no.id in taint or bool(_RADICAL_CORRETORA.search(no.id))
+    if isinstance(no, ast.Attribute):
+        return no.attr in taint or _expr_tainted(no.value, taint)
+    if isinstance(no, ast.Subscript):
+        return _expr_tainted(no.value, taint)
+    if isinstance(no, ast.Call) and isinstance(no.func, ast.Name) and no.func.id == "vars":
+        return bool(no.args and _expr_tainted(no.args[0], taint))
+    return False
+
+
+def _subscript_corretora(no: ast.Subscript, taint: set[str]) -> bool:
+    base = no.value
+    if isinstance(base, ast.Attribute) and base.attr == "__dict__":
+        return _expr_tainted(base.value, taint)
+    if isinstance(base, ast.Call) and isinstance(base.func, ast.Name) and base.func.id == "vars":
+        return bool(base.args and _expr_tainted(base.args[0], taint))
+    return False
+
+
+def _alvo_nome(no: ast.expr) -> str | None:
+    if isinstance(no, ast.Name):
+        return no.id
+    if isinstance(no, ast.Attribute):
+        return no.attr
+    return None
 
 
 def _nome_chamada(no: ast.expr) -> str | None:
@@ -202,223 +587,84 @@ def _nome_chamada(no: ast.expr) -> str | None:
     return None
 
 
-def _achados_execucao(arvore: ast.AST, caminho: str) -> list[Achado]:
-    achados: list[Achado] = []
-    for no in ast.walk(arvore):
-        if isinstance(no, ast.Call):
-            nome = _nome_chamada(no.func)
-            if (
-                isinstance(no.func, ast.Name)
-                and nome is not None
-                and nome.lower() in _NOMES_EXECUCAO
-            ):
-                achados.append(
-                    Achado("API_ORDEM", caminho, f"chamada de {nome}", no.lineno)
-                )
-            if (
-                isinstance(no.func, ast.Name)
-                and no.func.id == "getattr"
-                and len(no.args) >= 2
-            ):
-                alvo = no.args[1]
-                if isinstance(alvo, ast.Constant) and isinstance(alvo.value, str):
-                    if alvo.value.lower() in _NOMES_EXECUCAO:
-                        achados.append(
-                            Achado(
-                                "API_ORDEM_DINAMICA",
-                                caminho,
-                                f"getattr para {alvo.value}",
-                                no.lineno,
-                            )
-                        )
-                elif _base_parece_corretora(no.args[0]):
-                    achados.append(
-                        Achado(
-                            "API_CORRETORA_DINAMICA",
-                            caminho,
-                            "getattr dinamico sobre cliente de mercado/corretora",
-                            no.lineno,
-                        )
-                    )
-        elif isinstance(no, ast.Attribute):
-            if no.attr.lower() in _NOMES_EXECUCAO or (
-                no.attr.lower() in {"buy", "sell", "market_order"}
-                and _base_parece_corretora(no.value)
-            ):
-                achados.append(
-                    Achado("API_ORDEM", caminho, f"referencia a {no.attr}", no.lineno)
-                )
-            elif _CONSTANTE_EXECUCAO.match(no.attr):
-                achados.append(
-                    Achado(
-                        "CONSTANTE_ORDEM", caminho, f"uso de {no.attr}", no.lineno
-                    )
-                )
-        elif isinstance(no, ast.Name) and _CONSTANTE_EXECUCAO.match(no.id):
-            achados.append(
-                Achado("CONSTANTE_ORDEM", caminho, f"uso de {no.id}", no.lineno)
-            )
-        elif isinstance(no, ast.ImportFrom):
-            for alias in no.names:
-                if alias.name.lower() in _NOMES_EXECUCAO:
-                    achados.append(
-                        Achado(
-                            "API_ORDEM",
-                            caminho,
-                            f"import direto de {alias.name}",
-                            no.lineno,
-                        )
-                    )
-    # Evita duplicatas quando uma constante aparece dentro de outro no AST.
-    return list(dict.fromkeys(achados))
+def _texto_constante(no: ast.expr) -> str | None:
+    if isinstance(no, ast.Constant) and isinstance(no.value, str):
+        return no.value
+    if isinstance(no, ast.BinOp) and isinstance(no.op, ast.Add):
+        esquerda = _texto_constante(no.left)
+        direita = _texto_constante(no.right)
+        return esquerda + direita if esquerda is not None and direita is not None else None
+    return None
 
 
-def _base_parece_corretora(no: ast.expr) -> bool:
-    nomes: list[str] = []
-    while isinstance(no, ast.Attribute):
-        nomes.append(no.attr)
-        no = no.value
-    if isinstance(no, ast.Name):
-        nomes.append(no.id)
-    return bool(_RADICAL_DINAMICO.search("_".join(nomes))) or any(
-        nome.lower() in {"mt5", "broker", "brokerage", "client", "exchange"}
-        for nome in nomes
+def _add(achados: list[Achado], achado: Achado) -> None:
+    if len(achados) < MAX_ACHADOS:
+        achados.append(achado)
+
+
+def gerar_relatorios(
+    relatorio: RelatorioAuditoria, destino: str | Path
+) -> tuple[Path, Path]:
+    destino = Path(destino)
+    destino.mkdir(parents=True, exist_ok=True)
+    report_json = destino / "report.json"
+    report_md = destino / "report.md"
+    status = (
+        "FAIL"
+        if not relatorio.aprovado
+        else "SKIPPED"
+        if relatorio.status_shadow == "SKIPPED"
+        else "PASS"
     )
-
-
-def _validar_manifesto(
-    caminho: Path, relativo: str, manifesto: object, achados: list[Achado]
-) -> None:
-    if not isinstance(manifesto, dict):
-        achados.append(Achado("MANIFESTO_INVALIDO", relativo, "raiz nao e objeto"))
-        return
-    if manifesto.get("modo") != "shadow":
-        achados.append(Achado("MODO_INVALIDO", relativo, "modo deve ser shadow"))
-    if manifesto.get("promocao_automatica") is not False:
-        achados.append(
-            Achado(
-                "PROMOCAO_AUTOMATICA",
-                relativo,
-                "promocao_automatica deve ser false",
-            )
-        )
-    colecoes = manifesto.get("colecoes")
-    if not isinstance(colecoes, dict) or set(colecoes) != COLECOES_ESPERADAS:
-        achados.append(
-            Achado(
-                "COLECOES_INVALIDAS",
-                relativo,
-                f"esperado exatamente {sorted(COLECOES_ESPERADAS)}",
-            )
-        )
-    partes = caminho.parts
-    if len(partes) >= 3:
-        symbol, data = partes[-3], partes[-2]
-        if manifesto.get("symbol") != symbol or manifesto.get("data") != data:
-            achados.append(
-                Achado(
-                    "PARTICAO_DIVERGENTE",
-                    relativo,
-                    "symbol/data do manifesto divergem do caminho",
-                )
-            )
-
-
-def _validar_colecoes(
-    diretorio: Path,
-    manifesto: object,
-    achados: list[Achado],
-    shadow_dir: Path,
-) -> None:
-    if not isinstance(manifesto, dict) or not isinstance(manifesto.get("colecoes"), dict):
-        return
-    colecoes = manifesto["colecoes"]
-    ids_features: set[str] = set()
-    ids_labels: set[str] = set()
-    for colecao, nome_esperado in ARQUIVOS_ESPERADOS.items():
-        nome = colecoes.get(colecao)
-        relativo_dir = diretorio.relative_to(shadow_dir).as_posix()
-        if nome != nome_esperado:
-            achados.append(
-                Achado(
-                    "ARQUIVO_DIVERGENTE",
-                    f"{relativo_dir}/{ARQUIVO_MANIFESTO}",
-                    f"{colecao} deve apontar para {nome_esperado}",
-                )
-            )
-            continue
-        caminho = diretorio / nome
-        if not caminho.is_file():
-            achados.append(
-                Achado(
-                    "ARQUIVO_AUSENTE",
-                    caminho.relative_to(shadow_dir).as_posix(),
-                    f"colecao {colecao} nao encontrada",
-                )
-            )
-            continue
-        registros = _ler_jsonl_gz(caminho, shadow_dir, achados)
-        destino = ids_features if colecao == "features" else ids_labels
-        for registro in registros:
-            id_amostra = registro.get("id_amostra")
-            if not isinstance(id_amostra, str):
-                achados.append(
-                    Achado(
-                        "ID_AUSENTE",
-                        caminho.relative_to(shadow_dir).as_posix(),
-                        "registro sem id_amostra textual",
-                    )
-                )
-            else:
-                destino.add(id_amostra)
-            if registro.get("promocao_automatica") is True:
-                achados.append(
-                    Achado(
-                        "PROMOCAO_AUTOMATICA",
-                        caminho.relative_to(shadow_dir).as_posix(),
-                        "registro habilita promocao automatica",
-                    )
-                )
-    orfaos = ids_labels - ids_features
-    if orfaos:
-        achados.append(
-            Achado(
-                "LABEL_ORFAO",
-                diretorio.relative_to(shadow_dir).as_posix(),
-                f"{len(orfaos)} id(s) sem feature na particao",
-            )
-        )
-
-
-def _ler_jsonl_gz(
-    caminho: Path, shadow_dir: Path, achados: list[Achado]
-) -> list[dict]:
-    registros: list[dict] = []
-    relativo = caminho.relative_to(shadow_dir).as_posix()
-    try:
-        with gzip.open(caminho, "rt", encoding="utf-8") as arquivo:
-            for n, linha in enumerate(arquivo, 1):
-                if not linha.strip():
-                    continue
-                valor = json.loads(linha)
-                if not isinstance(valor, dict):
-                    raise ValueError("linha JSON nao e objeto")
-                registros.append(valor)
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as erro:
-        achados.append(Achado("JSONL_GZ_INVALIDO", relativo, str(erro), locals().get("n")))
-    return registros
+    payload = {
+        "status": status,
+        "status_ordens": relatorio.status_ordens,
+        "status_shadow": relatorio.status_shadow,
+        "arquivos_python_inspecionados": relatorio.arquivos_python_inspecionados,
+        "particoes_shadow_inspecionadas": relatorio.particoes_shadow_inspecionadas,
+        "registros_shadow_inspecionados": relatorio.registros_shadow_inspecionados,
+        "achados": [asdict(achado) for achado in relatorio.achados],
+        "politica_promocao": {
+            "status": "BLOQUEADA_POR_PADRAO",
+            **politica_promocao_manifesto(),
+        },
+    }
+    report_json.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, allow_nan=False),
+        encoding="utf-8",
+    )
+    linhas = [
+        "# Auditoria ASG", "",
+        f"- Resultado: **{payload['status']}**",
+        f"- APIs de ordem: **{relatorio.status_ordens}**",
+        f"- Shadow: **{relatorio.status_shadow}**",
+        f"- Python inspecionado: {relatorio.arquivos_python_inspecionados}",
+        f"- Partições shadow: {relatorio.particoes_shadow_inspecionadas}",
+        f"- Registros shadow: {relatorio.registros_shadow_inspecionados}", "",
+        "## Política de promoção", "",
+        (
+            "**BLOQUEADA POR PADRÃO.** Não há aplicação automática. Uma candidata só "
+            "fica elegível para revisão humana após 20 pregões, 10.000 amostras, "
+            "walk-forward aprovado, limite inferior do CI acima do baseline, degradação "
+            "de guardrail de no máximo 5%, configuração versionada, rollback testado e "
+            "aprovação humana identificada."
+        ),
+        "", "## Achados", "",
+    ]
+    linhas.extend(
+        ["Nenhum."] if not relatorio.achados
+        else [f"- {achado.texto()}" for achado in relatorio.achados]
+    )
+    report_md.write_text("\n".join(linhas) + "\n", encoding="utf-8")
+    return report_json, report_md
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raiz", type=Path, default=Path.cwd())
     parser.add_argument("--shadow-dir", type=Path)
-    parser.add_argument(
-        "--permitir-teste",
-        action="append",
-        default=[],
-        help="glob relativo adicional para testes que exercitam a auditoria",
-    )
+    parser.add_argument("--report-dir", type=Path)
+    parser.add_argument("--permitir-teste", action="append", default=[])
     return parser
 
 
@@ -426,20 +672,21 @@ def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     allowlist = ALLOWLIST_TESTES_PADRAO + tuple(args.permitir_teste)
     relatorio = auditar_repositorio(args.raiz, args.shadow_dir, allowlist)
-    if relatorio.achados:
-        for achado in relatorio.achados:
-            print(achado.texto())
+    print(f"ORDENS: {relatorio.status_ordens}")
+    if relatorio.status_shadow == "SKIPPED":
+        print("SHADOW: SKIPPED - --shadow-dir nao fornecido")
+    else:
         print(
-            f"REPROVADO: {len(relatorio.achados)} achado(s); "
-            f"{relatorio.arquivos_python_inspecionados} Python; "
-            f"{relatorio.particoes_shadow_inspecionadas} particoes shadow"
+            f"SHADOW: {relatorio.status_shadow} — "
+            f"{relatorio.particoes_shadow_inspecionadas} particoes, "
+            f"{relatorio.registros_shadow_inspecionados} registros"
         )
-        return 1
-    print(
-        f"APROVADO: {relatorio.arquivos_python_inspecionados} Python; "
-        f"{relatorio.particoes_shadow_inspecionadas} particoes shadow"
-    )
-    return 0
+    for achado in relatorio.achados:
+        print(achado.texto())
+    if args.report_dir is not None:
+        report_json, report_md = gerar_relatorios(relatorio, args.report_dir)
+        print(f"REPORTS: {report_json} | {report_md}")
+    return 0 if relatorio.aprovado else 1
 
 
 if __name__ == "__main__":

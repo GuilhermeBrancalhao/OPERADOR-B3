@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import math
 import os
 from collections import deque
 from dataclasses import asdict, is_dataclass
@@ -18,7 +19,9 @@ from fluxopro.shadow.modelos import (
     ConfigShadow,
     MotivoAmostra,
 )
+from fluxopro.shadow.governanca import politica_promocao_manifesto
 from fluxopro.shadow.rotulos import RotuladorCausal
+from fluxopro.shadow.schema import validar_manifesto, validar_registro
 
 
 ARQUIVO_FEATURES = "features.jsonl.gz"
@@ -90,7 +93,10 @@ class SidecarShadow:
         # estiver depois do limite, ele nao entra no horizonte ja encerrado.
         self._persistir_rotulos(
             self._rotulador.avancar(
-                amostra.symbol, amostra.timestamp_ns, amostra.price_ticks
+                amostra.symbol,
+                amostra.timestamp_ns,
+                amostra.price_ticks,
+                amostra.qualidade_origem,
             )
         )
 
@@ -136,6 +142,7 @@ class SidecarShadow:
             "label_admitida": admitida,
             "modo": "shadow",
             "promocao_automatica": False,
+            "config_versao": self.config.config_versao,
         }
         self._enfileirar(amostra.symbol, data_amostra, ARQUIVO_FEATURES, registro)
         self.amostras_gravadas += 1
@@ -216,6 +223,9 @@ class SidecarShadow:
 
     def _persistir_rotulos(self, rotulos: list[dict]) -> None:
         for rotulo in rotulos:
+            rotulo["qualidade_origem"] = _json_compativel(
+                rotulo["qualidade_origem"]
+            )
             self._enfileirar(
                 rotulo["symbol"], rotulo["data_amostra"], ARQUIVO_LABELS, rotulo
             )
@@ -224,10 +234,13 @@ class SidecarShadow:
     def _enfileirar(self, symbol: str, data: str, nome: str, registro: dict) -> None:
         if len(self._buffer) >= self.config.max_registros_buffer:
             raise AssertionError("preflight do buffer shadow falhou")
+        colecao = "features" if nome == ARQUIVO_FEATURES else "labels"
+        if erros := validar_registro(colecao, registro):
+            raise ValueError(f"registro {colecao} fora do schema: {erros}")
         self._buffer.append((symbol, data, nome, registro))
 
     def _escrever(self, symbol: str, data: str, nome: str, registro: dict) -> None:
-        diretorio = self.saida_dir / symbol / data
+        diretorio = self.saida_dir / data / symbol
         diretorio.mkdir(parents=True, exist_ok=True)
         self._garantir_manifesto(diretorio, symbol, data)
         caminho = diretorio / nome
@@ -235,7 +248,13 @@ class SidecarShadow:
         # formato e lidos transparentemente por gzip.open. Nao ha handles
         # acumulados por simbolo/dia, logo a memoria nao cresce com particoes.
         with gzip.open(caminho, "at", encoding="utf-8", newline="\n") as arquivo:
-            json.dump(registro, arquivo, ensure_ascii=False, separators=(",", ":"))
+            json.dump(
+                registro,
+                arquivo,
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
             arquivo.write("\n")
 
     def _garantir_manifesto(self, diretorio: Path, symbol: str, data: str) -> None:
@@ -244,6 +263,7 @@ class SidecarShadow:
             "schema_versao": SCHEMA_VERSAO,
             "modo": "shadow",
             "promocao_automatica": False,
+            "config_versao": self.config.config_versao,
             "symbol": symbol,
             "data": data,
             "colecoes": {
@@ -257,7 +277,10 @@ class SidecarShadow:
                 "max_simbolos": self.config.max_simbolos,
                 "max_registros_buffer": self.config.max_registros_buffer,
             },
+            "politica_promocao": politica_promocao_manifesto(),
         }
+        if erros := validar_manifesto(esperado):
+            raise AssertionError(f"manifesto gerado fora do schema: {erros}")
         if caminho.exists():
             existente = json.loads(caminho.read_text(encoding="utf-8"))
             if existente != esperado:
@@ -265,7 +288,8 @@ class SidecarShadow:
         else:
             temporario = caminho.with_suffix(caminho.suffix + ".tmp")
             temporario.write_text(
-                json.dumps(esperado, ensure_ascii=False, indent=2), encoding="utf-8"
+                json.dumps(esperado, ensure_ascii=False, indent=2, allow_nan=False),
+                encoding="utf-8",
             )
             os.replace(temporario, caminho)
         # A colecao vazia existe desde o primeiro registro da particao. Isso
@@ -293,6 +317,8 @@ def _json_compativel(valor: object) -> object:
         return [_json_compativel(v) for v in valor]
     if isinstance(valor, (set, frozenset)):
         return [_json_compativel(v) for v in sorted(valor, key=repr)]
+    if isinstance(valor, float) and not math.isfinite(valor):
+        raise ValueError("JSON shadow nao aceita NaN ou infinito")
     if isinstance(valor, (str, int, float, bool)) or valor is None:
         return valor
     raise TypeError(f"feature nao serializavel em JSON: {type(valor).__name__}")

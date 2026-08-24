@@ -1,5 +1,10 @@
 """Sidecar causal de dados para aprendizado offline em modo shadow."""
 
+from fluxopro.shadow.governanca import (
+    AvaliacaoCandidata,
+    EvidenciaCandidata,
+    avaliar_candidata,
+)
 from fluxopro.shadow.modelos import (
     HORIZONTES_PADRAO_S,
     AmostraFeatures,
@@ -18,4 +23,7 @@ __all__ = [
     "ShadowSidecar",
     "SidecarShadow",
     "BufferShadowCheio",
+    "AvaliacaoCandidata",
+    "EvidenciaCandidata",
+    "avaliar_candidata",
 ]

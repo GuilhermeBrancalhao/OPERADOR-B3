@@ -7,6 +7,8 @@ testes sem PySide6.
 
 from __future__ import annotations
 
+import math
+import re
 from dataclasses import dataclass, field
 from enum import Enum, StrEnum, unique
 from types import MappingProxyType
@@ -16,7 +18,8 @@ from fluxopro.core.eventos import Side
 
 
 HORIZONTES_PADRAO_S = (1, 3, 5, 15, 30)
-SCHEMA_VERSAO = 1
+SCHEMA_VERSAO = 2
+CONFIG_VERSAO_PADRAO = "shadow-v2"
 
 
 @unique
@@ -36,6 +39,8 @@ class QualidadeRotulo(StrEnum):
 
 def _congelar(valor: object) -> object:
     """Copia e congela recursivamente para o snapshot nao mudar por alias."""
+    if isinstance(valor, float) and not math.isfinite(valor):
+        raise ValueError("mappings shadow nao aceitam NaN ou infinito")
     if isinstance(valor, Mapping):
         return MappingProxyType({str(k): _congelar(v) for k, v in valor.items()})
     if isinstance(valor, (list, tuple)):
@@ -70,8 +75,10 @@ class AmostraFeatures:
     invalidacao_preco_ticks: int | None = None
 
     def __post_init__(self) -> None:
-        if self.timestamp_ns < 0:
+        if type(self.timestamp_ns) is not int or self.timestamp_ns < 0:
             raise ValueError("timestamp_ns deve ser nao negativo")
+        if type(self.price_ticks) is not int:
+            raise ValueError("price_ticks deve ser inteiro")
         if not self.symbol or any(c in self.symbol for c in "/\\"):
             raise ValueError("symbol deve ser nao vazio e nao pode conter separador")
         estado = self.estado.value if isinstance(self.estado, Enum) else self.estado
@@ -80,10 +87,33 @@ class AmostraFeatures:
         object.__setattr__(self, "estado", estado)
         if self.direcao is not None and not isinstance(self.direcao, Side):
             object.__setattr__(self, "direcao", Side(self.direcao))
+        for nome in ("alvo_preco_ticks", "invalidacao_preco_ticks"):
+            valor = getattr(self, nome)
+            if valor is not None and type(valor) is not int:
+                raise ValueError(f"{nome} deve ser inteiro ou None")
+        self._validar_niveis()
         object.__setattr__(self, "features", _mapa_imutavel(self.features))
         object.__setattr__(
             self, "qualidade_origem", _mapa_imutavel(self.qualidade_origem)
         )
+
+    def _validar_niveis(self) -> None:
+        alvo = self.alvo_preco_ticks
+        invalidacao = self.invalidacao_preco_ticks
+        if alvo is None and invalidacao is None:
+            return
+        if self.direcao is None:
+            raise ValueError("alvo/invalidation exigem direcao BUY ou SELL")
+        if self.direcao is Side.BUY:
+            if alvo is not None and alvo <= self.price_ticks:
+                raise ValueError("alvo BUY deve ficar acima do preco de admissao")
+            if invalidacao is not None and invalidacao >= self.price_ticks:
+                raise ValueError("invalidacao BUY deve ficar abaixo do preco de admissao")
+        else:
+            if alvo is not None and alvo >= self.price_ticks:
+                raise ValueError("alvo SELL deve ficar abaixo do preco de admissao")
+            if invalidacao is not None and invalidacao <= self.price_ticks:
+                raise ValueError("invalidacao SELL deve ficar acima do preco de admissao")
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,12 +124,24 @@ class ConfigShadow:
     max_pendentes_por_simbolo: int = 4_096
     max_simbolos: int = 64
     max_registros_buffer: int = 32_768
+    config_versao: str = CONFIG_VERSAO_PADRAO
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "horizontes_s", tuple(self.horizontes_s))
+        inteiros = {
+            "intervalo_amostra_ns": self.intervalo_amostra_ns,
+            "tolerancia_qualidade_ns": self.tolerancia_qualidade_ns,
+            "max_pendentes_por_simbolo": self.max_pendentes_por_simbolo,
+            "max_simbolos": self.max_simbolos,
+            "max_registros_buffer": self.max_registros_buffer,
+        }
+        if any(type(valor) is not int for valor in inteiros.values()):
+            raise ValueError("intervalos e limites shadow devem ser inteiros")
         if self.intervalo_amostra_ns <= 0:
             raise ValueError("intervalo_amostra_ns deve ser positivo")
-        if not self.horizontes_s or any(h <= 0 for h in self.horizontes_s):
+        if not self.horizontes_s or any(
+            type(h) is not int or h <= 0 for h in self.horizontes_s
+        ):
             raise ValueError("horizontes_s deve conter apenas inteiros positivos")
         if tuple(sorted(set(self.horizontes_s))) != self.horizontes_s:
             raise ValueError("horizontes_s deve estar ordenado e sem repeticao")
@@ -117,3 +159,5 @@ class ConfigShadow:
                 "max_registros_buffer deve comportar todos os labels que um "
                 f"unico tick pode fechar mais a feature ({minimo_buffer})"
             )
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", self.config_versao):
+            raise ValueError("config_versao deve ser um identificador versionado")

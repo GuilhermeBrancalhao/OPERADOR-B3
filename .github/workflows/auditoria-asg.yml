@@ -1,0 +1,36 @@
+name: Auditoria ASG
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  guardrails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Instalar pytest
+        run: python -m pip install "pytest>=8"
+      - name: Auditar APIs de ordem e registrar shadow SKIPPED
+        run: python scripts/auditoria_asg.py --raiz . --report-dir audit-report
+      - name: Testes shadow, auditoria e portao MT5
+        run: >-
+          python -m pytest
+          tests/test_shadow_*.py
+          tests/test_auditoria_asg.py
+          tests/test_sem_execucao.py
+          -q
+      - name: Publicar report.json e report.md
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: auditoria-asg-report
+          path: audit-report/
+          if-no-files-found: error
