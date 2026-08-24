@@ -28,6 +28,7 @@ from fluxopro.dados.eventos_captura import FalhaCaptura, TipoFalha
 from fluxopro.dados.qualidade import (
     AggressorQuality,
     BookKind,
+    BookState,
     FeedQualitySnapshot,
     FeedSource,
     FeedState,
@@ -67,6 +68,7 @@ class FeedQualityConfig:
     """Limites explícitos para o observador; nenhum cresce com o pregão."""
 
     max_delay_ns: int = 1_000_000_000
+    max_book_age_ns: int | None = None
     dedup_capacity: int = 4_096
     max_sequence_streams: int = 64
     latency_comparable: bool | None = None
@@ -74,6 +76,8 @@ class FeedQualityConfig:
     def __post_init__(self) -> None:
         if self.max_delay_ns < 0:
             raise ValueError("max_delay_ns deve ser >= 0")
+        if self.max_book_age_ns is not None and self.max_book_age_ns < 0:
+            raise ValueError("max_book_age_ns deve ser >= 0")
         if self.dedup_capacity < 1:
             raise ValueError("dedup_capacity deve ser >= 1")
         if self.max_sequence_streams < 1:
@@ -169,11 +173,15 @@ class FeedQualityMonitor:
         if depth < 0:
             raise ValueError("depth deve ser >= 0")
         self._source = FeedSource(source)
-        self._book_kind = BookKind(book_kind)
+        # MT5 só prova MBP depois de um snapshot válido. A declaração da
+        # configuração não substitui a observação do terminal.
+        self._book_kind = (
+            BookKind.NONE if self._source is FeedSource.MT5 else BookKind(book_kind)
+        )
         self._declared_aggressor_quality = AggressorQuality(aggressor_quality)
         self._aggressor_quality = self._declared_aggressor_quality
         self._symbol = symbol
-        self._depth = depth
+        self._depth = 0 if self._source is FeedSource.MT5 else depth
         self._config = config or FeedQualityConfig()
         self._clock_ns = clock_ns
         self._lock = threading.RLock()
@@ -203,6 +211,10 @@ class FeedQualityMonitor:
         self._clock_regressions = 0
         self._reconnect_attempts = 0
         self._market_timestamp_ns: int | None = None
+        self._book_market_timestamp_ns: int | None = None
+        self._book_ingress_timestamp_ns: int | None = None
+        self._book_state = BookState.UNAVAILABLE
+        self._book_gap_active = False
         self._ingress_timestamp_ns = self._clock_ns()
         self._latency_ns: int | None = None
         self._scheduler_delay_ns: int | None = None
@@ -220,6 +232,11 @@ class FeedQualityMonitor:
         return self._source
 
     @property
+    def max_book_age_ns(self) -> int:
+        configured = self._config.max_book_age_ns
+        return self._config.max_delay_ns if configured is None else configured
+
+    @property
     def sequence_window_size(self) -> int:
         with self._lock:
             return len(self._seen_sequences.keys)
@@ -233,6 +250,7 @@ class FeedQualityMonitor:
         with self._lock:
             if ingress_timestamp_ns is not None:
                 self._ingress_timestamp_ns = ingress_timestamp_ns
+            self._expire_book_locked(self._clock_ns())
             return self._snapshot_locked()
 
     def connecting(self, detail: str = "") -> FeedQualitySnapshot:
@@ -262,6 +280,17 @@ class FeedQualityMonitor:
 
     def failed(self, detail: str) -> FeedQualitySnapshot:
         return self._transition(FeedState.ERROR, detail=detail, next_backoff_ns=0)
+
+    def source_failed(self, detail: str) -> FeedQualitySnapshot:
+        """Registra falha anterior ao primeiro evento (import/init/login)."""
+        with self._lock:
+            self._source_errors += 1
+            self._anomalies += 1
+            self._ingress_timestamp_ns = self._clock_ns()
+            self._state = FeedState.ERROR
+            self._detail = detail
+            self._next_backoff_ns = 0
+            return self._snapshot_locked()
 
     def close(self, detail: str = "") -> FeedQualitySnapshot:
         return self._transition(FeedState.CLOSED, detail=detail, next_backoff_ns=0)
@@ -316,6 +345,9 @@ class FeedQualityMonitor:
         self._received_events += 1
         issues: list[str] = []
 
+        if not isinstance(event, (BookSnapshot, BookDelta)):
+            self._expire_book_locked(ingress_ns)
+
         if sequence is None:
             self._events_without_sequence += 1
         else:
@@ -366,7 +398,7 @@ class FeedQualityMonitor:
             self._anomalies += 1
             issues.append("evento atrasado")
 
-        self._observe_payload_locked(event)
+        self._observe_payload_locked(event, ingress_ns)
         if issues:
             self._degrade_locked(", ".join(issues))
 
@@ -393,7 +425,16 @@ class FeedQualityMonitor:
             self._dropped_events += dropped
 
         tipo = failure.tipo
-        if tipo in (TipoFalha.GAP_TICKS, TipoFalha.GAP_BOOK):
+        if tipo is TipoFalha.GAP_BOOK:
+            if not self._book_gap_active:
+                self._capture_gaps += 1
+                self._anomalies += 1
+            self._book_gap_active = True
+            self._book_state = BookState.DELAYED
+            self._book_kind = BookKind.NONE
+            self._depth = 0
+            self._degrade_locked(f"GAP_BOOK: {failure.detalhe}")
+        elif tipo is TipoFalha.GAP_TICKS:
             self._capture_gaps += 1
             self._anomalies += 1
             self._degrade_locked(failure.detalhe)
@@ -414,13 +455,18 @@ class FeedQualityMonitor:
             self._state = FeedState.CONNECTED
             self._detail = failure.detalhe
 
-    def _observe_payload_locked(self, event: MarketEvent) -> None:
+    def _observe_payload_locked(self, event: MarketEvent, ingress_ns: int) -> None:
         if isinstance(event, BookSnapshot):
-            if self._book_kind is BookKind.NONE:
-                self._book_kind = BookKind.MBP
             self._depth = max(len(event.bids), len(event.asks))
-        elif isinstance(event, BookDelta) and self._book_kind is BookKind.NONE:
+            if self._depth > 0:
+                self._book_kind = BookKind.MBP
+                self._mark_book_live_locked(event.timestamp_ns, ingress_ns)
+            else:
+                self._book_kind = BookKind.NONE
+                self._book_state = BookState.UNAVAILABLE
+        elif isinstance(event, BookDelta):
             self._book_kind = BookKind.MBP
+            self._mark_book_live_locked(event.timestamp_ns, ingress_ns)
         if isinstance(event, Trade) and event.side_agressor is AgressorSide.UNKNOWN:
             self._unknown_aggressors += 1
             if self._declared_aggressor_quality not in (
@@ -428,6 +474,42 @@ class FeedQualityMonitor:
                 AggressorQuality.PARTIAL,
             ):
                 self._aggressor_quality = AggressorQuality.PARTIAL
+
+    def _mark_book_live_locked(self, market_ns: int, ingress_ns: int) -> None:
+        self._book_market_timestamp_ns = market_ns
+        self._book_ingress_timestamp_ns = ingress_ns
+        self._book_state = BookState.LIVE
+        was_book_gap = self._book_gap_active
+        self._book_gap_active = False
+        if was_book_gap and self._state is FeedState.DEGRADED:
+            self._state = FeedState.CONNECTED
+            self._detail = "book voltou a ser observado"
+
+    def _expire_book_locked(self, now_ns: int) -> None:
+        ingress_ns = self._book_ingress_timestamp_ns
+        if ingress_ns is None:
+            self._book_state = (
+                BookState.DELAYED
+                if self._book_gap_active
+                else BookState.UNAVAILABLE
+            )
+            self._book_kind = BookKind.NONE
+            self._depth = 0
+            return
+        age_ns = max(0, now_ns - ingress_ns)
+        if age_ns <= self.max_book_age_ns:
+            self._book_state = BookState.LIVE
+            return
+        self._book_state = BookState.DELAYED
+        self._book_kind = BookKind.NONE
+        self._depth = 0
+        if not self._book_gap_active:
+            self._book_gap_active = True
+            self._capture_gaps += 1
+            self._anomalies += 1
+        self._degrade_locked(
+            f"GAP_BOOK: book sem atualizacao ha {age_ns / 1_000_000:.1f} ms"
+        )
 
     def _sequence_availability_locked(self) -> SequenceAvailability:
         if self._events_with_sequence == 0:
@@ -502,6 +584,14 @@ class FeedQualityMonitor:
             last_sequence=self._last_sequence,
             next_backoff_ns=self._next_backoff_ns,
             detail=self._detail,
+            book_market_timestamp_ns=self._book_market_timestamp_ns,
+            book_ingress_timestamp_ns=self._book_ingress_timestamp_ns,
+            book_age_ns=(
+                None
+                if self._book_ingress_timestamp_ns is None
+                else max(0, self._clock_ns() - self._book_ingress_timestamp_ns)
+            ),
+            book_state=self._book_state,
         )
 
 
@@ -534,13 +624,11 @@ class FeedQualityObserver:
     def iniciar(self) -> None:
         if self._started:
             return
-        self.monitor.connecting("anexando observador ao barramento")
         for event_type in self._EVENT_TYPES:
             self._barramento.assinar(
                 event_type, self._observe, prioridade=self._priority
             )
         self._started = True
-        self.monitor.connected("observador anexado ao barramento")
 
     def parar(self) -> None:
         if not self._started and self.monitor.snapshot().state is FeedState.CLOSED:

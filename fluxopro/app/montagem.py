@@ -177,4 +177,13 @@ def montar(
     bus = barramento if barramento is not None else Barramento()
     sessao = SessaoFluxo(bus, cfg, ao_sinal=ao_sinal, ao_deteccao=ao_deteccao)
     fonte = criar_fonte(cfg, bus, replay)
+    if sessao.feed_monitor is not None:
+        vincular_monitor = getattr(fonte, "vincular_monitor_feed", None)
+        if vincular_monitor is not None:
+            vincular_monitor(sessao.feed_monitor)
+        else:
+            # Simulador e replay são fontes locais: não têm sessão física a
+            # autenticar. Mantemos o contrato histórico de prontidão sem
+            # confundir a mera assinatura do observador com conexão MT5.
+            sessao.feed_monitor.connected("fonte local pronta")
     return Montagem(barramento=bus, sessao=sessao, fonte=fonte)

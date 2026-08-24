@@ -54,6 +54,18 @@ class BookKind(StrEnum):
     NENHUM = NONE
 
 
+class BookState(StrEnum):
+    """Disponibilidade temporal do livro, independente do feed de trades."""
+
+    UNAVAILABLE = "unavailable"
+    LIVE = "live"
+    DELAYED = "delayed"
+
+    INDISPONIVEL = UNAVAILABLE
+    AO_VIVO = LIVE
+    ATRASADO = DELAYED
+
+
 class AggressorQuality(StrEnum):
     """Procedência do lado agressor, separada do valor BUY/SELL/UNKNOWN."""
 
@@ -130,6 +142,13 @@ class FeedQualitySnapshot:
     last_sequence: int | None = None
     next_backoff_ns: int = 0
     detail: str = ""
+    # Campos anexados no fim preservam a construção posicional legada.
+    # O timestamp de mercado identifica o book; o de ingresso permite medir
+    # sua idade mesmo quando trades continuam chegando.
+    book_market_timestamp_ns: int | None = None
+    book_ingress_timestamp_ns: int | None = None
+    book_age_ns: int | None = None
+    book_state: BookState = BookState.UNAVAILABLE
 
     @property
     def timestamp_ns(self) -> int:
@@ -162,6 +181,7 @@ class FeedQualitySnapshot:
 EstadoFeed = FeedState
 FonteFeed = FeedSource
 TipoBook = BookKind
+EstadoBook = BookState
 QualidadeAgressor = AggressorQuality
 DisponibilidadeSequencia = SequenceAvailability
 
@@ -169,8 +189,10 @@ DisponibilidadeSequencia = SequenceAvailability
 __all__ = [
     "AggressorQuality",
     "BookKind",
+    "BookState",
     "DisponibilidadeSequencia",
     "EstadoFeed",
+    "EstadoBook",
     "FeedQualitySnapshot",
     "FeedSource",
     "FeedState",

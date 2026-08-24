@@ -38,7 +38,11 @@ from fluxopro.core.eventos import (
 )
 from fluxopro.dados import mt5 as mt5_mod
 from fluxopro.dados.eventos_captura import FalhaCaptura, TipoFalha
-from fluxopro.dados.feed_observavel import FeedQualityMonitor, FeedQualityObserver
+from fluxopro.dados.feed_observavel import (
+    FeedQualityConfig,
+    FeedQualityMonitor,
+    FeedQualityObserver,
+)
 from fluxopro.dados.mt5 import (
     _AMOSTRAS_PARA_REGRESSAO,
     _JANELA_OFFSET_S,
@@ -51,7 +55,7 @@ from fluxopro.dados.mt5 import (
     _RelogioServidor,
     derivar_deltas,
 )
-from fluxopro.dados.qualidade import FeedSource, FeedState
+from fluxopro.dados.qualidade import BookKind, BookState, FeedSource, FeedState
 
 _TICK_DTYPE = [
     ("time", "i8"), ("bid", "f8"), ("ask", "f8"), ("last", "f8"),
@@ -1075,6 +1079,95 @@ def test_falha_polling_mt5_emite_desconexao_erro_e_reconexao_observaveis():
     assert snap.reconnections == 1
     assert snap.state is FeedState.CONNECTED
     assert snap.reconnect_attempts == 0
+
+
+def test_start_mt5_so_conecta_apos_initialize_e_falha_fica_no_monitor():
+    class _FakeInitFalha(_FakeMT5):
+        def initialize(self, **kwargs):
+            return False
+
+        def last_error(self):
+            return (401, "credencial recusada")
+
+    monitor = FeedQualityMonitor(source=FeedSource.MT5, clock_ns=time.time_ns)
+    adaptador = AdaptadorMT5(
+        Barramento(), "WDOV26", WDO_GRID, mt5_module=_FakeInitFalha()
+    )
+    adaptador.vincular_monitor_feed(monitor)
+
+    assert monitor.snapshot().state is FeedState.STOPPED
+    with pytest.raises(RuntimeError, match="initialize"):
+        adaptador.iniciar()
+
+    snap = monitor.snapshot()
+    assert snap.state is FeedState.ERROR
+    assert snap.source_errors == 1
+    assert snap.anomalies == 1
+    assert "credencial recusada" in snap.detail
+
+
+def test_mt5_conectado_sem_book_permanece_book_none_ate_observacao_valida():
+    class _FakeSemBook(_FakeMT5):
+        def market_book_add(self, symbol):
+            return False
+
+    monitor = FeedQualityMonitor(source=FeedSource.MT5, clock_ns=time.time_ns)
+    adaptador = AdaptadorMT5(
+        Barramento(),
+        "WDOV26",
+        WDO_GRID,
+        mt5_module=_FakeSemBook(),
+        intervalo_poll_s=0.005,
+    )
+    adaptador.vincular_monitor_feed(monitor)
+    thread = threading.Thread(target=adaptador.iniciar, daemon=True)
+    thread.start()
+    limite = time.monotonic() + 1.0
+    while monitor.snapshot().state is not FeedState.CONNECTED:
+        assert time.monotonic() < limite
+        time.sleep(0.001)
+
+    snap = monitor.snapshot()
+    assert snap.book_kind is BookKind.NONE
+    assert snap.book_state is BookState.UNAVAILABLE
+    assert snap.depth == 0
+    adaptador.parar()
+    thread.join(timeout=2)
+
+
+def test_mt5_emite_gap_book_quando_dom_habilitado_para_de_atualizar():
+    bus = Barramento()
+    falhas: list[FalhaCaptura] = []
+    bus.assinar(FalhaCaptura, falhas.append)
+    monitor = FeedQualityMonitor(
+        source=FeedSource.MT5,
+        config=FeedQualityConfig(max_book_age_ns=10_000_000),
+        clock_ns=time.time_ns,
+    )
+    observer = FeedQualityObserver(bus, monitor)
+    observer.iniciar()
+    adaptador = AdaptadorMT5(
+        bus,
+        "WDOV26",
+        WDO_GRID,
+        mt5_module=_FakeMT5(book_repetido=None),
+        intervalo_poll_s=0.002,
+    )
+    adaptador.vincular_monitor_feed(monitor)
+    thread = threading.Thread(target=adaptador.iniciar, daemon=True)
+    thread.start()
+    limite = time.monotonic() + 1.0
+    while not any(f.tipo is TipoFalha.GAP_BOOK for f in falhas):
+        assert time.monotonic() < limite
+        time.sleep(0.002)
+
+    snap = monitor.snapshot()
+    assert snap.book_kind is BookKind.NONE
+    assert snap.book_state is BookState.DELAYED
+    assert snap.capture_gaps == 1
+    assert snap.state is FeedState.DEGRADED
+    adaptador.parar()
+    thread.join(timeout=2)
 
 
 def test_adaptador_mt5_deriva_book_delta_entre_polls_consecutivos():

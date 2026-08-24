@@ -28,6 +28,7 @@ from fluxopro.dados.eventos_captura import FalhaCaptura, TipoFalha
 from fluxopro.dados.qualidade import (
     AggressorQuality,
     BookKind,
+    BookState,
     FeedQualitySnapshot,
     FeedSource,
     FeedState,
@@ -59,8 +60,9 @@ def test_snapshot_imutavel_declara_procedencia_e_sequencia_indisponivel() -> Non
     assert snap.symbol == "WDOV26"
     assert snap.state is FeedState.STOPPED
     assert snap.source is FeedSource.MT5
-    assert snap.book_kind is BookKind.MBP
-    assert snap.depth == 20
+    assert snap.book_kind is BookKind.NONE
+    assert snap.depth == 0
+    assert snap.book_state is BookState.UNAVAILABLE
     assert snap.aggressor_quality is AggressorQuality.INFERRED
     assert snap.sequence_availability is SequenceAvailability.UNAVAILABLE
     assert snap.sequence_gaps is None
@@ -68,6 +70,49 @@ def test_snapshot_imutavel_declara_procedencia_e_sequencia_indisponivel() -> Non
     assert snap.sequence_regressions is None
     with pytest.raises(FrozenInstanceError):
         snap.depth = 99  # type: ignore[misc]
+
+
+def test_observador_anexado_nao_finge_conexao_fisica() -> None:
+    bus = Barramento()
+    m = monitor()
+
+    FeedQualityObserver(bus, m).iniciar()
+
+    assert m.snapshot().state is FeedState.STOPPED
+
+
+def test_book_tem_relogio_proprio_e_expira_uma_vez_com_gap_explicito() -> None:
+    now = [1_000]
+    m = FeedQualityMonitor(
+        source=FeedSource.MT5,
+        config=FeedQualityConfig(max_delay_ns=100, max_book_age_ns=50),
+        clock_ns=lambda: now[0],
+    )
+    m.connected("terminal real")
+    book = BookSnapshot(
+        900,
+        "WDOV26",
+        (BookLevel(10_000, 10, 1),),
+        (BookLevel(10_001, 12, 1),),
+    )
+
+    live = m.observe(book, ingress_timestamp_ns=1_000)
+    assert live.book_market_timestamp_ns == 900
+    assert live.book_ingress_timestamp_ns == 1_000
+    assert live.book_age_ns == 0
+    assert live.book_state is BookState.LIVE
+    assert live.book_kind is BookKind.MBP
+
+    now[0] = 1_060
+    delayed = m.observe(trade(1_050, "T1"), ingress_timestamp_ns=1_060)
+    again = m.snapshot()
+    assert delayed.book_age_ns == 60
+    assert delayed.book_state is BookState.DELAYED
+    assert delayed.book_kind is BookKind.NONE
+    assert delayed.depth == 0
+    assert delayed.state is FeedState.DEGRADED
+    assert delayed.capture_gaps == again.capture_gaps == 1
+    assert delayed.detail.startswith("GAP_BOOK:")
 
 
 def test_monitor_detecta_duplicata_sem_filtrar_e_com_memoria_limitada() -> None:

@@ -236,7 +236,7 @@ import threading
 import time
 from collections import deque
 from types import ModuleType
-from typing import NamedTuple, Optional
+from typing import TYPE_CHECKING, NamedTuple, Optional
 
 from fluxopro.core.barramento import Barramento
 from fluxopro.core.eventos import (
@@ -251,6 +251,10 @@ from fluxopro.core.eventos import (
 )
 from fluxopro.dados.adaptador import AdaptadorDados
 from fluxopro.dados.eventos_captura import FalhaCaptura, TipoFalha
+from fluxopro.dados.qualidade import FeedState
+
+if TYPE_CHECKING:
+    from fluxopro.dados.feed_observavel import FeedQualityMonitor
 
 _logger = logging.getLogger("fluxopro.dados.mt5")
 
@@ -675,47 +679,71 @@ class AdaptadorMT5(AdaptadorDados):
         self._mt5: ModuleType | None = None
         self._relogio = _RelogioServidor()
         self._avisou_relogio_local = False
+        self._feed_monitor: FeedQualityMonitor | None = None
+
+    def vincular_monitor_feed(self, monitor: FeedQualityMonitor) -> None:
+        """Vincula ciclo físico/erros sem transformar monitor em dependência."""
+        self._feed_monitor = monitor
 
     # ------------------------------------------------------------------
     # Ciclo de vida
     # ------------------------------------------------------------------
 
     def iniciar(self) -> None:
-        mt5 = self._mt5_injetado if self._mt5_injetado is not None else _importar_mt5()
-        self._mt5 = mt5
-        with self._shutdown_lock:
-            self._shutdown_done = False
-
-        kwargs = {}
-        if self._login is not None:
-            kwargs["login"] = self._login
-        if self._password is not None:
-            kwargs["password"] = self._password
-        if self._server is not None:
-            kwargs["server"] = self._server
-        if not mt5.initialize(**kwargs):
-            raise RuntimeError(f"mt5.initialize() falhou: {mt5.last_error()}")
-
-        if not mt5.symbol_select(self._symbol, True):
-            mt5.shutdown()
-            raise RuntimeError(
-                f"mt5.symbol_select({self._symbol!r}) falhou: {mt5.last_error()}"
+        monitor = self._feed_monitor
+        if monitor is not None:
+            monitor.connecting("inicializando terminal MT5")
+        try:
+            mt5 = (
+                self._mt5_injetado
+                if self._mt5_injetado is not None
+                else _importar_mt5()
             )
+            self._mt5 = mt5
+            with self._shutdown_lock:
+                self._shutdown_done = False
 
-        self._book_habilitado = bool(mt5.market_book_add(self._symbol))
-        if not self._book_habilitado:
-            _logger.warning(
-                "market_book_add(%s) falhou (%s) — corretora pode nao expor DOM "
-                "para este simbolo; seguindo so com trades.",
-                self._symbol,
-                mt5.last_error(),
+            kwargs = {}
+            if self._login is not None:
+                kwargs["login"] = self._login
+            if self._password is not None:
+                kwargs["password"] = self._password
+            if self._server is not None:
+                kwargs["server"] = self._server
+            if not mt5.initialize(**kwargs):
+                raise RuntimeError(f"mt5.initialize() falhou: {mt5.last_error()}")
+
+            if not mt5.symbol_select(self._symbol, True):
+                mt5.shutdown()
+                raise RuntimeError(
+                    f"mt5.symbol_select({self._symbol!r}) falhou: {mt5.last_error()}"
+                )
+
+            self._book_habilitado = bool(mt5.market_book_add(self._symbol))
+            if not self._book_habilitado:
+                _logger.warning(
+                    "market_book_add(%s) falhou (%s) — corretora pode nao expor DOM "
+                    "para este simbolo; seguindo so com trades.",
+                    self._symbol,
+                    mt5.last_error(),
+                )
+            self._parar_evt.clear()
+            self._thread = threading.Thread(
+                target=self._loop_borda, name="mt5-borda", daemon=True
             )
-
-        self._parar_evt.clear()
-        self._thread = threading.Thread(
-            target=self._loop_borda, name="mt5-borda", daemon=True
-        )
-        self._thread.start()
+            self._thread.start()
+            if monitor is not None:
+                monitor.connected(
+                    "terminal MT5 conectado; aguardando primeiro book valido"
+                    if self._book_habilitado
+                    else "terminal MT5 conectado; book indisponivel"
+                )
+        except Exception as error:
+            if monitor is not None:
+                monitor.source_failed(
+                    f"start MT5 falhou: {type(error).__name__}: {error}"
+                )
+            raise
 
         try:
             self._loop_consumo()
@@ -725,10 +753,16 @@ class AdaptadorMT5(AdaptadorDados):
             # inicializado. ``parar`` é idempotente para a chamada concorrente
             # usual da thread que controla a sessão.
             self.parar()
+            if monitor is not None and monitor.snapshot().state is not FeedState.ERROR:
+                monitor.close("fonte MT5 encerrada")
 
     def parar(self) -> None:
         self._parar_evt.set()
-        if self._thread is not None and self._thread is not threading.current_thread():
+        if (
+            self._thread is not None
+            and self._thread is not threading.current_thread()
+            and self._thread.ident is not None
+        ):
             self._thread.join(timeout=5.0)
         with self._shutdown_lock:
             if self._shutdown_done:
@@ -823,6 +857,8 @@ class AdaptadorMT5(AdaptadorDados):
         cursor = self._cursor_inicial(mt5)
         snapshot_anterior: BookSnapshot | None = None
         ultimo_poll_ok = time.monotonic()
+        ultimo_book_ok = ultimo_poll_ok
+        gap_book_emitido = False
         conectado = True
 
         while not self._parar_evt.is_set():
@@ -841,6 +877,8 @@ class AdaptadorMT5(AdaptadorDados):
                 if self._book_habilitado:
                     snapshot = self._puxar_book(mt5)
                     if snapshot is not None:
+                        ultimo_book_ok = agora
+                        gap_book_emitido = False
                         if not self._enfileirar(snapshot):
                             return
                         if snapshot_anterior is not None:
@@ -848,6 +886,24 @@ class AdaptadorMT5(AdaptadorDados):
                                 if not self._enfileirar(delta):
                                     return
                         snapshot_anterior = snapshot
+                    else:
+                        monitor = self._feed_monitor
+                        limite_s = (
+                            monitor.max_book_age_ns / 1_000_000_000
+                            if monitor is not None
+                            else 1.0
+                        )
+                        idade_s = agora - ultimo_book_ok
+                        if idade_s > limite_s and not gap_book_emitido:
+                            if not self._enfileirar(
+                                self._falha(
+                                    TipoFalha.GAP_BOOK,
+                                    f"market_book_get sem book valido ha "
+                                    f"{idade_s:.3f}s (limite={limite_s:.3f}s)",
+                                )
+                            ):
+                                return
+                            gap_book_emitido = True
 
                 if not conectado:
                     if not self._enfileirar(
@@ -1062,7 +1118,7 @@ class AdaptadorMT5(AdaptadorDados):
                 niveis.append(BookLevel(price=preco_ticks, qty=qty, n_orders=1))
             return tuple(niveis)
 
-        return BookSnapshot(
+        snapshot = BookSnapshot(
             # DERIVADO: `market_book_get` não devolve tempo nenhum. Relógio
             # do servidor, o mesmo dos trades — nunca `time.time_ns()`.
             timestamp_ns=self._agora_ns(),
@@ -1070,6 +1126,7 @@ class AdaptadorMT5(AdaptadorDados):
             bids=_para_niveis(bids_brutos),
             asks=_para_niveis(asks_brutos),
         )
+        return snapshot if snapshot.bids or snapshot.asks else None
 
     # ------------------------------------------------------------------
     # Thread principal: só ela chama `Barramento.publicar`.
