@@ -66,6 +66,7 @@ class MakerProxy:
         "symbol", "config", "_trades", "_evidencias", "_historico",
         "_trade_ids", "_trade_ids_fila", "_timestamp_ns",
         "_last_market_timestamp_ns", "_last_feed_timestamp_ns", "_feed",
+        "_feed_health", "_feed_temporalmente_valido",
         "_volume_total", "_volume_atribuido", "_delta_agressao",
         "_regime_side", "_regime_since_ns", "_regime_last_ns",
         "_descartados_duplicados", "_descartados_regressivos",
@@ -90,6 +91,8 @@ class MakerProxy:
         self._last_market_timestamp_ns: int | None = None
         self._last_feed_timestamp_ns: int | None = None
         self._feed: FeedQualitySnapshot | None = None
+        self._feed_health: FeedQualitySnapshot | None = None
+        self._feed_temporalmente_valido = True
         self._volume_total = 0
         self._volume_atribuido = 0
         self._delta_agressao = 0
@@ -110,6 +113,8 @@ class MakerProxy:
         self._last_market_timestamp_ns = None
         self._last_feed_timestamp_ns = None
         self._feed = None
+        self._feed_health = None
+        self._feed_temporalmente_valido = True
         self._volume_total = self._volume_atribuido = self._delta_agressao = 0
         self._regime_side = self._regime_since_ns = self._regime_last_ns = None
         self._descartados_duplicados = self._descartados_regressivos = 0
@@ -133,10 +138,7 @@ class MakerProxy:
     def _aceitar_timestamp_mercado(self, timestamp_ns: int) -> bool:
         if timestamp_ns < 0:
             raise ValueError("timestamp_ns deve ser >= 0")
-        if (
-            self._last_market_timestamp_ns is not None
-            and timestamp_ns < self._last_market_timestamp_ns
-        ):
+        if timestamp_ns < self._timestamp_ns:
             self._descartados_regressivos += 1
             return False
         self._last_market_timestamp_ns = timestamp_ns
@@ -221,23 +223,43 @@ class MakerProxy:
     def ao_feed_quality(self, feed: FeedQualitySnapshot) -> MakerProxySnapshot | None:
         if feed.symbol != self.symbol:
             return None
-        if self._last_feed_timestamp_ns is not None and feed.timestamp_ns < self._last_feed_timestamp_ns:
-            self._descartados_regressivos += 1
+
+        # ``timestamp_ns`` era historicamente um alias do relogio de ingresso.
+        # Ele so e causal em snapshots legados que nao expoem o relogio de
+        # mercado de forma independente.
+        if hasattr(feed, "market_timestamp_ns"):
+            market_timestamp_ns = feed.market_timestamp_ns
+        else:
+            market_timestamp_ns = feed.timestamp_ns
+
+        if market_timestamp_ns is None:
+            self._feed_health = feed
             return self._snapshot(registrar_persistencia=False)
-        self._last_feed_timestamp_ns = feed.timestamp_ns
-        self._timestamp_ns = max(self._timestamp_ns, feed.timestamp_ns)
+        if not isinstance(market_timestamp_ns, int) or isinstance(
+            market_timestamp_ns, bool
+        ):
+            raise TypeError("feed.market_timestamp_ns deve ser int ou None")
+        if market_timestamp_ns < 0:
+            raise ValueError("feed.market_timestamp_ns deve ser >= 0")
+        if market_timestamp_ns < self._timestamp_ns:
+            self._descartados_regressivos += 1
+            self._feed_temporalmente_valido = False
+            return self._snapshot(registrar_persistencia=False)
+
+        self._last_feed_timestamp_ns = market_timestamp_ns
+        self._timestamp_ns = market_timestamp_ns
         self._feed = feed
+        self._feed_health = feed
+        self._feed_temporalmente_valido = True
         self._expirar()
         return self._snapshot(registrar_persistencia=False)
 
     atualizar_feed_quality = ao_feed_quality
 
     def snapshot(self, timestamp_ns: int | None = None) -> MakerProxySnapshot:
-        if timestamp_ns is not None:
-            if timestamp_ns < self._timestamp_ns:
-                self._descartados_regressivos += 1
-            else:
-                self._timestamp_ns = timestamp_ns
+        # Mantem o argumento por compatibilidade, mas uma leitura local nao
+        # possui procedencia de mercado e portanto jamais avanca o relogio.
+        _ = timestamp_ns
         self._expirar()
         return self._snapshot(registrar_persistencia=False)
 
@@ -357,7 +379,7 @@ class MakerProxy:
         return persistence_ns, estabilidade
 
     def _qualidade_feed(self, inferred_evidence: bool) -> tuple[float, str, str, bool, bool]:
-        feed = self._feed
+        feed = self._feed_health or self._feed
         if feed is None:
             return 0.0, "UNKNOWN", "NONE", inferred_evidence, True
         source = feed.source.value.upper()
@@ -365,7 +387,8 @@ class MakerProxy:
         conectado = feed.state is FeedState.CONNECTED
         latencia_desconhecida = feed.latency_ns is None and source != "REPLAY"
         atrasado = (
-            (not conectado)
+            (not self._feed_temporalmente_valido)
+            or (not conectado)
             or latencia_desconhecida
             or (
                 feed.latency_ns is not None

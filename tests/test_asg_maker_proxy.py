@@ -7,7 +7,8 @@ import pytest
 
 from fluxopro.asg import (
     ComponenteMaker, ConfigMakerProxy, EstadoMaker, MakerEvidence, MakerProxy,
-    ProcedenciaASG,
+    LeituraASG, MotorDecisaoASG, NivelDecisao, ProcedenciaASG,
+    RegiaoOperacional,
 )
 from fluxopro.core.eventos import AgressorSide, Side, Trade
 from fluxopro.dados.qualidade import (
@@ -24,7 +25,7 @@ def _trade(ts: int, side: AgressorSide, qty: int = 300, trade_id: str | None = N
 
 
 def _feed(
-    ts: int,
+    ts: int | None,
     *,
     book: BookKind = BookKind.MBO,
     state: FeedState = FeedState.CONNECTED,
@@ -34,6 +35,7 @@ def _feed(
     received: int = 0,
     accepted: int = 0,
     anomalies: int = 0,
+    ingress_ts: int | None = None,
 ) -> FeedQualitySnapshot:
     dados = {
         "symbol": SYMBOL, "state": state, "source": source,
@@ -45,9 +47,12 @@ def _feed(
     if "anomalies" in nomes:
         dados["anomalies"] = anomalies
     if "ingress_timestamp_ns" in nomes:
-        dados.update(market_timestamp_ns=ts, ingress_timestamp_ns=ts)
+        dados.update(
+            market_timestamp_ns=ts,
+            ingress_timestamp_ns=ts if ingress_ts is None else ingress_ts,
+        )
     else:
-        dados["timestamp_ns"] = ts
+        dados["timestamp_ns"] = ts if ts is not None else (ingress_ts or 0)
     return FeedQualitySnapshot(**dados)
 
 
@@ -135,6 +140,69 @@ def test_timestamp_regressivo_e_rejeitado_sem_reter_evento_ou_evidencia():
     assert regressivo.discarded_regressive == 1
     proxy.registrar_evidencia(_evidencia(0, ComponenteMaker.ABSORCAO, -1))
     assert proxy.n_evidencias_retidas == 0
+
+
+def test_feed_regressivo_nao_troca_relogio_causal_nem_produz_a3_saudavel():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(100 * S, ingress_ts=100 * S))
+    _alimentar_componentes(proxy, 100 * S, {c: 1.0 for c in ComponenteMaker})
+    proxy.ao_feed_quality(_feed(103 * S, ingress_ts=103 * S))
+    _alimentar_componentes(proxy, 103 * S, {c: 1.0 for c in ComponenteMaker})
+    saudavel = proxy.snapshot()
+    assert saudavel.timestamp_ns == 103 * S
+    assert saudavel.estado is EstadoMaker.COMPRADOR
+
+    regressivo = proxy.ao_feed_quality(_feed(
+        50 * S, ingress_ts=104 * S, source=FeedSource.SIMULATOR,
+    ))
+    assert regressivo is not None
+    assert regressivo.timestamp_ns == 103 * S
+    assert regressivo.discarded_regressive == 1
+    assert regressivo.estado is EstadoMaker.SEM_BOOK
+    assert regressivo.book_delayed is True
+    assert regressivo.confidence == 0.0
+    assert regressivo.source == "MT5"  # feed causal aceito nao foi substituido
+
+    leitura = LeituraASG.do_maker(
+        regressivo,
+        placar={"timestamp_ns": 103 * S, "comprador": 4, "vendedor": 1},
+        feed_quality={"timestamp_ns": 103 * S, "source": "MT5", "book_kind": "MBO"},
+    )
+    regiao = RegiaoOperacional(
+        symbol=SYMBOL, timestamp_ns=103 * S, inicio_ticks=9_999,
+        fim_ticks=10_001, confianca=1.0,
+        procedencia=ProcedenciaASG.OBSERVADA, invalidacao_ticks=9_999,
+    )
+    decisao = MotorDecisaoASG().avaliar(leitura, regiao, 10_000)
+    assert decisao.nivel is NivelDecisao.AGUARDAR
+    assert decisao.confirmacao is False
+
+
+def test_feed_sem_market_timestamp_atualiza_saude_sem_avancar_relogio():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(103 * S, ingress_ts=103 * S))
+    _alimentar_componentes(proxy, 103 * S, {c: 1.0 for c in ComponenteMaker})
+
+    sem_market = proxy.ao_feed_quality(_feed(
+        None, ingress_ts=104 * S, state=FeedState.ERROR, book=BookKind.NONE,
+    ))
+    assert sem_market is not None
+    assert sem_market.timestamp_ns == 103 * S
+    assert sem_market.estado is EstadoMaker.SEM_BOOK
+    assert sem_market.book_kind == "NONE"
+    assert sem_market.feed_quality == 0.0
+    assert sem_market.discarded_regressive == 0
+
+
+def test_ingress_e_snapshot_local_nao_avancam_expiracao_causal():
+    proxy = MakerProxy(SYMBOL)
+    proxy.ao_feed_quality(_feed(103 * S, ingress_ts=103 * S))
+    proxy.ao_trade(_trade(103 * S, AgressorSide.BUY, trade_id="causal"))
+
+    proxy.ao_feed_quality(_feed(None, ingress_ts=200 * S))
+    snapshot = proxy.snapshot(300 * S)
+    assert snapshot.timestamp_ns == 103 * S
+    assert proxy.n_trades_retidos == 1
 
 
 def test_timestamp_igual_com_ids_distintos_e_aceito():
