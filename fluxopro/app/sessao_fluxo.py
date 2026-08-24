@@ -497,6 +497,14 @@ class SessaoFluxo:
 
         cfg = self.config
         symbol = cfg.symbol
+        # Falhar antes da primeira assinatura evita deixar uma sessão parcial
+        # viva no barramento quando a configuração opt-in é incoerente.
+        if type(cfg.intervalo_retrato_asg_ns) is not int or cfg.intervalo_retrato_asg_ns < 1:
+            raise ValueError("intervalo_retrato_asg_ns deve ser inteiro positivo")
+        if cfg.ligar_shadow_learning and not cfg.ligar_leitura_asg:
+            raise ValueError("ligar_shadow_learning exige ligar_leitura_asg=True")
+        if cfg.ligar_shadow_learning and cfg.shadow_dir is None:
+            raise ValueError("ligar_shadow_learning exige shadow_dir")
 
         # ------------------------------------------------------------------
         # Faixa 0 — núcleo primeiro, analytics depois. A ordem AQUI é a única
@@ -644,14 +652,6 @@ class SessaoFluxo:
         self._lock_retrato_asg = threading.Lock()
         self._retrato_asg: RetratoASG | None = None
         self._ultimo_retrato_asg_timestamp_ns: int | None = None
-        if type(cfg.intervalo_retrato_asg_ns) is not int or cfg.intervalo_retrato_asg_ns < 1:
-            raise ValueError("intervalo_retrato_asg_ns deve ser inteiro positivo")
-        if cfg.ligar_shadow_learning and not cfg.ligar_leitura_asg:
-            raise ValueError(
-                "ligar_shadow_learning exige ligar_leitura_asg=True"
-            )
-        if cfg.ligar_shadow_learning and cfg.shadow_dir is None:
-            raise ValueError("ligar_shadow_learning exige shadow_dir")
         if cfg.ligar_shadow_learning:
             assert cfg.shadow_dir is not None
             self.shadow = SidecarShadow(cfg.shadow_dir, cfg.shadow)

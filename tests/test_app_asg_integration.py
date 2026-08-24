@@ -228,6 +228,19 @@ def test_shadow_so_grava_com_flag_e_diretorio(tmp_path: Path) -> None:
             bus_sem_dir,
             _config_asg(ligar_shadow_learning=True, shadow_dir=None),
         )
+    assert bus_sem_dir._assinantes == {}
+
+    bus_sem_leitura = Barramento()
+    with pytest.raises(ValueError, match="ligar_leitura_asg"):
+        SessaoFluxo(
+            bus_sem_leitura,
+            _config_asg(
+                ligar_shadow_learning=True,
+                ligar_leitura_asg=False,
+                shadow_dir=str(tmp_path / "invalido"),
+            ),
+        )
+    assert bus_sem_leitura._assinantes == {}
 
     habilitado_dir = tmp_path / "habilitado"
     bus_habilitado = Barramento()
