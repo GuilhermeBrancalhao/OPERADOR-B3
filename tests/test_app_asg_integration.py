@@ -12,6 +12,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from fluxopro.app.config import ConfigOperacao, FonteDados
 from fluxopro.app.sessao_fluxo import RetratoASG, SessaoFluxo
 from fluxopro.asg import EstadoMaker
@@ -221,13 +223,11 @@ def test_shadow_so_grava_com_flag_e_diretorio(tmp_path: Path) -> None:
     assert not desabilitado_dir.exists()
 
     bus_sem_dir = Barramento()
-    sem_dir = SessaoFluxo(
-        bus_sem_dir,
-        _config_asg(ligar_shadow_learning=True, shadow_dir=None),
-    )
-    _publicar_quadro(bus_sem_dir, T0)
-    sem_dir.finalizar(T0)
-    assert sem_dir.shadow is None
+    with pytest.raises(ValueError, match="shadow_dir"):
+        SessaoFluxo(
+            bus_sem_dir,
+            _config_asg(ligar_shadow_learning=True, shadow_dir=None),
+        )
 
     habilitado_dir = tmp_path / "habilitado"
     bus_habilitado = Barramento()
