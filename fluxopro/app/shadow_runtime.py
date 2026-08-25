@@ -37,6 +37,8 @@ class ShadowRuntimeSnapshot:
 @dataclass(frozen=True, slots=True)
 class _ResetCommand:
     symbol: str
+    ack: threading.Event
+    resultado: list[Exception | None]
 
 
 _STOP = object()
@@ -72,8 +74,38 @@ class AsyncShadowWriter:
     def submit(self, sample: AmostraFeatures) -> bool:
         return self._enqueue(sample)
 
-    def reset_session(self, symbol: str) -> bool:
-        return self._enqueue(_ResetCommand(symbol))
+    def reset_session(self, symbol: str, *, timeout_s: float = 15.0) -> bool:
+        """Entrega a virada em ordem e só retorna após o reset causal.
+
+        Amostras podem ser descartadas quando a fila está cheia, mas a virada
+        não pode: perder esse comando permitiria que um label usasse o pregão
+        seguinte como futuro. A espera é pelo writer, nunca por I/O no
+        barramento. Se o writer não confirmar no prazo, o shadow é desligado
+        de forma explícita; amostras posteriores passam a ser recusadas.
+        """
+        if timeout_s <= 0:
+            raise ValueError("timeout_s deve ser positivo")
+        comando = _ResetCommand(symbol, threading.Event(), [None])
+        with self._lock:
+            indisponivel = self._closed or self._disabled
+        if indisponivel:
+            self._disable_after_reset_failure("writer shadow indisponivel")
+            return False
+        try:
+            self._queue.put(comando, timeout=timeout_s)
+        except queue.Full:
+            self._disable_after_reset_failure(
+                "reset de sessao sem confirmacao: fila shadow cheia"
+            )
+            return False
+        if not comando.ack.wait(timeout_s):
+            self._disable_after_reset_failure(
+                "reset de sessao sem confirmacao do writer"
+            )
+            return False
+        if comando.resultado[0] is not None:
+            return False
+        return True
 
     def _enqueue(self, item: AmostraFeatures | _ResetCommand) -> bool:
         with self._lock:
@@ -147,16 +179,14 @@ class AsyncShadowWriter:
                     self._queue.task_done()
                 return
             try:
-                if self._disabled:
-                    with self._lock:
-                        self._dropped += 1
-                    continue
                 if isinstance(item, _ResetCommand):
-                    self._with_backpressure(
-                        lambda: self.sidecar.resetar_sessao(item.symbol)
-                    )
+                    self._process_reset(item)
                 else:
                     assert isinstance(item, AmostraFeatures)
+                    if self._disabled:
+                        with self._lock:
+                            self._dropped += 1
+                        continue
                     self._with_backpressure(lambda: self.sidecar.observar(item))
                 with self._lock:
                     self._processed += 1
@@ -164,6 +194,19 @@ class AsyncShadowWriter:
                 self._record_failure(exc)
             finally:
                 self._queue.task_done()
+
+    def _process_reset(self, comando: _ResetCommand) -> None:
+        try:
+            with self._lock:
+                indisponivel = self._disabled
+            if indisponivel:
+                raise RuntimeError("writer shadow indisponivel para reset")
+            self._with_backpressure(lambda: self.sidecar.resetar_sessao(comando.symbol))
+        except Exception as exc:
+            comando.resultado[0] = exc
+            self._record_failure(exc)
+        finally:
+            comando.ack.set()
 
     def _with_backpressure(self, operation) -> None:
         try:
@@ -178,6 +221,16 @@ class AsyncShadowWriter:
             self._state = ShadowRuntimeState.ERROR
             self._failures += 1
             self._detail = f"{type(exc).__name__}: {exc}"
+
+    def _disable_after_reset_failure(self, detail: str) -> None:
+        """Degradação auditável quando a barreira de virada não fecha."""
+        with self._lock:
+            if self._disabled:
+                return
+            self._disabled = True
+            self._state = ShadowRuntimeState.ERROR
+            self._failures += 1
+            self._detail = detail
 
 
 __all__ = [

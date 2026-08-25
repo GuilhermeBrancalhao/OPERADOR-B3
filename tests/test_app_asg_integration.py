@@ -267,6 +267,44 @@ def test_shadow_so_grava_com_flag_e_diretorio(tmp_path: Path) -> None:
     assert registros[0]["promocao_automatica"] is False
 
 
+def test_replay_identico_reutiliza_run_finalizado_sem_duplicata_logica(
+    tmp_path: Path,
+) -> None:
+    shadow_dir = tmp_path / "replay-idempotente"
+    config = _config_asg(
+        fonte=FonteDados.REPLAY,
+        ligar_shadow_learning=True,
+        shadow_dir=str(shadow_dir),
+        shadow=ConfigShadow(horizontes_s=(1,)),
+    )
+
+    for rodada in range(2):
+        barramento = Barramento()
+        sessao = SessaoFluxo(barramento, config)
+        try:
+            _publicar_quadro(barramento, T0, suffix=f"{rodada}-a")
+            _publicar_quadro(
+                barramento,
+                T0 + 1_000_000_000,
+                suffix=f"{rodada}-b",
+                price=PRICE + 1,
+            )
+        finally:
+            sessao.finalizar(T0 + 1_000_000_000)
+
+    runs = [caminho for caminho in (shadow_dir / "runs").iterdir() if caminho.is_dir()]
+    assert len(runs) == 1
+    assert runs[0].name.startswith("replay-")
+    arquivos = list(runs[0].rglob("features.jsonl.gz"))
+    assert len(arquivos) == 1
+    with gzip.open(arquivos[0], "rt", encoding="utf-8") as stream:
+        registros = [json.loads(linha) for linha in stream if linha.strip()]
+    assert [registro["timestamp_ns"] for registro in registros] == [
+        T0,
+        T0 + 1_000_000_000,
+    ]
+
+
 def test_workspace_ctrl_5_estende_sem_alterar_os_quatro_historicos() -> None:
     from fluxopro.ui.workspace import (
         NOMES_DE_FABRICA,

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import gzip
+import json
+import threading
 import time
 from pathlib import Path
 
@@ -8,11 +11,11 @@ from fluxopro.core.eventos import Side
 from fluxopro.shadow import AmostraFeatures, ConfigShadow, SidecarShadow
 
 
-def _sample(ts: int) -> AmostraFeatures:
+def _sample(ts: int, *, price: int = 100) -> AmostraFeatures:
     return AmostraFeatures(
         timestamp_ns=ts,
         symbol="WDOQ26",
-        price_ticks=100,
+        price_ticks=price,
         estado="NEUTRO",
         direcao=Side.BUY,
     )
@@ -91,3 +94,47 @@ def test_fila_limitada_descarta_sem_bloquear(tmp_path: Path, monkeypatch) -> Non
     assert writer.snapshot().dropped_backpressure == 1
     gate.set()
     writer.close()
+
+
+def test_reset_espera_ack_quando_fila_esta_cheia_e_censura_sessao_anterior(
+    tmp_path: Path, monkeypatch
+) -> None:
+    sidecar = SidecarShadow(
+        tmp_path,
+        ConfigShadow(intervalo_amostra_ns=100_000_000_000, horizontes_s=(1,)),
+    )
+    entrou_no_writer = threading.Event()
+    liberar_writer = threading.Event()
+    original = sidecar.observar
+
+    def bloquear(sample):
+        entrou_no_writer.set()
+        assert liberar_writer.wait(2)
+        return original(sample)
+
+    monkeypatch.setattr(sidecar, "observar", bloquear)
+    writer = AsyncShadowWriter(sidecar, capacity=1)
+    assert writer.submit(_sample(1))
+    assert entrou_no_writer.wait(1)
+    assert writer.submit(_sample(500_000_000))
+
+    resultado: list[bool] = []
+    reset = threading.Thread(target=lambda: resultado.append(writer.reset_session("WDOQ26")))
+    reset.start()
+    time.sleep(0.05)
+    assert reset.is_alive(), "reset deve aguardar vaga/ack; nao pode ser descartado"
+
+    liberar_writer.set()
+    reset.join(2)
+    assert resultado == [True]
+    assert writer.submit(_sample(1_000_000_001, price=110))
+    writer.close()
+
+    arquivos = list(tmp_path.rglob("labels.jsonl.gz"))
+    assert len(arquivos) == 1
+    with gzip.open(arquivos[0], "rt", encoding="utf-8") as stream:
+        labels = [json.loads(linha) for linha in stream if linha.strip()]
+    anterior = [label for label in labels if label["price_inicial_ticks"] == 100]
+    assert len(anterior) == 1
+    assert anterior[0]["qualidade"] == "CENSURADA"
+    assert anterior[0]["price_final_ticks"] == 100

@@ -52,6 +52,7 @@ class SidecarShadow:
         config: ConfigShadow | None = None,
         *,
         run_id: str | None = None,
+        reutilizar_finalizado: bool = False,
     ) -> None:
         self.saida_dir = Path(saida_dir)
         self.config = config or ConfigShadow()
@@ -59,10 +60,14 @@ class SidecarShadow:
         if not _RUN_ID.fullmatch(self.run_id):
             raise ValueError("run_id deve ser identificador seguro de ate 64 caracteres")
         self.run_dir = self.saida_dir / "runs" / self.run_id
-        if self.run_dir.exists():
+        self._reutilizando_finalizado = False
+        if self.run_dir.exists() and not reutilizar_finalizado:
             raise FileExistsError(
                 f"execucao shadow imutavel ja existe: {self.run_dir}"
             )
+        if self.run_dir.exists():
+            self._validar_run_finalizado_reutilizavel()
+            self._reutilizando_finalizado = True
         self._rotulador = RotuladorCausal(self.config)
         self._ultimo_timestamp: dict[str, int] = {}
         self._ultimo_estado: dict[str, str] = {}
@@ -72,7 +77,7 @@ class SidecarShadow:
         self._proxima_sessao_id = 0
         self._buffer: deque[tuple[str, str, str, dict]] = deque()
         self._particoes_tocadas: set[tuple[str, str]] = set()
-        self._finalizado = False
+        self._finalizado = self._reutilizando_finalizado
         self.amostras_gravadas = 0
         self.amostras_sem_label_por_capacidade = 0
         self.rotulos_gravados = 0
@@ -91,6 +96,8 @@ class SidecarShadow:
 
     def observar(self, amostra: AmostraFeatures) -> bool:
         """Consome um snapshot causal; retorna se ele foi persistido como feature."""
+        if self._reutilizando_finalizado:
+            return False
         if self._finalizado:
             raise RuntimeError("execucao shadow ja finalizada")
         self._validar_relogio_e_capacidade(amostra)
@@ -174,6 +181,8 @@ class SidecarShadow:
 
     def flush(self, max_registros: int | None = None) -> int:
         """Persiste lateralmente registros ja ingeridos; nunca cria labels."""
+        if self._reutilizando_finalizado:
+            return 0
         if max_registros is not None and max_registros < 0:
             raise ValueError("max_registros deve ser nao negativo ou None")
         limite = len(self._buffer) if max_registros is None else min(
@@ -189,6 +198,8 @@ class SidecarShadow:
 
     def resetar_sessao(self, symbol: str) -> int:
         """Censura labels do simbolo antes de apagar qualquer estado causal."""
+        if self._reutilizando_finalizado:
+            return 0
         n = self._rotulador.n_horizontes_pendentes(symbol)
         if len(self._buffer) + n > self.config.max_registros_buffer:
             raise BufferShadowCheio("flush necessario antes de resetar a sessao")
@@ -202,6 +213,8 @@ class SidecarShadow:
 
     def finalizar(self) -> None:
         """Censura, drena e materializa relatórios imutáveis por partição."""
+        if self._reutilizando_finalizado:
+            return
         if self._finalizado:
             return
         for symbol in self._rotulador.simbolos_pendentes:
@@ -350,6 +363,27 @@ class SidecarShadow:
             "config_versao": self.config.config_versao,
         }
         _escrever_json_atomico(caminho, payload)
+
+    def _validar_run_finalizado_reutilizavel(self) -> None:
+        caminho = self.run_dir / ARQUIVO_RUN
+        try:
+            existente = json.loads(caminho.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise FileExistsError(
+                f"execucao shadow existente nao pode ser reutilizada: {self.run_dir}"
+            ) from exc
+        esperado = {
+            "schema_versao": SCHEMA_VERSAO,
+            "run_id": self.run_id,
+            "status": "FINALIZED",
+            "modo": "shadow",
+            "promocao_automatica": False,
+            "config_versao": self.config.config_versao,
+        }
+        if any(existente.get(chave) != valor for chave, valor in esperado.items()):
+            raise FileExistsError(
+                f"execucao shadow existente nao e um replay finalizado compativel: {self.run_dir}"
+            )
 
     def _finalizar_run(self) -> None:
         caminho = self.run_dir / ARQUIVO_RUN

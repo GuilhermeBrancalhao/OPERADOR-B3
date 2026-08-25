@@ -48,6 +48,8 @@ mínimo — ver a docstring daquele módulo). O que esta camada faz é duas cois
 
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -377,6 +379,25 @@ def _contrato_da_fonte(fonte: FonteDados) -> tuple[FeedSource, BookKind, Aggress
     raise ValueError(f"fonte sem contrato de qualidade: {fonte!r}")
 
 
+def _run_id_replay_deterministico(config: ConfigOperacao) -> str:
+    """Identidade estável do replay quando o chamador não informou uma.
+
+    A fonte, o símbolo e o contrato shadow (incluindo sua versão) delimitam a
+    unidade reproduzível disponível nesta fronteira. Integrações que conheçam
+    o recorte físico devem passar ``shadow_run_id`` explícito à sessão.
+    """
+    identidade = {
+        "fonte": config.fonte.value,
+        "symbol": config.symbol,
+        "shadow": asdict(config.shadow),
+    }
+    serializado = json.dumps(
+        identidade, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    )
+    digest = hashlib.sha256(serializado.encode("utf-8")).hexdigest()
+    return f"replay-{digest[:56]}"
+
+
 def _congelar_candle(footprint: Footprint) -> Footprint:
     """Cópia do candle VIVO — o único que a thread da fonte ainda muta.
 
@@ -487,6 +508,8 @@ class SessaoFluxo:
         config: ConfigOperacao | None = None,
         ao_sinal: Callable[[Sinal], None] | None = None,
         ao_deteccao: Callable[[DeteccaoAnotada], None] | None = None,
+        *,
+        shadow_run_id: str | None = None,
     ) -> None:
         self.barramento = barramento
         self.config = config if config is not None else ConfigOperacao()
@@ -654,7 +677,17 @@ class SessaoFluxo:
         self._ultimo_retrato_asg_timestamp_ns: int | None = None
         if cfg.ligar_shadow_learning:
             assert cfg.shadow_dir is not None
-            self.shadow = SidecarShadow(cfg.shadow_dir, cfg.shadow)
+            run_id = shadow_run_id
+            reutilizar_finalizado = False
+            if cfg.fonte is FonteDados.REPLAY:
+                run_id = run_id or _run_id_replay_deterministico(cfg)
+                reutilizar_finalizado = True
+            self.shadow = SidecarShadow(
+                cfg.shadow_dir,
+                cfg.shadow,
+                run_id=run_id,
+                reutilizar_finalizado=reutilizar_finalizado,
+            )
             self.shadow_writer = AsyncShadowWriter(
                 self.shadow, capacity=cfg.shadow_queue_capacity
             )
@@ -1291,6 +1324,14 @@ class SessaoFluxo:
         cfg = self.config
         symbol = cfg.symbol
 
+        # Barreira ANTES de liberar qualquer estado da sessão seguinte. O
+        # writer confirma que censurou os horizontes pendentes em ordem; se
+        # não puder confirmar, ele se desliga de forma visível e não aceita
+        # novas amostras. Assim, fila cheia nunca transforma o pregão seguinte
+        # em futuro de um label anterior.
+        if self.shadow_writer is not None:
+            self.shadow_writer.reset_session(symbol)
+
         # (a) quem tem API própria
         self.estado.iniciar_nova_sessao(timestamp_ns)
         if self.delta is not None:
@@ -1353,9 +1394,6 @@ class SessaoFluxo:
         self._sinal_corrente = None
         if self.maker_proxy is not None:
             self.maker_proxy.iniciar_nova_sessao()
-        if self.shadow is not None:
-            assert self.shadow_writer is not None
-            self.shadow_writer.reset_session(symbol)
         with self._lock_retrato_asg:
             self._retrato_asg = None
         self._ultimo_retrato_asg_timestamp_ns = None
