@@ -10,7 +10,7 @@ extraída de fonte pública com citação e rótulo de confiança.
 
 ## O estado, em uma linha
 
-`python -m pytest tests/ -q` → **1.351 passed, 2 skipped**
+`python -m pytest tests/ -q` → **1.602 passed**
 · ~29 mil linhas de produção, ~25 mil de teste
 · **o tape é de mercado real**; o livro ainda não.
 
@@ -33,6 +33,13 @@ nível de processo sabia que devia tentar de novo. `scripts/supervisionar_gravac
 lacuna: reconecta `operar.py` enquanto a janela do pregão não fecha e o dia não está finalizado,
 com um circuito que desiste se as quedas forem rápidas e seguidas (sinal de MT5 fora do ar, não
 de um evento isolado). É o que `gravar_pregao.cmd` chama agora.
+
+Em 25/08/2026 o supervisor provou a si mesmo: a gravação rodou do início ao fim sem cair
+(**1.326.893 eventos**, `parcial: false`) e a tarefa fechou sozinha, sem precisar reconectar
+nenhuma vez. No mesmo dia o repositório absorveu o workspace `ASG-like` (proposta consultiva
+Stop/A1/A2/A3, `MakerProxy`, auditoria de shadow) desenvolvido em paralelo — 245 arquivos, sem
+conflito real com a gravação, verificado por merge local e suíte inteira reexecutada.
+`dados_manifesto.json` já cobre os 34 pregões, incluindo o de hoje.
 
 ---
 

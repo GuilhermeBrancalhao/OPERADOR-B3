@@ -8,9 +8,10 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
-> **Estado corrente — 24/08/2026.** `python -m pytest tests/ -q` → **1.351 passed, 2 skipped**.
+> **Estado corrente — 25/08/2026.** `python -m pytest tests/ -q` → **1.602 passed**.
 > Fases 1, 2, 3 e 5 do plano de UI entregues e montadas numa janela só; `fluxopro/metodologia/`
-> ligado ao pipeline vivo. Detalhe do ciclo em `GAUNTLET_ASG.md`.
+> ligado ao pipeline vivo; workspace `ASG-like` incorporado via merge de `origin/main` (PR #1).
+> Detalhe do ciclo em `GAUNTLET_ASG.md`.
 > **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
 >
 > *(Este é o único lugar do arquivo onde o número de testes é mantido. Número velho sob selo de
@@ -362,6 +363,38 @@ cheio custa ~4 ms. É o mesmo "25 ms" que a docstring da matriz cita, mesma
 causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
 
 Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
+
+## Onda 16 — o supervisor se prova, e o workspace ASG-like chega por PR (25/08)
+
+Segunda-feira seguinte ao incidente. `FluxoPro-GravarPregao` disparou às 09:00,
+e desta vez ninguém precisou reconectar nada: **1.326.893 eventos** do início
+ao fim, `meta.json` fechou com `"parcial": false`. O circuito da Onda 15 não
+teve chance de ser exercido de verdade — o dia foi limpo — mas o supervisor
+ficou de pé o pregão inteiro, que é o caso comum que ele tem que aguentar sem
+atrapalhar.
+
+No mesmo dia, `origin/main` recebeu 35 commits que este clone não tinha: o PR
+#1 (`feat/asg-like-v1`, autoria do próprio dono do repo) trazendo o workspace
+`ASG-like` — Stop/A1/A2/A3 consultivos, `MakerProxy` (a fórmula real da ASG
+está `NÃO REPLICÁVEL`; o proxy é implementação própria, aberta e testada),
+sidecar de shadow session e a auditoria `scripts/auditoria_asg.py` que já roda
+em CI (`.github/workflows/auditoria-asg.yml`). 245 arquivos, nenhum overlap
+real com a gravação — só `README.md` foi tocado dos dois lados, em seções
+diferentes do texto. Merge local sem conflito, suíte inteira reexecutada
+**três vezes** para separar sinal de ruído:
+
+- 1ª rodada: 1 falha — `MetaTrader5/__init__.py` não importou (`_core`
+  bloqueado por política de Controle de Aplicativo do Windows). Ambiental,
+  não reproduziu na rodada seguinte.
+- 2ª rodada: 1 falha — `test_ui_hud.py::test_a_incrementalidade_existe`,
+  portão de tempo que exige razão ≥5× e mediu 4,98×. Isolado, rodou 3 vezes
+  sozinho: 2 passou, 1 falhou — é o mesmo ruído de contenção de CPU já
+  catalogado (várias sessões concorrentes nesta máquina), não regressão do
+  merge (nem o teste nem o painel do HUD estavam no diff).
+- 3ª rodada: **1.602 passed, 0 falhas** — número final.
+
+`dados_manifesto.json` já cobre os 34 pregões (5.537.633 eventos), incluindo
+o de hoje.
 
 ## Onda 15 — a gravação sabe se reconectar sozinha (24/08)
 
