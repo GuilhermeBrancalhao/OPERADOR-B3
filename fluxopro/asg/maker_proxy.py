@@ -466,8 +466,19 @@ class MakerProxy:
         if self._regime_since_ns is None or lado != self._regime_side:
             self._regime_side = lado
             self._regime_since_ns = ts
+            self._historico.append((ts, lado))
+        elif (
+            self._historico
+            and ts > self._historico[-1][0]
+            and ts - self._historico[-1][0] < self.config.intervalo_persistencia_ns
+        ):
+            # O relógio causal segue avançando; só a amostra de estabilidade
+            # é decimada. Viradas de lado nunca passam por este atalho.
+            self._regime_last_ns = ts
+            return
+        else:
+            self._historico.append((ts, lado))
         self._regime_last_ns = ts
-        self._historico.append((ts, lado))
 
     def _metricas_persistencia(self, score: float) -> tuple[int, float]:
         if self._regime_since_ns is None or self._regime_last_ns is None:

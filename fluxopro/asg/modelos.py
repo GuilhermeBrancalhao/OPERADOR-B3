@@ -138,6 +138,13 @@ class ConfigMakerProxy:
     janela_micro_ns: int = 5_000_000_000
     janela_contexto_ns: int = 30_000_000_000
     persistencia_minima_ns: int = 3_000_000_000
+    intervalo_persistencia_ns: int = 1_000_000
+    """Amostra a estabilidade no máximo a cada 1 ms por padrão.
+
+    A virada de lado sempre é retida. O intervalo só evita uma alocação de
+    histórico por tick em feeds de alta frequência; persistência continua
+    usando o último relógio de mercado aceito.
+    """
     relevancia_minima: float = 0.07
     confianca_minima: float = 0.60
     peso_absorcao: float = 0.30
@@ -168,7 +175,7 @@ class ConfigMakerProxy:
             object.__setattr__(self, "limiar_direcional", self.relevancia_minima)
         for nome in (
             "janela_curta_ns", "janela_micro_ns", "janela_contexto_ns",
-            "persistencia_minima_ns", "max_trades_retidos",
+            "persistencia_minima_ns", "intervalo_persistencia_ns", "max_trades_retidos",
             "max_evidencias_por_componente", "max_amostras_persistencia",
             "max_trade_ids_retidos", "volume_referencia_agressao",
             "latencia_feed_max_ns", "janela_agressao_ns", "janela_evidencia_ns",

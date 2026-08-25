@@ -100,6 +100,7 @@ def test_defaults_exatos_do_briefing():
     cfg = ConfigMakerProxy()
     assert (cfg.janela_curta_ns, cfg.janela_micro_ns, cfg.janela_contexto_ns) == (S, 5 * S, 30 * S)
     assert cfg.persistencia_minima_ns == 3 * S
+    assert cfg.intervalo_persistencia_ns == 1_000_000
     assert cfg.relevancia_minima == 0.07
     assert cfg.confianca_minima == 0.60
     assert dict(cfg.pesos) == {

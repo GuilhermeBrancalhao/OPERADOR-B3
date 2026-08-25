@@ -45,7 +45,10 @@ feed de mercado real.
   `6.914/s` e overhead Maker `21,33%`; portanto não atingiu a barra de
   `10.000/s` e `10%`. O limite permanece aberto e bloqueia a alegação de
   integração plena. O perfilamento deve separar custo de persistência,
-  microestrutura e matriz antes de qualquer relaxamento.
+  microestrutura e matriz antes de qualquer relaxamento. A repetição R1.1
+  (`benchmark-r5.json`) variou para baseline `6.249/s` e overhead `29,29%`,
+  confirmando que este host apresenta ruído/variação relevante; nenhum dos
+  dois resultados autoriza declarar a barra atingida.
 - **SHADOW-001:** não havia uma partição real de shadow para validar; o
   auditor marca isso como SKIPPED, não PASS.
 
@@ -67,6 +70,9 @@ Após a crítica cega, foram corrigidos e testados:
   snapshot público. A otimização rápida trata o caso comum de agressão isolada
   sem criar `MakerEvidence` por tick; a equivalência com o snapshot ponderado
   permanece coberta pelo teste do hot path.
+- A série de estabilidade usa `intervalo_persistencia_ns` configurável
+  (1 ms), retém toda virada de lado e preserva o último timestamp causal; isso
+  reduz alocações em tape de alta frequência sem ocultar mudança de regime.
 
 O auditor independente encontrou nenhum P0. A auditoria P1 fechou `MAKER-001`;
 os gaps de desempenho, gráfico e shadow continuam abertos até haver
