@@ -1012,12 +1012,17 @@ class SessaoFluxo:
         que escreve. Montar por trade seria pagar O(níveis) 5.000 vezes por
         segundo para desenhar 62.
         """
-        if not self._retrato_pedido:
-            return
-        retrato = self._montar_retrato(self._retrato_n_colunas)
+        # A UI pode pedir um novo retrato enquanto o produtor congela o
+        # anterior. A solicitação precisa ser consumida atomicamente; limpar
+        # a flag depois da construção perderia esse pedido intercalado.
+        with self._lock_retrato:
+            if not self._retrato_pedido:
+                return
+            n_colunas = self._retrato_n_colunas
+            self._retrato_pedido = False
+        retrato = self._montar_retrato(n_colunas)
         with self._lock_retrato:
             self._retrato_analytics = retrato
-            self._retrato_pedido = False
 
     def retrato_de_analytics(self, n_colunas: int = 0) -> RetratoAnalytics | None:
         """Footprint, perfil e delta num instante só — a UI chama isto.
@@ -1189,6 +1194,13 @@ class SessaoFluxo:
         cont.deteccoes_por_tipo[deteccao.tipo] = (
             cont.deteccoes_por_tipo.get(deteccao.tipo, 0) + 1
         )
+        # O MakerProxy é uma síntese de tape + microestrutura. Antes deste
+        # elo, as detecções eram auditáveis no callback externo, mas nunca
+        # chegavam à síntese que a UI e a decisão consultiva exibem. A entrega
+        # ocorre na mesma thread publicadora e preserva o timestamp causal do
+        # evento; o Proxy descarta regressões e só aceita tipos mapeados.
+        if self.maker_proxy is not None:
+            self.maker_proxy.ao_deteccao(deteccao)
         if self._ao_deteccao is not None:
             self._ao_deteccao(anotada)
 

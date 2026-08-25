@@ -197,8 +197,14 @@ class MakerProxy:
             self._volume_atribuido += retido.qty
             self._delta_agressao += retido.qty * sinal
         self._expirar()
+        # ``ingerir_trade`` e o caminho usado pela sessão em produção: ele
+        # evita alocar snapshots por tick. Ainda assim, persistência e
+        # estabilidade são parte do estado causal do Maker e precisam avançar
+        # em cada trade aceito; deixar isso apenas em ``ao_trade`` fazia o
+        # Maker ficar eternamente em AJUSTANDO no feed normal.
+        self._atualizar_persistencia(self._score_corrente())
         return (
-            self._snapshot(registrar_persistencia=True)
+            self._snapshot(registrar_persistencia=False)
             if produzir_snapshot else True
         )
 
@@ -396,6 +402,62 @@ class MakerProxy:
             disponivel=disponivel,
         )
         return score, confianca, peso, disponivel, item
+
+    def _score_corrente(self) -> float:
+        """Pontuação ponderada sem materializar o snapshot público.
+
+        Esta versão reduzida é usada exclusivamente para atualizar a série de
+        persistência no hot path. Ela preserva a mesma regra de cobertura e
+        renormalização de :meth:`_snapshot`, mas não cria evidências, scores ou
+        tuplas que a UI não consumirá naquele tick.
+        """
+
+        # No fluxo normal, apenas agressão está presente entre os cinco
+        # componentes. Evitar criar ``MakerEvidence`` por tick mantém a
+        # correção causal sem transformar a persistência em um snapshot
+        # disfarçado.
+        if not any(self._evidencias.values()):
+            if not self._trades or self._volume_total <= 0:
+                return 0.0
+            volume_atribuido = self._volume_atribuido
+            if volume_atribuido <= 0:
+                return 0.0
+            confianca = (volume_atribuido / self._volume_total) * min(
+                1.0, volume_atribuido / self.config.volume_referencia_agressao
+            )
+            if confianca < self.config.confianca_minima:
+                return 0.0
+            return max(
+                -1.0,
+                min(1.0, self._delta_agressao / max(volume_atribuido, 1)),
+            )
+
+        evidencia_agressao = self._evidencia_agressao()
+        peso_disponivel = 0.0
+        pontuacao_ponderada = 0.0
+        for componente in ComponenteMaker:
+            evidencias = (
+                (evidencia_agressao,) if componente is ComponenteMaker.AGRESSAO and evidencia_agressao
+                else () if componente is ComponenteMaker.AGRESSAO
+                else self._evidencias[componente]
+            )
+            compra = venda = 0.0
+            n_relevantes = 0
+            for evidencia in evidencias:
+                if evidencia.confianca < self.config.confianca_minima:
+                    continue
+                compra += evidencia.evidence_buy
+                venda += evidencia.evidence_sell
+                n_relevantes += 1
+            if not n_relevantes:
+                continue
+            score = (compra - venda) / (compra + venda + 1e-12)
+            peso = self.config.peso_de(componente)
+            peso_disponivel += peso
+            pontuacao_ponderada += score * peso
+        if not peso_disponivel:
+            return 0.0
+        return max(-1.0, min(1.0, pontuacao_ponderada / peso_disponivel))
 
     def _atualizar_persistencia(self, score: float) -> None:
         limiar = self.config.relevancia_minima

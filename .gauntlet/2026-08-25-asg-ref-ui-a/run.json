@@ -1,0 +1,21 @@
+{
+  "runId": "2026-08-25-asg-ref-ui-a",
+  "bar_name": "ASG-like Reference Pack v1",
+  "bar_slug": "asg-like-reference-pack-v1",
+  "product_slug": "operador-b3-asg-like-workspace",
+  "models": {
+    "builder": "gpt-5.6-sol",
+    "critic": "gpt-5.6-sol"
+  },
+  "budget": {
+    "agent_runs_ceiling": 60,
+    "output_token_target": 1000000
+  },
+  "part_owner": {
+    "visual-shell": "lead",
+    "read-model": "lead",
+    "maker-integration": "lead",
+    "compatibility-audit": "lead"
+  },
+  "workflow_status": "manual-fallback: no callable Workflow harness is exposed in this environment; independent fresh critics remain required"
+}

@@ -1824,7 +1824,7 @@ class JanelaFluxo(QMainWindow):
         self.trilho.setVisible(not eh_asg)
         self._workspace = alvo
         self.setWindowTitle(
-            f"Operador B3 — ASG-like funcional — {self.simbolo}"
+            f"Operador B3 — NEXO consultivo — {self.simbolo}"
             if alvo.nome == "ASG-like"
             else f"FluxoPro — {self.simbolo}"
         )
@@ -1855,7 +1855,15 @@ class JanelaFluxo(QMainWindow):
             # nao pode ser motivo para a janela nao abrir.
             self.trilha.erro("workspace", "não li %s: %s" % (alvo.nome, erro))
             return None
-        return None if dados is None else dados[1]
+        if dados is None:
+            return None
+        geometria, estado, _extra = dados
+        # O formato persistido sempre carregou os dois blobs, mas a janela
+        # histórica só restaurava o saveState. Aplicar ambos mantém o
+        # workspace do operador e torna o campo ``geometria`` auditável.
+        if geometria and not self.restoreGeometry(geometria):
+            self.trilha.aviso("workspace", "geometria salva não foi restaurada: %s" % alvo.nome)
+        return estado
 
     def salvar_workspace(self):
         """Grava geometria + estado do arranjo corrente. `None` se desligado."""

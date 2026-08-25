@@ -128,6 +128,21 @@ def test_trade_id_duplicado_nao_dobra_volume_nem_persistencia():
     assert segundo.persistence_ns == primeiro.persistence_ns
 
 
+def test_hot_path_de_trade_materializa_persistencia_sem_snapshot_por_tick():
+    """A sessão usa ``ingerir_trade``; esse caminho não pode zerar o Maker."""
+
+    proxy = MakerProxy(SYMBOL)
+    assert proxy.ingerir_feed_quality(_feed(0))
+    assert proxy.ingerir_trade(_trade(0, AgressorSide.BUY, 300, "hot-0"))
+    assert proxy.ingerir_feed_quality(_feed(3 * S))
+    assert proxy.ingerir_trade(_trade(3 * S, AgressorSide.BUY, 300, "hot-3"))
+
+    snapshot = proxy.snapshot()
+    assert proxy.n_amostras_persistencia == 2
+    assert snapshot.persistence_ns == 3 * S
+    assert snapshot.stability == pytest.approx(1.0)
+
+
 def test_timestamp_regressivo_e_rejeitado_sem_reter_evento_ou_evidencia():
     proxy = MakerProxy(SYMBOL)
     proxy.ao_feed_quality(_feed(100))

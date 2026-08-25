@@ -112,7 +112,9 @@ TITULO_DA_DOCA: dict[str, str] = {
     "hud": "HUD",
     "metodo": "MÉTODO",
     "regras": "REGISTRO DE REGRAS",
-    "asg": "OPERADOR B3 · ASG-LIKE",
+    # A chave ``asg`` é uma ABI interna/persistida; a identidade exibida é
+    # própria e não sugere vínculo, reprodução ou licença de terceiro.
+    "asg": "OPERADOR B3 · NEXO",
     "replay": "REPLAY",
     "trilha": "TRILHA DE EVENTOS",
 }

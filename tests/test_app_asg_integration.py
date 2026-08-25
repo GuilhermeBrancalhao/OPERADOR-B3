@@ -16,10 +16,12 @@ import pytest
 
 from fluxopro.app.config import ConfigOperacao, FonteDados
 from fluxopro.app.sessao_fluxo import RetratoASG, SessaoFluxo
-from fluxopro.asg import EstadoMaker
+from fluxopro.asg import ComponenteMaker, EstadoMaker
 from fluxopro.core.barramento import Barramento
-from fluxopro.core.eventos import AgressorSide, BookLevel, BookSnapshot, Trade
+from fluxopro.core.eventos import AgressorSide, BookLevel, BookSnapshot, Side, Trade
 from fluxopro.dados.qualidade import FeedQualitySnapshot
+from fluxopro.microestrutura.detectores import Deteccao, TipoDeteccao
+from fluxopro.microestrutura.eventos_mbo import FonteMicro
 from fluxopro.shadow import ConfigShadow
 
 
@@ -93,6 +95,65 @@ def _assert_retrato_coerente(retrato: RetratoASG, timestamp_ns: int) -> None:
         retrato.regiao.symbol,
         retrato.decisao.symbol,
     } == {SYMBOL}
+
+
+def test_deteccao_microestrutura_alimenta_maker_proxy_na_sessao() -> None:
+    """A ponte sessão→Maker conserva a evidência sem depender de callback UI."""
+
+    sessao = SessaoFluxo(Barramento(), _config_asg())
+    try:
+        deteccao = Deteccao(
+            timestamp_ns=T0,
+            symbol=SYMBOL,
+            tipo=TipoDeteccao.ABSORCAO,
+            side=Side.BUY,
+            price=PRICE,
+            confianca=0.90,
+            evidencia={"procedencia": "OBSERVADA", "fonte": "MBO"},
+        )
+        sessao._emitir_deteccao(deteccao, FonteMicro.MBO, 0.90)
+
+        assert sessao.maker_proxy is not None
+        componente = sessao.maker_proxy.snapshot(T0).componente(ComponenteMaker.ABSORCAO)
+        assert componente.n_evidencias == 1
+        assert componente.procedencia == "OBSERVADA"
+    finally:
+        sessao.finalizar(T0)
+
+
+def test_detector_de_tape_realimenta_maker_pelo_barramento() -> None:
+    """Prova detector→barramento→sessão→Maker, sem chamar método privado."""
+
+    cfg = _config_asg(
+        ligar_detectores_tape=True,
+        absorcao=replace(
+            ConfigOperacao(symbol=SYMBOL).absorcao,
+            volume_minimo=200,
+            deslocamento_maximo_ticks=0,
+        ),
+    )
+    barramento = Barramento()
+    sessao = SessaoFluxo(barramento, cfg)
+    try:
+        for indice in range(4):
+            barramento.publicar(
+                Trade(
+                    timestamp_ns=T0 + indice * 1_000,
+                    symbol=SYMBOL,
+                    price=PRICE,
+                    qty=50,
+                    side_agressor=AgressorSide.SELL,
+                    trade_id=f"abs-flow-{indice}",
+                )
+            )
+
+        assert sessao.contadores.n_deteccoes == 1
+        assert sessao.maker_proxy is not None
+        componente = sessao.maker_proxy.snapshot().componente(ComponenteMaker.ABSORCAO)
+        assert componente.n_evidencias == 1
+        assert componente.evidencia_buy > 0
+    finally:
+        sessao.finalizar(T0 + 4_000)
 
 
 def test_defaults_asg_desligados_preservam_pipeline_historico() -> None:

@@ -16,8 +16,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace as dataclass_replace
 from enum import Enum, unique
 
-from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
+from PySide6.QtCore import QPoint, QRect, QSize, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPolygon
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
 
 from fluxopro.core.eventos import PriceGrid, WDO_GRID
@@ -807,7 +807,7 @@ class _PainelASG(PainelDenso):
 
 
 class PainelDadosASG(_PainelASG):
-    titulo = "SAÚDE DO MERCADO"
+    titulo = "DADOS"
     etapa = "1"
     cor_secao = tema_asg.DADOS
 
@@ -920,7 +920,7 @@ class PainelDadosASG(_PainelASG):
 
 
 class PainelProcessamentoASG(_PainelASG):
-    titulo = "LEITURA DE FLUXO"
+    titulo = "PROCESSAMENTO"
     etapa = "2"
     cor_secao = tema_asg.PROCESSAMENTO
 
@@ -1010,7 +1010,7 @@ class PainelProcessamentoASG(_PainelASG):
 
 
 class PainelMatrizASG(_PainelASG):
-    titulo = "LEITURA OPERACIONAL"
+    titulo = "MATRIZ NEXO"
     etapa = "3"
     cor_secao = tema_asg.MATRIZ
 
@@ -1039,7 +1039,13 @@ class PainelMatrizASG(_PainelASG):
         return ALTURA_CABECALHO + ALTURA_SELO + (20 if self.modo_tabela() else VAO)
 
     def altura_item(self) -> int:
-        return 28 if self.modo_tabela() else 48
+        # A matriz é uma leitura atômica de seis componentes. Em 1280×720 a
+        # área útil é menor, mas ainda precisa mostrar a matriz inteira; a
+        # redução é só de espaçamento vertical, não remove linhas nem cria
+        # paginação silenciosa.
+        if self.modo_tabela():
+            return 24 if self.height() < 270 else 28
+        return 48
 
     def capacidade_pagina(self) -> int:
         return max(0, self.faixa_rodape().top() - self.topo_itens()) // self.altura_item()
@@ -1182,7 +1188,7 @@ class PainelMatrizASG(_PainelASG):
 
 
 class PainelDecisaoASG(_PainelASG):
-    titulo = "PLANO CONSULTIVO"
+    titulo = "DECISAO"
     etapa = "4"
     cor_secao = tema_asg.DECISAO
 
@@ -1228,6 +1234,7 @@ class PainelDecisaoASG(_PainelASG):
                   f"STOP {s.stop}", f"A1 {s.alvo_1}", f"A2 {s.alvo_2}", f"A3 {s.alvo_3}",
                   self.texto_visibilidade()]
         textos.extend(self._textos_qualidade(s.confianca, s.procedencia, completos=True))
+        textos.extend(("LEITURA ATUAL", "CONFIANCA", "PLANO CONSULTIVO"))
         for indice, _ in self.retangulos_visiveis():
             gate = s.gates[indice]
             textos.extend((gate.nome, gate.resultado.value, gate.motivo))
@@ -1285,7 +1292,60 @@ class PainelDecisaoASG(_PainelASG):
                                    self.width() // 3 - MARGEM, ALTURA_LINHA),
                              Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                              gate.motivo)
+        self._desenhar_resumo_operacional(
+            painter,
+            self.topo_gates() + len(self.retangulos_visiveis()) * ALTURA_LINHA,
+        )
         self._desenhar_rodape_decisao(painter)
+
+    def _desenhar_resumo_operacional(self, painter: QPainter, y_inicial: int) -> None:
+        """Preenche a área livre com contexto, nunca com decoração fictícia.
+
+        A coluna de decisão pode ser alta. Os três blocos derivam somente do
+        snapshot imutável: não criam sinal, previsão ou envio de ordem.
+        """
+
+        s = self._snapshot
+        rodape = self.faixa_rodape()
+        area = QRect(MARGEM, y_inicial + VAO, self.width() - 2 * MARGEM,
+                     rodape.top() - y_inicial - 2 * VAO)
+        if area.height() < 58 or area.width() < 100:
+            return
+        painter.fillRect(area, tema_asg.FUNDO_NEUTRO)
+        painter.setPen(tema_asg.BORDA)
+        painter.drawRect(area.adjusted(0, 0, -1, -1))
+        painter.setFont(tokens.fonte_rotulo(8))
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(area.adjusted(7, 3, -7, -area.height() + 16),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         "LEITURA ATUAL · RASTRO CONSULTIVO")
+
+        linhas = (
+            ("LEITURA", rotulo_direcao(s.direcao), _cor_direcao(s.direcao, self.paleta)),
+            ("CONFIANCA", s.confianca.value, _COR_CONFIANCA[s.confianca]),
+            ("PLANO", "BLOQUEADO" if s.direcao is DirecaoASG.AGUARDAR else "INFORMATIVO",
+             tokens.ALERT if s.direcao is DirecaoASG.AGUARDAR else tema_asg.DECISAO),
+        )
+        y = area.y() + 22
+        # O bloco é deliberadamente alto: em telas largas a decisão precisa
+        # continuar sendo o segundo ponto de leitura, não deixar uma coluna
+        # vazia ao lado da matriz. Cada faixa é um fato do snapshot.
+        altura = max(18, (area.bottom() - y - 4) // len(linhas))
+        for nome, valor, cor in linhas:
+            if y + altura > area.bottom():
+                break
+            painter.setPen(tema_asg.BORDA)
+            painter.drawLine(area.x() + 5, y + altura - 1, area.right() - 5, y + altura - 1)
+            painter.setFont(tokens.fonte_rotulo(8))
+            painter.setPen(tokens.TEXT_SECONDARY)
+            painter.drawText(QRect(area.x() + 7, y + 4, area.width() - 14, 14),
+                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, nome)
+            painter.setFont(tokens.fonte_ui(min(18, max(9, altura // 4)), QFont.Weight.DemiBold))
+            painter.setPen(cor)
+            painter.drawText(QRect(area.x() + 7, y + 16, area.width() - 14, altura - 19),
+                             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                             valor)
+            y += altura
 
     def _desenhar_rodape_decisao(self, painter: QPainter) -> None:
         s = self._snapshot
@@ -1304,7 +1364,7 @@ class PainelDecisaoASG(_PainelASG):
 
 
 class PainelEvidenciasASG(_PainelASG):
-    titulo = "RASTRO DE EVIDÊNCIAS"
+    titulo = "TRILHA DE EVIDENCIAS"
     etapa = "5"
     cor_secao = tema_asg.EVIDENCIAS
 
@@ -1553,149 +1613,345 @@ class PainelContextoBrutoASG(_PainelASG):
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, texto)
 
 
-class PainelPulsoMercadoASG(_PainelASG):
-    """Preço e força do fluxo em uma leitura primária, causal e limitada.
+class PainelNexoMercadoASG(_PainelASG):
+    """Superfície primária própria: pulso, pressão, sinal e mapa de preço.
 
-    Este não é um indicador novo nem uma promessa de previsão. Cada ponto vem
-    do mesmo ``Instantaneo`` entregue no quadro: preço observado e força
-    derivada de ``delta_sessao / volume_sessao``. A janela é um ``deque`` de
-    tamanho fixo, logo o gráfico não cria uma série que cresce com o pregão.
+    A composição dialoga com a densidade dos prints de referência, mas toda a
+    semântica é do Operador B3: não há logotipo, avatar, marca, imagem ou
+    fórmula de terceiros. O painel recebe somente o snapshot já congelado da
+    janela e mantém uma série curta, delimitada e exclusivamente visual.
     """
 
-    titulo = "PULSO DO ATIVO"
-    etapa = "1"
+    titulo = "NEXO · PULSO DO MERCADO"
+    etapa = "0"
     cor_secao = tema_asg.MATRIZ
 
-    def __init__(self, parent: QWidget | None = None,
-                 grid: PriceGrid = WDO_GRID,
-                 paleta: tokens.Paleta = tokens.PALETA_COR) -> None:
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        grid: PriceGrid = WDO_GRID,
+        paleta: tokens.Paleta = tokens.PALETA_COR,
+    ) -> None:
         super().__init__(parent)
         self.grid = grid
         self.paleta = paleta
-        self._estado = EstadoASG.AGUARDANDO
-        self._amostras: deque[tuple[int, int, float]] = deque(maxlen=240)
+        self._snapshot = WorkspaceASGSnapshot(
+            0,
+            DadosASGSnapshot(0),
+            ProcessamentoASGSnapshot(0),
+            MatrizASGSnapshot(0),
+            DecisaoASGSnapshot(0),
+            TrilhaEvidenciasASGSnapshot(0),
+            contexto_bruto=ContextoBrutoASGSnapshot(0),
+        )
+        self._serie: deque[tuple[int, int, float]] = deque(maxlen=180)
 
-    def aplicar_retrato(self, retrato: Instantaneo, estado: EstadoASG) -> None:
-        """Recebe somente o retrato imutável já lido pela janela Qt."""
-
-        self._estado = estado
-        preco = retrato.ultimo_preco
-        timestamp = retrato.ultimo_evento_ns
-        if preco is None or timestamp <= 0:
-            self.marcar_tudo_sujo()
-            return
-        volume = max(1, int(retrato.volume_sessao))
-        forca = max(-1.0, min(1.0, int(retrato.delta_sessao) / volume))
-        if self._amostras and timestamp < self._amostras[-1][0]:
-            # Um retrato regressivo nunca volta a escrever a história visual.
-            self.marcar_tudo_sujo()
-            return
-        ponto = (int(timestamp), int(preco), forca)
-        if self._amostras and timestamp == self._amostras[-1][0]:
-            self._amostras[-1] = ponto
-        else:
-            self._amostras.append(ponto)
+    def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
+        self._snapshot = snapshot
+        contexto = snapshot.contexto_bruto
+        if contexto is not None and contexto.ultimo_preco is not None:
+            self._registrar_amostra(
+                snapshot.timestamp_ns,
+                int(contexto.ultimo_preco),
+                self._forca_atual(),
+            )
         self.marcar_tudo_sujo()
 
+    def aplicar_mercado(self, retrato: Instantaneo) -> None:
+        preco = retrato.ultimo_preco
+        if preco is not None and self._snapshot.timestamp_ns > 0:
+            self._registrar_amostra(
+                self._snapshot.timestamp_ns,
+                int(preco),
+                self._forca_atual(),
+            )
+        self.marcar_tudo_sujo()
+
+    def _registrar_amostra(self, timestamp_ns: int, preco: int, forca: float) -> None:
+        if self._serie and timestamp_ns < self._serie[-1][0]:
+            return
+        ponto = (timestamp_ns, preco, max(-1.0, min(1.0, forca)))
+        if self._serie and timestamp_ns == self._serie[-1][0]:
+            self._serie[-1] = ponto
+        else:
+            self._serie.append(ponto)
+
+    def _forca_atual(self) -> float:
+        linhas = self._snapshot.matriz.linhas
+        if not linhas:
+            return 0.0
+        pesos = [linha.forca for linha in linhas if linha.componente != "MAKERPROXY"]
+        if not pesos:
+            pesos = [linha.forca for linha in linhas]
+        return sum(pesos) / max(1, len(pesos))
+
+    def _linha_maker(self) -> LinhaMatrizASG | None:
+        for linha in self._snapshot.matriz.linhas:
+            if linha.componente == "MAKERPROXY":
+                return linha
+        return None
+
     def total_itens(self) -> int:
-        return len(self._amostras)
+        return len(self._serie)
 
     def capacidade_pagina(self) -> int:
-        return self._amostras.maxlen or 0
+        return self._serie.maxlen or 0
 
     def retangulos_visiveis(self) -> tuple[tuple[int, QRect], ...]:
         return ()
 
     def textos_visiveis(self) -> tuple[str, ...]:
-        if not self._amostras:
-            return (rotulo_estado(self._estado), "PULSO DO ATIVO", "AGUARDANDO PREÇO")
-        _, preco, forca = self._amostras[-1]
-        direcao = "COMPRADORA" if forca > 0.08 else "VENDEDORA" if forca < -0.08 else "EQUILIBRADA"
-        return (
-            rotulo_estado(self._estado), "PULSO DO ATIVO", "GRAFICO DE PREÇO",
-            "FORÇA DO FLUXO", "DERIVADO", direcao,
-            formato.formatar_preco(self.grid, preco)[0] + formato.formatar_preco(self.grid, preco)[1],
-            f"{forca * 100:+.0f}%",
-        )
+        s = self._snapshot
+        maker = self._linha_maker()
+        textos = [
+            "NEXO", "PULSO DO MERCADO", "PRESSAO INSTITUCIONAL",
+            "SINAL CONSULTIVO", "MAPA DE PRECO", "FORCA DO FLUXO",
+            "SEM ENVIO DE ORDENS", rotulo_estado(s.estado_operacional),
+            rotulo_direcao(s.decisao.direcao), s.decisao.titulo,
+            f"STOP {s.decisao.stop}", f"A1 {s.decisao.alvo_1}",
+            f"A2 {s.decisao.alvo_2}", f"A3 {s.decisao.alvo_3}",
+        ]
+        if maker is not None:
+            textos.extend(("MAKERPROXY", maker.valor, maker.detalhe))
+        if self._serie:
+            preco = formato.formatar_preco(self.grid, self._serie[-1][1])
+            textos.append(f"PRECO {preco[0]}{preco[1]}")
+        else:
+            textos.append("AGUARDANDO PRECO")
+        return tuple(textos)
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
-        painter.fillRect(regiao, self.cor_fundo)
-        meta = "PREÇO + FORÇA DERIVADA"
-        self._cabecalho(painter, self._estado, meta)
-        rodape = self.faixa_rodape()
-        area = QRect(MARGEM, ALTURA_CABECALHO + VAO,
-                     max(0, self.width() - 2 * MARGEM),
-                     max(0, rodape.top() - ALTURA_CABECALHO - 2 * VAO))
-        if len(self._amostras) < 2 or area.width() < 60 or area.height() < 70:
-            painter.setFont(tokens.fonte_ui(11, QFont.Weight.DemiBold))
+        painter.fillRect(regiao, tema_asg.FUNDO)
+        s = self._snapshot
+        self._cabecalho(painter, s.estado_operacional, "NEXO · LEITURA UNIFICADA")
+        corpo = QRect(
+            MARGEM,
+            ALTURA_CABECALHO + VAO,
+            max(0, self.width() - 2 * MARGEM),
+            max(0, self.faixa_rodape().top() - ALTURA_CABECALHO - 2 * VAO),
+        )
+        if corpo.width() < 160 or corpo.height() < 90:
+            painter.setFont(tokens.fonte_ui(10, QFont.Weight.DemiBold))
             painter.setPen(tokens.TEXT_SECONDARY)
-            painter.drawText(area, Qt.AlignmentFlag.AlignCenter,
-                             "AGUARDANDO SÉRIE DE PREÇO E FLUXO")
-            self._desenhar_rodape(painter, "OBSERVADO · DERIVADO")
+            painter.drawText(corpo, Qt.AlignmentFlag.AlignCenter, "NEXO · AGUARDANDO AREA UTIL")
+            self._desenhar_rodape(painter, "CONSULTIVO · SEM ENVIO DE ORDENS")
             return
 
-        faixa_forca = max(44, area.height() // 4)
-        grafico = QRect(area.x(), area.y(), area.width(), area.height() - faixa_forca - VAO)
-        forca_rect = QRect(area.x(), grafico.bottom() + VAO, area.width(), faixa_forca)
-        painter.fillRect(grafico, tema_asg.FUNDO_NEUTRO)
-        painter.fillRect(forca_rect, tema_asg.FUNDO_NEUTRO)
+        esquerda = max(130, int(corpo.width() * 0.28))
+        nucleo = max(120, int(corpo.width() * 0.20))
+        esquerda_rect = QRect(corpo.x(), corpo.y(), esquerda, corpo.height())
+        nucleo_rect = QRect(esquerda_rect.right() + VAO, corpo.y(), nucleo, corpo.height())
+        grafico_rect = QRect(
+            nucleo_rect.right() + VAO,
+            corpo.y(),
+            max(40, corpo.right() - nucleo_rect.right() - VAO + 1),
+            corpo.height(),
+        )
+        self._desenhar_pressao(painter, esquerda_rect)
+        self._desenhar_sinal(painter, nucleo_rect)
+        self._desenhar_grafico(painter, grafico_rect)
+        self._desenhar_rodape(painter, "PRECO OBSERVADO · FORCA DERIVADA · NEXO PROPRIO")
+
+    def _caixa_nexo(self, painter: QPainter, rect: QRect, titulo: str) -> QRect:
+        painter.fillRect(rect, tema_asg.PAINEL)
         painter.setPen(tema_asg.BORDA)
-        painter.drawRect(grafico.adjusted(0, 0, -1, -1))
-        painter.drawRect(forca_rect.adjusted(0, 0, -1, -1))
+        painter.drawRect(rect.adjusted(0, 0, -1, -1))
+        painter.setFont(tokens.fonte_rotulo(9))
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(rect.adjusted(7, 0, -7, -rect.height() + 18),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, titulo)
+        return rect.adjusted(7, 21, -7, -6)
 
-        amostras = tuple(self._amostras)
-        precos = [amostra[1] for amostra in amostras]
-        minimo, maximo = min(precos), max(precos)
-        amplitude = max(1, maximo - minimo)
-        ultimo_x = ultimo_y = None
-        for indice, (_, preco, intensidade) in enumerate(amostras):
-            x = grafico.left() + round(indice * max(1, grafico.width() - 1) / max(1, len(amostras) - 1))
-            y = grafico.bottom() - round((preco - minimo) * max(1, grafico.height() - 12) / amplitude) - 6
-            if ultimo_x is not None:
-                painter.setPen(self.paleta.compra if intensidade >= 0 else self.paleta.venda)
-                painter.drawLine(ultimo_x, ultimo_y, x, y)
-            ultimo_x, ultimo_y = x, y
+    def _desenhar_pressao(self, painter: QPainter, rect: QRect) -> None:
+        area = self._caixa_nexo(painter, rect, "PRESSAO INSTITUCIONAL · PROXY")
+        maker = self._linha_maker()
+        direcao = maker.direcao if maker is not None else DirecaoASG.NEUTRA
+        forca = maker.forca if maker is not None else 0.0
+        cor = _cor_direcao(direcao, self.paleta)
+        centro = QPoint(area.center().x(), area.y() + max(38, area.height() // 3))
+        raio = max(22, min(area.width() // 4, area.height() // 6))
+        painter.setPen(tema_asg.BORDA_FORTE)
+        painter.drawEllipse(centro, raio + 8, raio + 8)
+        painter.setPen(cor)
+        painter.drawEllipse(centro, raio, raio)
+        painter.setFont(tokens.fonte_numero(max(12, min(24, raio // 2 + 8)), QFont.Weight.Bold))
+        painter.drawText(QRect(centro.x() - raio, centro.y() - 14, 2 * raio, 28),
+                         Qt.AlignmentFlag.AlignCenter, f"{forca * 100:+.0f}%")
+        painter.setFont(tokens.fonte_rotulo(8))
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(QRect(area.x(), centro.y() + raio + 8, area.width(), 16),
+                         Qt.AlignmentFlag.AlignCenter,
+                         "COMPRA" if direcao is DirecaoASG.COMPRA else
+                         "VENDA" if direcao is DirecaoASG.VENDA else "EQUILIBRIO")
 
+        barra = QRect(area.x() + 4, area.bottom() - 66, max(1, area.width() - 8), 12)
+        painter.fillRect(barra, tema_asg.FUNDO_NEUTRO)
+        meio = barra.center().x()
+        painter.setPen(tema_asg.BORDA_FORTE)
+        painter.drawLine(meio, barra.top(), meio, barra.bottom())
+        largura = int(abs(forca) * barra.width() / 2)
+        if largura:
+            x = meio + 1 if forca > 0 else meio - largura
+            painter.fillRect(QRect(x, barra.y(), largura, barra.height()), cor)
         painter.setFont(tokens.fonte_numero(9, QFont.Weight.DemiBold))
         painter.setPen(tokens.TEXT_PRIMARY)
-        preco_txt = formato.formatar_preco(self.grid, precos[-1])
-        painter.drawText(grafico.adjusted(6, 2, -6, -2),
-                         Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
-                         f"PREÇO  {preco_txt[0]}{preco_txt[1]}")
-        painter.setPen(tokens.TEXT_SECONDARY)
-        painter.drawText(grafico.adjusted(6, 2, -6, -2),
-                         Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignLeft,
-                         "OBSERVADO · JANELA LIMITADA")
+        cobertura = maker.detalhe if maker is not None else "SEM EVIDENCIA"
+        painter.drawText(QRect(area.x(), barra.bottom() + 5, area.width(), 16),
+                         Qt.AlignmentFlag.AlignCenter, cobertura.upper())
+        painter.setFont(tokens.fonte_ui(8))
+        painter.setPen(tokens.TEXT_MUTED)
+        painter.drawText(QRect(area.x(), area.bottom() - 22, area.width(), 14),
+                         Qt.AlignmentFlag.AlignCenter, "OBSERVADO / INFERIDO DECLARADO")
 
-        meio = forca_rect.center().y()
+    def _desenhar_sinal(self, painter: QPainter, rect: QRect) -> None:
+        area = self._caixa_nexo(painter, rect, "NEXO · SINAL CONSULTIVO")
+        decisao = self._snapshot.decisao
+        direcao = decisao.direcao
+        cor = _cor_direcao(direcao, self.paleta)
+        cx, cy = area.center().x(), area.y() + max(42, area.height() // 3)
+        raio = max(25, min(area.width() // 3, area.height() // 5))
+        poligono = QPolygon([
+            QPoint(cx - raio // 2, cy - raio), QPoint(cx + raio // 2, cy - raio),
+            QPoint(cx + raio, cy), QPoint(cx + raio // 2, cy + raio),
+            QPoint(cx - raio // 2, cy + raio), QPoint(cx - raio, cy),
+        ])
         painter.setPen(tema_asg.BORDA_FORTE)
-        painter.drawLine(forca_rect.left(), meio, forca_rect.right(), meio)
-        largura = max(1, forca_rect.width() // max(1, len(amostras)))
-        for indice, (_, _, intensidade) in enumerate(amostras):
-            x = forca_rect.left() + round(indice * max(1, forca_rect.width() - 1) / max(1, len(amostras) - 1))
-            altura = round(abs(intensidade) * max(1, forca_rect.height() // 2 - 5))
-            if not altura:
-                continue
-            cor = self.paleta.compra if intensidade > 0 else self.paleta.venda
-            y = meio - altura if intensidade > 0 else meio
-            painter.fillRect(QRect(x, y, largura, altura), cor)
-        intensidade = amostras[-1][2]
-        rotulo = "FORÇA COMPRADORA" if intensidade > 0.08 else (
-            "FORÇA VENDEDORA" if intensidade < -0.08 else "FORÇA EQUILIBRADA"
-        )
-        painter.setFont(tokens.fonte_ui(9, QFont.Weight.Bold))
-        painter.setPen(_cor_direcao(
-            DirecaoASG.COMPRA if intensidade > 0.08 else DirecaoASG.VENDA if intensidade < -0.08 else DirecaoASG.NEUTRA,
-            self.paleta,
-        ))
-        painter.drawText(forca_rect.adjusted(6, 0, -6, 0),
-                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                         f"{rotulo}  {intensidade * 100:+.0f}%")
+        painter.setBrush(tema_asg.FUNDO_NEUTRO)
+        painter.drawPolygon(poligono)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setFont(tokens.fonte_numero(max(18, raio), QFont.Weight.Bold))
+        painter.setPen(cor)
+        simbolo = "▲" if direcao is DirecaoASG.COMPRA else "▼" if direcao is DirecaoASG.VENDA else "◆"
+        painter.drawText(QRect(cx - raio, cy - raio // 2, 2 * raio, raio),
+                         Qt.AlignmentFlag.AlignCenter, simbolo)
+        painter.setFont(tokens.fonte_ui(9, QFont.Weight.DemiBold))
+        painter.setPen(tokens.TEXT_PRIMARY)
+        painter.drawText(QRect(area.x(), cy + raio + 8, area.width(), 16),
+                         Qt.AlignmentFlag.AlignCenter, decisao.titulo)
+        painter.setFont(tokens.fonte_ui(8))
         painter.setPen(tokens.TEXT_SECONDARY)
-        painter.drawText(forca_rect.adjusted(6, 0, -6, 0),
+        painter.drawText(QRect(area.x() + 4, cy + raio + 26, area.width() - 8, 32),
+                         Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap,
+                         decisao.motivo)
+        y = area.bottom() - 41
+        painter.setPen(tokens.ALERT)
+        painter.setFont(tokens.fonte_rotulo(8))
+        painter.drawText(QRect(area.x(), y, area.width(), 13), Qt.AlignmentFlag.AlignCenter,
+                         "NAO ENVIA ORDENS")
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.setFont(tokens.fonte_numero(8))
+        painter.drawText(QRect(area.x(), y + 16, area.width(), 13), Qt.AlignmentFlag.AlignCenter,
+                         f"STOP {decisao.stop} · A1 {decisao.alvo_1}")
+
+    def _desenhar_grafico(self, painter: QPainter, rect: QRect) -> None:
+        area = self._caixa_nexo(painter, rect, "MAPA DE PRECO · FORCA DO FLUXO")
+        faixa_forca = max(38, area.height() // 4)
+        forca_rect = QRect(area.x(), area.y(), area.width(), faixa_forca)
+        preco_rect = QRect(area.x(), forca_rect.bottom() + VAO, area.width(),
+                           max(20, area.bottom() - forca_rect.bottom() - VAO + 1))
+        painter.fillRect(forca_rect, tema_asg.FUNDO_NEUTRO)
+        painter.fillRect(preco_rect, tema_asg.FUNDO_NEUTRO)
+        painter.setPen(tema_asg.BORDA)
+        painter.drawRect(forca_rect.adjusted(0, 0, -1, -1))
+        painter.drawRect(preco_rect.adjusted(0, 0, -1, -1))
+        self._desenhar_forca(painter, forca_rect)
+        self._desenhar_trajeto_preco(painter, preco_rect)
+
+    def _desenhar_forca(self, painter: QPainter, rect: QRect) -> None:
+        amostras = tuple(self._serie)
+        meio = rect.center().y()
+        painter.setPen(tema_asg.BORDA_FORTE)
+        painter.drawLine(rect.left(), meio, rect.right(), meio)
+        if len(amostras) < 2:
+            painter.setFont(tokens.fonte_ui(8))
+            painter.setPen(tokens.TEXT_MUTED)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "AGUARDANDO FORCA DO FLUXO")
+            return
+        pontos = []
+        for indice, (_, _, forca) in enumerate(amostras):
+            x = rect.left() + round(indice * max(1, rect.width() - 1) / max(1, len(amostras) - 1))
+            y = meio - round(forca * max(1, rect.height() // 2 - 7))
+            pontos.append(QPoint(x, y))
+        painter.setPen(_cor_direcao(_direcao_de_score(amostras[-1][2]), self.paleta))
+        painter.drawPolyline(QPolygon(pontos))
+        ultimo = amostras[-1][2]
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.DemiBold))
+        painter.setPen(tokens.TEXT_PRIMARY)
+        painter.drawText(rect.adjusted(6, 2, -6, -2),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                         f"FORCA {ultimo * 100:+.0f}%")
+        painter.setFont(tokens.fonte_rotulo(8))
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(rect.adjusted(6, 2, -6, -2),
+                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
+                         "DELTA / VOLUME")
+
+    def _desenhar_trajeto_preco(self, painter: QPainter, rect: QRect) -> None:
+        amostras = tuple(self._serie)
+        if len(amostras) < 2:
+            painter.setFont(tokens.fonte_ui(9, QFont.Weight.DemiBold))
+            painter.setPen(tokens.TEXT_SECONDARY)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "AGUARDANDO TRAJETO DE PRECO")
+            return
+        precos = [item[1] for item in amostras]
+        minimo, maximo = min(precos), max(precos)
+        amplitude = max(1, maximo - minimo)
+        for fracao in (0.25, 0.50, 0.75):
+            y = rect.top() + round(rect.height() * fracao)
+            painter.setPen(tema_asg.BORDA)
+            painter.drawLine(rect.left(), y, rect.right(), y)
+        pontos = []
+        for indice, (_, preco, _) in enumerate(amostras):
+            x = rect.left() + round(indice * max(1, rect.width() - 1) / max(1, len(amostras) - 1))
+            y = rect.bottom() - round((preco - minimo) * max(1, rect.height() - 18) / amplitude) - 8
+            pontos.append(QPoint(x, y))
+        direcao = _direcao_de_score(amostras[-1][2])
+        painter.setPen(_cor_direcao(direcao, self.paleta))
+        painter.drawPolyline(QPolygon(pontos))
+        ultimo_preco = formato.formatar_preco(self.grid, precos[-1])
+        painter.setFont(tokens.fonte_numero(10, QFont.Weight.DemiBold))
+        painter.setPen(tokens.TEXT_PRIMARY)
+        painter.drawText(rect.adjusted(6, 4, -6, -4),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                         f"PRECO {ultimo_preco[0]}{ultimo_preco[1]}")
+        painter.setFont(tokens.fonte_rotulo(8))
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(rect.adjusted(6, 4, -6, -4),
+                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
+                         "OBSERVADO · JANELA LIMITADA")
+        # Escala e tempo tornam a trajetória auditável como gráfico, em vez
+        # de uma linha decorativa. Não há OHLC neste contrato: os marcadores
+        # declaram que se trata de preço observado por evento.
+        preco_min = formato.formatar_preco(self.grid, minimo)
+        preco_max = formato.formatar_preco(self.grid, maximo)
+        inicio = formato.formatar_hora_ns(amostras[0][0])
+        fim = formato.formatar_hora_ns(amostras[-1][0])
+        painter.setFont(tokens.fonte_numero(8))
+        painter.setPen(tokens.TEXT_MUTED)
+        painter.drawText(rect.adjusted(6, 4, -6, -4),
+                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+                         f"MAX {preco_max[0]}{preco_max[1]}")
+        painter.drawText(rect.adjusted(6, 4, -6, -4),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+                         f"{inicio} → {fim}")
+        painter.drawText(QRect(rect.right() - 70, rect.center().y() - 7, 66, 14),
                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                         "DELTA / VOLUME · DERIVADO")
-        self._desenhar_rodape(painter, "PREÇO OBSERVADO · FORÇA DERIVADA")
+                         f"MIN {preco_min[0]}{preco_min[1]}")
+        niveis = ("STOP", "A1", "A2", "A3")
+        valores = (
+            self._snapshot.decisao.stop, self._snapshot.decisao.alvo_1,
+            self._snapshot.decisao.alvo_2, self._snapshot.decisao.alvo_3,
+        )
+        painter.setFont(tokens.fonte_numero(8))
+        for indice, (nome, valor) in enumerate(zip(niveis, valores)):
+            if valor == "—":
+                continue
+            y = rect.bottom() - 15 - indice * 14
+            painter.setPen(tokens.ALERT if nome == "STOP" else tema_asg.MATRIZ)
+            painter.drawLine(rect.left() + 4, y, rect.right() - 58, y)
+            painter.drawText(QRect(rect.right() - 54, y - 7, 52, 14),
+                             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                             f"{nome} {valor}")
 
 
 class WorkspaceASG(QWidget):
@@ -1719,8 +1975,8 @@ class WorkspaceASG(QWidget):
         # impede que um sizeHint de desktop force a janela a crescer quando o
         # Qt ainda esta resolvendo a antiga arvore de docas durante a troca.
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.nexo = PainelNexoMercadoASG(self, grid, paleta)
         self.contexto_bruto = PainelContextoBrutoASG(self, grid)
-        self.pulso = PainelPulsoMercadoASG(self, grid, paleta)
         self.dados = PainelDadosASG(self)
         self.processamento = PainelProcessamentoASG(self)
         self.matriz = PainelMatrizASG(self, paleta)
@@ -1744,12 +2000,13 @@ class WorkspaceASG(QWidget):
         for painel in (self.dom, self.tape, self.bookmap):
             painel.setMinimumSize(0, 0)
             painel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
-        self.paineis = (self.pulso, self.contexto_bruto, self.dados, self.processamento,
+        self.paineis = (self.nexo, self.contexto_bruto, self.dados, self.processamento,
                         self.matriz, self.decisao, self.evidencias)
         self.paineis_contexto = (self.dom, self.tape, self.bookmap)
-        # ``todos_paineis`` e o contrato de hidratação dos painéis legados.
-        # O Pulso tem ciclo próprio, alimentado por ``aplicar_mercado``; não
-        # deve tornar a troca Ctrl+5 dependente de uma geometria ainda zero.
+        # NEXO, tal como o antigo Pulso, tem um ciclo visual próprio: recebe
+        # o retrato de mercado e desenha no próximo quadro Qt. Não o incluímos
+        # neste contrato de hidratação síncrona para não exigir geometria já
+        # resolvida durante Ctrl+5 (a janela ainda pode estar oculta).
         self.todos_paineis = self.paineis_contexto + (
             self.dados, self.processamento, self.matriz,
             self.decisao, self.evidencias,
@@ -1790,6 +2047,7 @@ class WorkspaceASG(QWidget):
         if not isinstance(snapshot, WorkspaceASGSnapshot):
             raise TypeError("WorkspaceASG.aplicar exige WorkspaceASGSnapshot tipado")
         self._snapshot = snapshot
+        self.nexo.aplicar(snapshot)
         self.contexto_bruto.aplicar(snapshot.contexto_bruto or ContextoBrutoASGSnapshot(
             snapshot.timestamp_ns,
             estado=snapshot.estado_operacional or snapshot.dados.estado,
@@ -1811,8 +2069,7 @@ class WorkspaceASG(QWidget):
         self.bookmap.aplicar(
             retrato.livro, retrato.ultimo_preco, retrato.novos_trades
         )
-        estado = self._snapshot.estado_operacional if self._snapshot is not None else EstadoASG.AGUARDANDO
-        self.pulso.aplicar_retrato(retrato, estado)
+        self.nexo.aplicar_mercado(retrato)
 
     def resizeEvent(self, evento) -> None:  # noqa: N802
         super().resizeEvent(evento)
@@ -1834,30 +2091,34 @@ class WorkspaceASG(QWidget):
             self._layout.setRowStretch(indice, 0)
             self._layout.setColumnStretch(indice, 0)
         if modo == "largo":
-            # Hierarquia operacional: preço/força primeiro, decisão ao lado,
-            # leitura ASG em seguida e microestrutura como confirmação.
-            self._layout.addWidget(self.pulso, 0, 0, 1, 3)
-            self._layout.addWidget(self.decisao, 0, 3, 2, 1)
+            # A leitura primária ocupa a faixa superior; a matriz conserva
+            # uma faixa exclusiva logo abaixo para nunca esconder componentes.
+            self._layout.addWidget(self.nexo, 0, 0, 1, 3)
+            self._layout.addWidget(self.decisao, 0, 3, 4, 1)
             self._layout.addWidget(self.matriz, 1, 0, 1, 3)
             self._layout.addWidget(self.dom, 2, 0)
             self._layout.addWidget(self.tape, 2, 1)
             self._layout.addWidget(self.bookmap, 2, 2)
-            self._layout.addWidget(self.evidencias, 2, 3)
-            for coluna, peso in enumerate((4, 4, 8, 6)):
+            self._layout.addWidget(self.dados, 3, 0)
+            self._layout.addWidget(self.processamento, 3, 1)
+            self._layout.addWidget(self.evidencias, 3, 2)
+            for coluna, peso in enumerate((5, 5, 9, 6)):
                 self._layout.setColumnStretch(coluna, peso)
             self._ajustar_altura_larga()
         elif modo == "medio":
-            self._layout.addWidget(self.pulso, 0, 0, 1, 2)
-            self._layout.addWidget(self.matriz, 1, 0)
-            self._layout.addWidget(self.decisao, 1, 1)
-            self._layout.addWidget(self.dom, 2, 0)
-            self._layout.addWidget(self.tape, 2, 1)
-            self._layout.addWidget(self.bookmap, 3, 0, 1, 2)
-            self._layout.addWidget(self.evidencias, 4, 0, 1, 2)
+            self._layout.addWidget(self.nexo, 0, 0, 1, 2)
+            self._layout.addWidget(self.dom, 1, 0)
+            self._layout.addWidget(self.tape, 1, 1)
+            self._layout.addWidget(self.bookmap, 2, 0, 1, 2)
+            self._layout.addWidget(self.matriz, 3, 0)
+            self._layout.addWidget(self.decisao, 3, 1)
+            self._layout.addWidget(self.dados, 4, 0)
+            self._layout.addWidget(self.processamento, 4, 1)
+            self._layout.addWidget(self.evidencias, 5, 0, 1, 2)
             self._layout.setColumnStretch(0, 1)
             self._layout.setColumnStretch(1, 1)
             self._layout.setColumnStretch(2, 0)
-            for linha, peso in enumerate((4, 3, 2, 3, 1)):
+            for linha, peso in enumerate((4, 3, 3, 3, 2, 1)):
                 self._layout.setRowStretch(linha, peso)
         else:
             for linha, painel in enumerate(self.todos_paineis):
@@ -1874,10 +2135,7 @@ class WorkspaceASG(QWidget):
         # Com a tarja de evidencia, o workspace de uma janela 1280x720 fica
         # abaixo de 700 px: a Matriz precisa de peso 5 para manter seis linhas.
         # Em telas mais altas, o excedente migra para DOM/Tape/Bookmap.
-        # A matriz carrega seis leituras não paginadas e recebe a maior faixa
-        # vertical; o gráfico conserva área suficiente sem esconder nenhuma
-        # das componentes da leitura operacional em 1280×720.
-        pesos = (3, 5, 2) if self.height() < 700 else (4, 5, 2)
+        pesos = (3, 4, 2, 1) if self.height() < 700 else (3, 4, 2, 1)
         for linha, peso in enumerate(pesos):
             self._layout.setRowStretch(linha, peso)
 
@@ -2193,6 +2451,7 @@ __all__ = [
     "PainelDecisaoASG",
     "PainelEvidenciasASG",
     "PainelMatrizASG",
+    "PainelNexoMercadoASG",
     "PainelProcessamentoASG",
     "ProcedenciaASG",
     "ProcessamentoASGSnapshot",
