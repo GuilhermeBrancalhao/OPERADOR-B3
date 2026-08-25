@@ -1,0 +1,44 @@
+{
+  "runId": "2026-08-25-asg-real-b",
+  "bar_name": "A.S.G — Algorithmic System Generation (real product, operator-supplied video frames)",
+  "bar_slug": "asg-algorithmic-system-generation",
+  "product_slug": "operador-b3-fluxopro",
+  "parity": "proxy-biased",
+  "modality": "Static visual",
+  "models": {
+    "decomposer": "opus",
+    "builder": "sonnet",
+    "critic": "opus"
+  },
+  "budget": {
+    "agent_runs_ceiling": 120,
+    "output_token_target": 3000000,
+    "recalibration_note": "Gate estimated 4 parts / ~60 runs / ~1M tokens. Decomposer correctly cut 13 independently-judgeable parts (part 0 = extraction seam, parts 1-12 = regions) instead of my rough 4-region guess. Per-round cost is now ~35 agents (12 builders + 12 part-critics + 5 whole + 5 delta + 1 round-close) at C4.2's seed, so 3 rounds + part-0 extraction is the realistic ceiling, disclosed rather than silently exceeded. MAX_ROUNDS=3."
+  },
+  "part_owner": {
+    "0": "composicao-macro (extraction seam, runs first, standalone)",
+    "1": "escada-preco", "2": "cena-contexto", "3": "faixa-niveis",
+    "4": "banner-estado", "5": "placar-estatistico", "6": "visor-hud",
+    "7": "grafico-forca", "8": "grafico-candles", "9": "pressao-instrumento",
+    "10": "coerencia-vies", "11": "indisponivel-novel", "12": "substituicao-instrumento"
+  },
+  "predecessor_runs": [
+    ".gauntlet/2026-08-24a",
+    ".gauntlet/2026-08-25-asg-ref-ui-a",
+    ".gauntlet/2026-08-25-operador-b3/workbench.md",
+    ".gauntlet/2026-08-25-ui/workbench.md"
+  ],
+  "bar_escalation_reason": "Predecessor bar 'ASG-like Reference Pack v1' (.gauntlet/2026-08-24a/bar/) was operador-b3-baseline.png + profit-superdom.png + profit-tape-players.png — generic/adjacent references, not the real ASG product. This run's bar is 100 operator-supplied frames from an actual A.S.G (Algorithmic System Generation) screen recording, confirmed by the literal wordmark visible in destaque_5007_referencia_alvo.jpg. Per predecessor workbench .gauntlet/2026-08-25-ui/workbench.md: 'avaliação é proxy-biased até o Human Gate com material ASG real fornecido pelo operador' — that material has now arrived. This is a bar escalation (F3/C2.5), hence a new run-id rather than resuming the prior one.",
+  "known_prior_facts": {
+    "retrato_command": "python scripts/painel.py --fonte simulador --simbolo WDOV26 --seed 42 --duracao 2 --workspace \"OPERADOR B3\" --retrato <path>",
+    "prior_perf_gap": "9.063 eventos/s ASG completo; overhead Maker 20,8% (outputs/auditoria-operador-b3/benchmark.json)",
+    "prior_full_suite": "1602 passed as of commit 3a8338e (this session, 2026-08-25)",
+    "files_composing_operador_b3_workspace": [
+      "fluxopro/ui/paineis/cockpit.py",
+      "fluxopro/ui/paineis/asg.py",
+      "fluxopro/ui/paineis/grafico.py",
+      "fluxopro/ui/paineis/placar_visual.py"
+    ]
+  },
+  "git_tag_round0": "gauntlet-r0 (commit 3a8338e)"
+}
