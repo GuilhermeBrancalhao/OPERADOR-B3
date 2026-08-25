@@ -392,6 +392,52 @@ def test_workspace_asg_ocupa_area_inteira_e_expoe_matriz_nas_tres_resolucoes(
         sessao.finalizar(T0)
 
 
+@pytest.mark.parametrize(
+    "estado",
+    [
+        "AO_VIVO",
+        "ATRASADO",
+        "SEM_BOOK",
+        "ERRO",
+        "REPLAY",
+    ],
+)
+def test_cenario_controlado_percorre_sessao_ponte_tick_e_fecha_janela_coerente(
+    qapp, estado,
+) -> None:
+    from fluxopro.ui.paineis.asg import EstadoASG
+    from scripts.painel import montar_cenario_controlado_asg
+
+    esperado = EstadoASG[estado]
+    janela, sessao, manifesto = montar_cenario_controlado_asg(
+        esperado, largura=1280, altura=720
+    )
+    try:
+        assert manifesto["end_to_end"] is False
+        assert manifesto["external_adapter_exercised"] is False
+        assert manifesto["state_requested"] == manifesto["state_asg"] == esperado.value
+        assert esperado.value in manifesto["state_top"]
+        assert esperado.value in manifesto["state_footer"]
+        assert manifesto["path_exercised"] == [
+            "Barramento", "SessaoFluxo", "PonteFluxo",
+            "JanelaFluxo._tick", "window_grab",
+        ]
+        assert manifesto["real_context_panels"] == [
+            "PainelDOM", "PainelTape", "PainelBookmap",
+        ]
+        assert janela.asg.matriz.isVisible()
+        assert janela.asg.decisao.isVisible()
+        assert "CONSULTIVO · SEM ENVIO DE ORDENS" in (
+            janela.asg.decisao.textos_visiveis()
+        )
+        assert len(janela.asg.tape._linhas) >= 24
+        assert janela.tarja_replay.isVisible() is (esperado is EstadoASG.REPLAY)
+    finally:
+        timestamp = janela.asg._snapshot.timestamp_ns
+        janela.close()
+        sessao.finalizar(timestamp)
+
+
 def test_ctrl_5_e_retorno_ao_fluxo_preservam_tamanho_da_janela(qapp) -> None:
     from fluxopro.ui.janela import JanelaFluxo
     from fluxopro.ui.ponte import PonteFluxo

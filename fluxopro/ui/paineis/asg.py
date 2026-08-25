@@ -1661,6 +1661,8 @@ class WorkspaceASG(QWidget):
         modo = ("largo" if largura >= self.LIMIAR_LARGO else
                 "medio" if largura >= self.LIMIAR_MEDIO else "estreito")
         if modo == self._modo and not force:
+            if modo == "largo":
+                self._ajustar_altura_larga()
             return
         self._modo = modo
         for painel in self.paineis + self.paineis_contexto:
@@ -1675,19 +1677,17 @@ class WorkspaceASG(QWidget):
             self._layout.addWidget(self.dom, 0, 0)
             self._layout.addWidget(self.tape, 0, 1)
             self._layout.addWidget(self.bookmap, 0, 2)
-            self._layout.addWidget(self.decisao, 0, 3, 3, 1)
+            self._layout.addWidget(self.decisao, 0, 3, 2, 1)
             # A Matriz usa a largura conjunta dos tres paineis brutos. Em
             # 1280 isso mantem as seis linhas no modo tabela e evita trocar
             # decisao visivel por contexto adicional.
             self._layout.addWidget(self.matriz, 1, 0, 1, 3)
             self._layout.addWidget(self.dados, 2, 0)
             self._layout.addWidget(self.processamento, 2, 1)
-            self._layout.addWidget(self.evidencias, 2, 2)
+            self._layout.addWidget(self.evidencias, 2, 2, 1, 2)
             for coluna, peso in enumerate((4, 4, 8, 6)):
                 self._layout.setColumnStretch(coluna, peso)
-            self._layout.setRowStretch(0, 4)
-            self._layout.setRowStretch(1, 4)
-            self._layout.setRowStretch(2, 2)
+            self._ajustar_altura_larga()
         elif modo == "medio":
             self._layout.addWidget(self.dom, 0, 0)
             self._layout.addWidget(self.tape, 0, 1)
@@ -1710,6 +1710,16 @@ class WorkspaceASG(QWidget):
             self._layout.setColumnStretch(2, 0)
             for linha in range(8):
                 self._layout.setRowStretch(linha, 1)
+
+    def _ajustar_altura_larga(self) -> None:
+        """Converte altura extra em contexto sem cortar a sexta linha ASG."""
+
+        # Com a tarja de evidencia, o workspace de uma janela 1280x720 fica
+        # abaixo de 700 px: a Matriz precisa de peso 5 para manter seis linhas.
+        # Em telas mais altas, o excedente migra para DOM/Tape/Bookmap.
+        pesos = (4, 5, 2) if self.height() < 700 else (6, 4, 2)
+        for linha, peso in enumerate(pesos):
+            self._layout.setRowStretch(linha, peso)
 
 
 def _campo(objeto: object, nome: str, padrao: object = None) -> object:
@@ -2030,6 +2040,7 @@ __all__ = [
     "TrilhaEvidenciasASGSnapshot",
     "WorkspaceASG",
     "WorkspaceASGSnapshot",
+    "cor_estado",
     "rotulo_direcao",
     "rotulo_estado",
 ]

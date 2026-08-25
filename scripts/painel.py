@@ -37,6 +37,7 @@ retrato que `ui/ponte.py` deixou pronto.
 from __future__ import annotations
 
 import dataclasses
+import json
 import logging
 import os
 import sys
@@ -52,6 +53,8 @@ from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from fluxopro.app.config import ConfigOperacao, FonteDados  # noqa: E402
 from fluxopro.app.montagem import FonteIndisponivelError, montar  # noqa: E402
+from fluxopro.app.sessao_fluxo import SessaoFluxo  # noqa: E402
+from fluxopro.core.barramento import Barramento  # noqa: E402
 from fluxopro.motor.sinais import ConfigMotorSinais  # noqa: E402
 from fluxopro.ui import tokens  # noqa: E402
 from fluxopro.ui.janela import (  # noqa: E402
@@ -81,7 +84,12 @@ from fluxopro.ui.paineis.asg import (  # noqa: E402
 )
 from fluxopro.ui.paineis.replay import EstadoReplay  # noqa: E402
 from fluxopro.ui.ponte import Contadores, EstadoFeed, Instantaneo, ItemTape, PonteFluxo  # noqa: E402
-from fluxopro.core.eventos import BookLevel, BookSnapshot  # noqa: E402
+from fluxopro.core.eventos import (  # noqa: E402
+    AgressorSide,
+    BookLevel,
+    BookSnapshot,
+    Trade,
+)
 from fluxopro.ui.trilha import TrilhaEventos  # noqa: E402
 from fluxopro.ui.workspace import (  # noqa: E402
     NOMES_DISPONIVEIS,
@@ -351,6 +359,177 @@ def aplicar_fixture_asg(janela: JanelaFluxo, estado: EstadoASG) -> None:
     janela._aplicar_estado_global(instantaneo, estado)
 
 
+def montar_cenario_controlado_asg(
+    estado: EstadoASG,
+    *,
+    largura: int,
+    altura: int,
+    paleta=tokens.PALETA_COR,
+    densidade=tokens.PADRAO,
+    tela_cheia: bool = False,
+) -> tuple[JanelaFluxo, SessaoFluxo, dict[str, object]]:
+    """Monta evidencia de integracao controlada, explicitamente nao E2E.
+
+    O caminho exercitado e real: eventos de dominio -> ``Barramento`` ->
+    ``SessaoFluxo`` e ``PonteFluxo`` -> ``JanelaFluxo._tick`` -> janela
+    inteira. A borda de corretora/MT5 e substituida por eventos sinteticos
+    deterministas, portanto a evidencia NAO e chamada de end-to-end.
+    """
+
+    fonte = (
+        FonteDados.REPLAY
+        if estado is EstadoASG.REPLAY
+        else FonteDados.MT5
+        if estado in {EstadoASG.SEM_BOOK, EstadoASG.ERRO}
+        else FonteDados.SIMULADOR
+    )
+    config = ConfigOperacao(
+        symbol="WDOV26",
+        fonte=fonte,
+        # O timestamp sintetico representa relogio de mercado, nao parede.
+        # Comparar com o calendario da maquina transformaria SEM BOOK em
+        # ATRASADO por construcao e provaria o cenario errado.
+        feed_quality=dataclasses.replace(
+            ConfigOperacao().feed_quality, latency_comparable=False
+        ),
+        ligar_analytics=False,
+        ligar_microestrutura=False,
+        ligar_detectores_tape=False,
+        ligar_feed_quality=True,
+        ligar_maker_proxy=True,
+        ligar_leitura_asg=True,
+    )
+    barramento = Barramento()
+    sessao = SessaoFluxo(barramento, config)
+    ponte = PonteFluxo(barramento)
+    assert sessao.feed_monitor is not None
+    sessao.feed_monitor.connected(
+        "cenario controlado sintetico; adaptador externo nao exercitado"
+    )
+    asg = por_nome("ASG-like")
+    assert asg is not None
+    janela = JanelaFluxo(
+        ponte,
+        simbolo=config.symbol,
+        grid=config.price_grid(),
+        modo="CONTROLADO · SINTETICO · NAO E2E",
+        paleta=paleta,
+        densidade=densidade,
+        sessao=sessao,
+        ressalva=(
+            "CENARIO CONTROLADO — NAO E PREGAO NEM E2E",
+            "eventos sinteticos no Barramento · Sessao/Ponte/tick reais · sem adaptador externo",
+        ),
+        config=config,
+        em_replay=estado is EstadoASG.REPLAY,
+        workspace=asg,
+        persistir=False,
+        trilha=TrilhaEventos(),
+    )
+    janela.resize(largura, altura)
+    janela.showFullScreen() if tela_cheia else janela.show()
+    app = QApplication.instance()
+    if app is not None:
+        app.processEvents()
+    janela.asg.layout().activate()
+
+    janela.definir_estado_replay(
+        EstadoReplay(
+            ativo=estado is EstadoASG.REPLAY,
+            symbol=config.symbol,
+            data=date(2026, 4, 26),
+            inicio_ns=_T0_EVIDENCIA_ASG,
+            fim_ns=_T0_EVIDENCIA_ASG + 6_000_000_000,
+            posicao_ns=_T0_EVIDENCIA_ASG + 5_000_000_000,
+            velocidade=2.0,
+        )
+    )
+
+    ultimo_ts = _T0_EVIDENCIA_ASG
+    publicar_book = estado is not EstadoASG.SEM_BOOK
+    for passo in range(24):
+        ultimo_ts = _T0_EVIDENCIA_ASG + passo * 250_000_000
+        preco = 10_000 + (passo % 5) - 2
+        if publicar_book:
+            bids = tuple(
+                BookLevel(preco - nivel - 1, 90 + ((passo + nivel * 7) % 11) * 18, 2 + nivel)
+                for nivel in range(10)
+            )
+            asks = tuple(
+                BookLevel(preco + nivel + 1, 84 + ((passo * 3 + nivel * 5) % 13) * 16, 2 + nivel)
+                for nivel in range(10)
+            )
+            barramento.publicar(BookSnapshot(ultimo_ts, config.symbol, bids, asks))
+        for negocio in range(3):
+            lado = AgressorSide.BUY if (passo + negocio) % 3 else AgressorSide.SELL
+            barramento.publicar(
+                Trade(
+                    timestamp_ns=ultimo_ts + negocio,
+                    symbol=config.symbol,
+                    price=preco + (1 if lado is AgressorSide.BUY else -1),
+                    qty=8 + ((passo * 5 + negocio * 11) % 90),
+                    side_agressor=lado,
+                    trade_id=f"r6-{estado.name}-{passo}-{negocio}",
+                )
+            )
+        janela._tick()
+
+    if estado is EstadoASG.ATRASADO:
+        sessao.feed_monitor.disconnected("cenario controlado: transporte atrasado")
+    elif estado is EstadoASG.ERRO:
+        sessao.feed_monitor.failed("cenario controlado: falha declarada da fonte")
+    if estado in {EstadoASG.ATRASADO, EstadoASG.ERRO}:
+        ultimo_ts += 250_000_000
+        barramento.publicar(
+            Trade(
+                ultimo_ts,
+                config.symbol,
+                10_000,
+                21,
+                AgressorSide.BUY,
+                f"r6-{estado.name}-transicao",
+            )
+        )
+        janela._tick()
+
+    if app is not None:
+        app.processEvents()
+    for painel in janela.paineis:
+        painel._quadro()
+
+    snapshot = janela.asg._snapshot
+    assert snapshot is not None
+    manifesto = {
+        "classification": "controlled_synthetic_integration_not_end_to_end",
+        "end_to_end": False,
+        "external_adapter_exercised": False,
+        "path_exercised": [
+            "Barramento",
+            "SessaoFluxo",
+            "PonteFluxo",
+            "JanelaFluxo._tick",
+            "window_grab",
+        ],
+        "state_requested": estado.value,
+        "state_asg": snapshot.estado_operacional.value,
+        "state_top": janela.topo._estado_operacional[0],
+        "state_footer": janela.rodape._texto_esquerda,
+        "replay_banner": janela.tarja_replay.isVisible(),
+        "workspace": janela.workspace.nome,
+        "resolution": [janela.width(), janela.height()],
+        "market_timestamp_ns": snapshot.timestamp_ns,
+        "trades_session": sessao.contadores.n_trades_bus,
+        "books_session": sessao.contadores.n_snapshots_bus,
+        "real_context_panels": [
+            type(janela.asg.dom).__name__,
+            type(janela.asg.tape).__name__,
+            type(janela.asg.bookmap).__name__,
+        ],
+        "orders": "not_available_in_ui",
+    }
+    return janela, sessao, manifesto
+
+
 def ressalva_da_config(config: ConfigOperacao) -> tuple[str, str]:
     """`(titulo, detalhe)` do carimbo, DERIVADO da configuracao.
 
@@ -465,8 +644,9 @@ def _parser():
         action="store_true",
         dest="retrato_estados_asg",
         help=(
-            "com --retrato, captura fixtures sinteticas e rotuladas da janela "
-            "ASG-like em AO VIVO, ATRASADO, SEM BOOK, ERRO e REPLAY"
+            "com --retrato, captura integracao controlada e rotulada (nao E2E) "
+            "via Barramento/Sessao/Ponte/tick em AO VIVO, ATRASADO, SEM BOOK, "
+            "ERRO e REPLAY"
         ),
     )
     g.add_argument(
@@ -696,10 +876,9 @@ def main(argv: list[str] | None = None) -> int:
 
         def _capturar_estados_asg() -> None:
             base = Path(args.retrato)
-            asg = por_nome("ASG-like")
-            assert asg is not None
-            janela.aplicar_workspace(asg)
+            base.parent.mkdir(parents=True, exist_ok=True)
             janela._relogio.stop()
+            manifestos: list[dict[str, object]] = []
             for estado in (
                 EstadoASG.AO_VIVO,
                 EstadoASG.ATRASADO,
@@ -707,14 +886,49 @@ def main(argv: list[str] | None = None) -> int:
                 EstadoASG.ERRO,
                 EstadoASG.REPLAY,
             ):
-                janela.resize(args.largura, args.altura)
-                aplicar_fixture_asg(janela, estado)
-                aplicacao.processEvents()
-                seguro = estado.name.lower()
-                _salvar(
-                    base.with_name(base.stem + "_" + seguro + base.suffix),
-                    atualizar_dados=False,
+                cenario, sessao_cenario, manifesto = montar_cenario_controlado_asg(
+                    estado,
+                    largura=args.largura,
+                    altura=args.altura,
+                    paleta=tokens.PALETA_SEM_COR if args.sem_cor else tokens.PALETA_COR,
+                    densidade=_DENSIDADES[args.densidade],
+                    tela_cheia=args.tela_cheia,
                 )
+                try:
+                    cenario.asg.tape.definir_filtro(args.filtro_tape)
+                    aplicacao.processEvents()
+                    seguro = estado.name.lower()
+                    caminho = base.with_name(base.stem + "_" + seguro + base.suffix)
+                    cenario.grab().save(str(caminho))
+                    manifesto["file"] = caminho.name
+                    manifestos.append(manifesto)
+                    _logger.info(
+                        "retrato controlado NAO E2E %s | %dx%d | %s -> %s",
+                        caminho,
+                        cenario.width(),
+                        cenario.height(),
+                        " -> ".join(manifesto["path_exercised"]),
+                        manifesto["state_footer"],
+                    )
+                finally:
+                    timestamp = (
+                        cenario.asg._snapshot.timestamp_ns
+                        if cenario.asg._snapshot is not None else None
+                    )
+                    cenario.close()
+                    sessao_cenario.finalizar(timestamp)
+            manifesto_path = base.with_name(base.stem + "_manifest.json")
+            manifesto_path.write_text(
+                json.dumps(
+                    {
+                        "classification": "controlled_synthetic_integration_not_end_to_end",
+                        "captures": manifestos,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ) + "\n",
+                encoding="utf-8",
+            )
             janela.close()
 
         def _imprimir_caixas() -> None:
