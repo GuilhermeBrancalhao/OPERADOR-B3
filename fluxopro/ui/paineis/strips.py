@@ -192,7 +192,8 @@ class StripTopo(PainelDenso):
 
         painter.setFont(tokens.fonte_ui(12, 600))
         painter.setPen(tokens.TEXT_PRIMARY)
-        x = self._campo(painter, x, altura, "FluxoPro", tokens.TEXT_PRIMARY, tokens.fonte_ui(12, 600))
+        marca = "NEXO" if self._estado_operacional is not None else "FluxoPro"
+        x = self._campo(painter, x, altura, marca, tokens.TEXT_PRIMARY, tokens.fonte_ui(12, 600))
         x = self._separador(painter, x, altura)
         x = self._campo(painter, x, altura, self.simbolo, tokens.TEXT_PRIMARY, tokens.fonte_ui(12, 600))
         x = self._separador(painter, x, altura)
