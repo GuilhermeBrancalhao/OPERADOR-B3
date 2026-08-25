@@ -366,6 +366,8 @@ def test_janela_aplica_asg_somente_quando_workspace_esta_ativo(qapp) -> None:
         assert aplicado.timestamp_ns == T0
         assert janela.asg.dom._ultimo_preco == PRICE
         assert len(janela.asg.tape._linhas) == 1
+        assert all(painel._backing is not None for painel in janela.asg.todos_paineis)
+        assert all(not painel.tem_sujeira for painel in janela.asg.todos_paineis)
 
         assert janela.workspace_por_atalho(1)
         _publicar_quadro(
@@ -463,6 +465,9 @@ def test_cenario_controlado_percorre_sessao_ponte_tick_e_fecha_janela_coerente(
         assert manifesto["real_context_panels"] == [
             "PainelDOM", "PainelTape", "PainelBookmap",
         ]
+        assert manifesto["missing_matrix_labels"] == []
+        assert manifesto["decision_visible"] is True
+        assert manifesto["no_orders_banner"] is True
         assert janela.asg.matriz.isVisible()
         assert janela.asg.decisao.isVisible()
         assert "CONSULTIVO · SEM ENVIO DE ORDENS" in (

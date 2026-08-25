@@ -499,6 +499,9 @@ def montar_cenario_controlado_asg(
 
     snapshot = janela.asg._snapshot
     assert snapshot is not None
+    rotulos_matriz = {
+        "MACRO", "MICRO", "LINHA AZUL", "REGIME", "MAKERPROXY", "VELOCIMETRO",
+    }
     manifesto = {
         "classification": "controlled_synthetic_integration_not_end_to_end",
         "end_to_end": False,
@@ -525,6 +528,12 @@ def montar_cenario_controlado_asg(
             type(janela.asg.tape).__name__,
             type(janela.asg.bookmap).__name__,
         ],
+        "missing_matrix_labels": sorted(
+            rotulos_matriz - set(janela.asg.matriz.textos_visiveis())
+        ),
+        "decision_visible": janela.asg.decisao.isVisible(),
+        "no_orders_banner": "CONSULTIVO · SEM ENVIO DE ORDENS"
+        in janela.asg.decisao.textos_visiveis(),
         "orders": "not_available_in_ui",
     }
     return janela, sessao, manifesto

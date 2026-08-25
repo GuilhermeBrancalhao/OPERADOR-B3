@@ -1813,6 +1813,14 @@ class JanelaFluxo(QMainWindow):
         for chave, doca in self.docas.items():
             doca.setVisible(chave in visiveis)
         self._area_operacional.setCurrentWidget(self.asg if eh_asg else self._host)
+        if eh_asg:
+            # ``setCurrentWidget`` resolve a geometria final dos filhos e
+            # invalida backings calculados enquanto a pagina estava oculta.
+            # Fechar o quadro sincronicamente, antes de devolver o evento de
+            # Ctrl+5 ao Qt, impede a exposicao desse backing recem-invalido.
+            self.asg.layout().activate()
+            for painel in self.asg.todos_paineis:
+                painel._quadro()
         self.trilho.setVisible(not eh_asg)
         self._workspace = alvo
         self.setWindowTitle(
@@ -2296,6 +2304,12 @@ class JanelaFluxo(QMainWindow):
             if layout is not None:
                 layout.activate()
             self.asg.aplicar_mercado(instantaneo)
+        # Hidratar dados sem fechar os backings ainda entrega um primeiro
+        # frame visual vazio: os relogios dos filhos estavam parados enquanto
+        # o stack permanecia oculto. O quadro e fechado AQUI, antes de
+        # ``setCurrentWidget`` expor o composto.
+        for painel in self.asg.todos_paineis:
+            painel._quadro()
         self._estado_operacional_asg = estado
         return estado
 
