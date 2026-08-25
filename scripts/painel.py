@@ -92,7 +92,7 @@ from fluxopro.core.eventos import (  # noqa: E402
 )
 from fluxopro.ui.trilha import TrilhaEventos  # noqa: E402
 from fluxopro.ui.workspace import (  # noqa: E402
-    NOMES_DISPONIVEIS,
+    NOMES_DE_ENTRADA,
     WORKSPACES_DISPONIVEIS,
     por_nome,
 )
@@ -406,7 +406,7 @@ def montar_cenario_controlado_asg(
     sessao.feed_monitor.connected(
         "cenario controlado sintetico; adaptador externo nao exercitado"
     )
-    asg = por_nome("ASG-like")
+    asg = por_nome("OPERADOR B3")
     assert asg is not None
     janela = JanelaFluxo(
         ponte,
@@ -642,10 +642,10 @@ def _parser():
     )
     g.add_argument(
         "--workspace",
-        choices=list(NOMES_DISPONIVEIS),
-        default="ASG-like",
+        choices=list(NOMES_DE_ENTRADA),
+        default="OPERADOR B3",
         help=(
-            "arranjo inicial (ASG-like por padrao; Ctrl+1..9 troca a quente)."
+            "arranjo inicial (OPERADOR B3 por padrao; Ctrl+1..9 troca a quente)."
         ),
     )
     g.add_argument(
@@ -723,7 +723,7 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config = config_de_args(args)
-    if args.workspace == "ASG-like":
+    if por_nome(args.workspace) is not None and por_nome(args.workspace).nome_exibicao == "OPERADOR B3":
         config = dataclasses.replace(
             config,
             ligar_feed_quality=True,

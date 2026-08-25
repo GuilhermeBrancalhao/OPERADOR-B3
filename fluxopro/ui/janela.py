@@ -1628,7 +1628,8 @@ class JanelaFluxo(QMainWindow):
         self.metodo = PainelMetodo(self.grid, densidade=d, paleta=p)
         self.regras = PainelRegras(self.config_motor)
         self.asg = WorkspaceASG(
-            paleta=p, grid=self.grid, symbol=self.simbolo, densidade=d
+            paleta=p, grid=self.grid, symbol=self.simbolo, densidade=d,
+            timeframe_ns=self.config.timeframe_ns,
         )
 
         self.controles_replay = ControlesReplay(densidade=d)
@@ -1798,7 +1799,7 @@ class JanelaFluxo(QMainWindow):
         # docking inteira para que as seis linhas da matriz sejam operacionais
         # em 1280x720. Os quatro workspaces historicos continuam usando
         # exatamente ``alvo.docas`` e o estado canonico congelado.
-        eh_asg = alvo.nome == "ASG-like"
+        eh_asg = alvo.nome_exibicao == "OPERADOR B3"
         if eh_asg:
             # O stack ASG so pode ficar visivel depois de receber o retrato
             # mais recente. Se a sessao ainda nao produziu um, o construtor
@@ -1825,7 +1826,7 @@ class JanelaFluxo(QMainWindow):
         self._workspace = alvo
         self.setWindowTitle(
             f"Operador B3 — NEXO consultivo — {self.simbolo}"
-            if alvo.nome == "ASG-like"
+            if alvo.nome_exibicao == "OPERADOR B3"
             else f"FluxoPro — {self.simbolo}"
         )
         self._sincronizar_trilho()
@@ -1834,7 +1835,7 @@ class JanelaFluxo(QMainWindow):
         # transitórios enquanto o Qt colapsa/expande a arvore de docas.
         self.resize(tamanho_antes)
         if registrar:
-            self.trilha.info("workspace", "%s — %s" % (alvo.nome, alvo.descricao))
+            self.trilha.info("workspace", "%s — %s" % (alvo.nome_exibicao, alvo.descricao))
         if not alvo.cadeia_completa:
             self.trilha.aviso(
                 "cadeia",
@@ -1981,7 +1982,7 @@ class JanelaFluxo(QMainWindow):
         estado = self._host.saveState()
         visiveis = {c for c, dc in self.docas.items() if dc.isVisible()}
         asg_antigo = self.asg
-        asg_ativo = self._workspace.nome == "ASG-like"
+        asg_ativo = self._workspace.nome_exibicao == "OPERADOR B3"
         antigos = [
             painel
             for chave, painel in self._paineis.items()

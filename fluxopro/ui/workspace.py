@@ -135,6 +135,7 @@ class Workspace:
     """1..9, o dígito de `Ctrl+N`."""
     descricao: str
     docas: tuple[str, ...]
+    rotulo: str = ""
 
     def __post_init__(self) -> None:
         if not 1 <= self.atalho <= 9:
@@ -158,6 +159,12 @@ class Workspace:
         que o trilho tem de dizer `ARRANJO LIVRE` em vez de inventar segmento.
         """
         return self.elos_cobertos == frozenset(range(1, N_ELOS + 1))
+
+    @property
+    def nome_exibicao(self) -> str:
+        """Nome público da sala, sem quebrar o identificador persistido."""
+
+        return self.rotulo or self.nome
 
 
 WORKSPACES_DE_FABRICA: tuple[Workspace, ...] = (
@@ -200,13 +207,15 @@ WORKSPACE_ASG = Workspace(
     5,
     "fluxo completo com MakerProxy independente e decisão consultiva",
     ("dom", "tape", "players", "bookmap", "conduto", "footprint", "perfil",
-     "delta", "asg", "trilha"),
+    "delta", "asg", "trilha"),
+    "OPERADOR B3",
 )
 WORKSPACES_DISPONIVEIS: tuple[Workspace, ...] = (
     *WORKSPACES_DE_FABRICA,
     WORKSPACE_ASG,
 )
 NOMES_DISPONIVEIS: tuple[str, ...] = tuple(w.nome for w in WORKSPACES_DISPONIVEIS)
+NOMES_DE_ENTRADA: tuple[str, ...] = tuple(w.nome_exibicao for w in WORKSPACES_DISPONIVEIS)
 
 
 def por_atalho(digito: int) -> Workspace | None:
@@ -218,7 +227,7 @@ def por_atalho(digito: int) -> Workspace | None:
 
 def por_nome(nome: str) -> Workspace | None:
     for w in WORKSPACES_DISPONIVEIS:
-        if w.nome == nome:
+        if w.nome == nome or w.nome_exibicao == nome:
             return w
     return None
 

@@ -24,7 +24,14 @@ from fluxopro.core.eventos import PriceGrid, WDO_GRID
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.base.painel_denso import PainelDenso
 from fluxopro.ui.paineis.bookmap import PainelBookmap
+from fluxopro.ui.paineis.cockpit import PainelCockpit
 from fluxopro.ui.paineis.dom import PainelDOM
+from fluxopro.ui.paineis.grafico import PainelGrafico, PainelMiniTape
+from fluxopro.ui.paineis.placar_visual import (
+    PainelMarcaOperador,
+    PainelPlacarVisual,
+    PainelPressaoMercado,
+)
 from fluxopro.ui.paineis.tape import PainelTape
 from fluxopro.ui.ponte import Instantaneo
 
@@ -2568,13 +2575,20 @@ class WorkspaceASG(QWidget):
     def __init__(self, parent: QWidget | None = None,
                  paleta: tokens.Paleta = tokens.PALETA_COR,
                  grid: PriceGrid = WDO_GRID, symbol: str = "",
-                 densidade: tokens.Densidade = tokens.PADRAO) -> None:
+                 densidade: tokens.Densidade = tokens.PADRAO,
+                 timeframe_ns: int = 60_000_000_000) -> None:
         super().__init__(parent)
         # O composto e a superficie operacional inteira no Ctrl+5. ``Ignored``
         # impede que um sizeHint de desktop force a janela a crescer quando o
         # Qt ainda esta resolvendo a antiga arvore de docas durante a troca.
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         self.nexo = PainelNexoMercadoASG(self, grid, paleta)
+        self.cockpit = PainelCockpit(self)
+        self.placar_visual = PainelPlacarVisual(self)
+        self.pressao_visual = PainelPressaoMercado(self)
+        self.marca_operador = PainelMarcaOperador(self)
+        self.grafico = PainelGrafico(grid, timeframe_ns, self)
+        self.mini_tape = PainelMiniTape(self)
         self.contexto_bruto = PainelContextoBrutoASG(self, grid)
         self.dados = PainelDadosASG(self)
         self.processamento = PainelProcessamentoASG(self)
@@ -2602,6 +2616,10 @@ class WorkspaceASG(QWidget):
         self.paineis = (self.nexo, self.contexto_bruto, self.dados, self.processamento,
                         self.matriz, self.decisao, self.evidencias)
         self.paineis_contexto = (self.dom, self.tape, self.bookmap)
+        self.paineis_extras = (
+            self.cockpit, self.placar_visual, self.pressao_visual,
+            self.marca_operador, self.grafico, self.mini_tape,
+        )
         # NEXO, tal como o antigo Pulso, tem um ciclo visual próprio: recebe
         # o retrato de mercado e desenha no próximo quadro Qt. Não o incluímos
         # neste contrato de hidratação síncrona para não exigir geometria já
@@ -2609,7 +2627,7 @@ class WorkspaceASG(QWidget):
         self.todos_paineis = self.paineis_contexto + (
             self.dados, self.processamento, self.matriz,
             self.decisao, self.evidencias,
-        )
+        ) + self.paineis_extras
         self._layout = QGridLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(4)
@@ -2647,6 +2665,9 @@ class WorkspaceASG(QWidget):
             raise TypeError("WorkspaceASG.aplicar exige WorkspaceASGSnapshot tipado")
         self._snapshot = snapshot
         self.nexo.aplicar(snapshot)
+        self.cockpit.aplicar(snapshot)
+        self.placar_visual.aplicar(snapshot)
+        self.marca_operador.aplicar(snapshot)
         self.contexto_bruto.aplicar(snapshot.contexto_bruto or ContextoBrutoASGSnapshot(
             snapshot.timestamp_ns,
             estado=snapshot.estado_operacional or snapshot.dados.estado,
@@ -2668,6 +2689,11 @@ class WorkspaceASG(QWidget):
         self.bookmap.aplicar(
             retrato.livro, retrato.ultimo_preco, retrato.novos_trades
         )
+        self.grafico.aplicar(retrato.novos_trades, ultimo_preco=retrato.ultimo_preco)
+        self.mini_tape.aplicar(retrato.novos_trades, retrato.ultimo_preco)
+        compra = sum(int(item.qty) for item in retrato.novos_trades if item.agressor > 0)
+        venda = sum(int(item.qty) for item in retrato.novos_trades if item.agressor < 0)
+        self.pressao_visual.aplicar(compra, venda, bool(compra or venda))
         self.nexo.aplicar_mercado(retrato)
 
     def resizeEvent(self, evento) -> None:  # noqa: N802
@@ -2683,7 +2709,7 @@ class WorkspaceASG(QWidget):
                 self._ajustar_altura_larga()
             return
         self._modo = modo
-        for painel in self.paineis + self.paineis_contexto:
+        for painel in self.paineis + self.paineis_contexto + self.paineis_extras:
             self._layout.removeWidget(painel)
             # O workspace ASG agora e uma superficie autoral unica. Os
             # paineis tecnicos permanecem filhos vivos, com snapshot e
