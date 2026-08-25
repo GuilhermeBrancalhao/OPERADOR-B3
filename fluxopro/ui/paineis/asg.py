@@ -1582,7 +1582,17 @@ class WorkspaceASG(QWidget):
         self.dom = PainelDOM(grid, self, densidade=densidade, paleta=paleta)
         self.tape = PainelTape(grid, self, densidade=densidade, paleta=paleta)
         self.bookmap = PainelBookmap(
-            grid, symbol=symbol, parent=self, densidade=densidade, paleta=paleta
+            grid,
+            symbol=symbol,
+            parent=self,
+            densidade=densidade,
+            paleta=paleta,
+            # O Bookmap do workspace compartilha uma faixa horizontal menor
+            # que o painel dedicado. Em 500 ms ele mostrava apenas poucos
+            # blocos na borda e desperdicava o contexto que a tela prometia.
+            # 250 ms preserva a semantica de balde e dobra a historia visivel
+            # sem alterar o Bookmap dos workspaces legados.
+            intervalo_coluna_ns=250_000_000,
         )
         for painel in (self.dom, self.tape, self.bookmap):
             painel.setMinimumSize(0, 0)

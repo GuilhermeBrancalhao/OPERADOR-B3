@@ -482,8 +482,11 @@ def test_cenario_controlado_percorre_sessao_ponte_tick_e_fecha_janela_coerente(
 
 
 def test_ctrl_5_e_retorno_ao_fluxo_preservam_tamanho_da_janela(qapp) -> None:
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
     from fluxopro.ui.janela import JanelaFluxo
     from fluxopro.ui.ponte import PonteFluxo
+    from fluxopro.ui.workspace import WORKSPACE_ASG, WORKSPACES_DE_FABRICA
 
     barramento = Barramento()
     config = _config_asg()
@@ -502,12 +505,19 @@ def test_ctrl_5_e_retorno_ao_fluxo_preservam_tamanho_da_janela(qapp) -> None:
         qapp.processEvents()
         tamanho = janela.size()
 
-        assert janela.workspace_por_atalho(5)
+        # Prova o atalho fisico do Qt, nao a chamada direta do metodo. O
+        # primeiro quadro deve estar hidratado antes de Ctrl+5 devolver o
+        # controle ao event loop para nunca expor a pagina vazia.
+        QTest.keyClick(janela, Qt.Key.Key_5, Qt.KeyboardModifier.ControlModifier)
         qapp.processEvents()
+        assert janela.workspace is WORKSPACE_ASG
         assert janela.size() == tamanho
+        assert janela.asg._snapshot is not None
+        assert all(painel._backing is not None for painel in janela.asg.todos_paineis)
 
-        assert janela.workspace_por_atalho(1)
+        QTest.keyClick(janela, Qt.Key.Key_1, Qt.KeyboardModifier.ControlModifier)
         qapp.processEvents()
+        assert janela.workspace is WORKSPACES_DE_FABRICA[0]
         assert janela.size() == tamanho
         assert janela.trilho.isVisible()
     finally:
