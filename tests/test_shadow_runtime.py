@@ -138,3 +138,43 @@ def test_reset_espera_ack_quando_fila_esta_cheia_e_censura_sessao_anterior(
     assert len(anterior) == 1
     assert anterior[0]["qualidade"] == "CENSURADA"
     assert anterior[0]["price_final_ticks"] == 100
+
+
+def test_close_drena_fila_cheia_e_finaliza_apos_escrita_bloqueada(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    """O encerramento nao depende de inserir sentinela em fila cheia."""
+
+    sidecar = SidecarShadow(
+        tmp_path,
+        ConfigShadow(
+            intervalo_amostra_ns=1,
+            horizontes_s=(1,),
+            max_pendentes_por_simbolo=4,
+            max_registros_buffer=8,
+        ),
+    )
+    entrou = threading.Event()
+    liberar = threading.Event()
+    observar_original = sidecar.observar
+
+    def observar_bloqueado(amostra):
+        entrou.set()
+        assert liberar.wait(2)
+        observar_original(amostra)
+
+    monkeypatch.setattr(sidecar, "observar", observar_bloqueado)
+    writer = AsyncShadowWriter(sidecar, capacity=1)
+    assert writer.submit(_sample(1_000_000_000))
+    assert entrou.wait(1)
+    assert writer.submit(_sample(2_000_000_000))
+
+    # A primeira espera expira enquanto o worker esta bloqueado, mas a
+    # solicitacao de close permanece instalada e nao perde a finalizacao.
+    assert writer.close(timeout_s=0.01).state is ShadowRuntimeState.ERROR
+    liberar.set()
+    estado = writer.close(timeout_s=2.0)
+
+    assert estado.state is ShadowRuntimeState.CLOSED
+    assert not writer._thread.is_alive()
+    assert len(list(tmp_path.rglob("run.json"))) == 1

@@ -41,9 +41,6 @@ class _ResetCommand:
     resultado: list[Exception | None]
 
 
-_STOP = object()
-
-
 class AsyncShadowWriter:
     """Writer serial, limitado e fail-closed somente para o shadow."""
 
@@ -52,8 +49,8 @@ class AsyncShadowWriter:
             raise ValueError("capacity shadow deve ser inteiro positivo")
         self.sidecar = sidecar
         self._capacity = capacity
-        self._queue: queue.Queue[AmostraFeatures | _ResetCommand | object] = (
-            queue.Queue(maxsize=capacity)
+        self._queue: queue.Queue[AmostraFeatures | _ResetCommand] = queue.Queue(
+            maxsize=capacity
         )
         self._lock = threading.Lock()
         self._state = ShadowRuntimeState.RUNNING
@@ -64,6 +61,12 @@ class AsyncShadowWriter:
         self._detail = "writer shadow ativo"
         self._disabled = False
         self._closed = False
+        # Fechar nao e mais um item descartavel da fila.  Um sentinela podia
+        # ficar para sempre do lado de fora quando a fila estava cheia, o que
+        # deixava uma thread daemon e um run sem ``finalizar()``.  O evento
+        # permite ao worker drenar o que ja foi aceito e encerrar por conta
+        # propria assim que a fila esvaziar.
+        self._close_requested = threading.Event()
         self._thread = threading.Thread(
             target=self._run,
             name="operador-b3-shadow-writer",
@@ -141,19 +144,13 @@ class AsyncShadowWriter:
         if timeout_s <= 0:
             raise ValueError("timeout_s deve ser positivo")
         with self._lock:
-            already_closed = self._closed
             self._closed = True
-        if already_closed:
-            return self.snapshot()
-        try:
-            self._queue.put(_STOP, timeout=timeout_s / 2)
-        except queue.Full:
-            with self._lock:
-                self._state = ShadowRuntimeState.ERROR
-                self._failures += 1
-                self._detail = "timeout ao encerrar fila shadow"
-            return self.snapshot()
-        self._thread.join(timeout=timeout_s / 2)
+        self._close_requested.set()
+        # O worker nao depende de uma vaga para receber um sentinela: depois
+        # do item que estiver em andamento ele drena os aceitos e finaliza.
+        # Uma segunda chamada continua aguardando a MESMA thread, portanto um
+        # timeout transitório jamais torna o encerramento irrecuperável.
+        self._thread.join(timeout=timeout_s)
         if self._thread.is_alive():
             with self._lock:
                 self._state = ShadowRuntimeState.ERROR
@@ -163,21 +160,13 @@ class AsyncShadowWriter:
 
     def _run(self) -> None:
         while True:
-            item = self._queue.get()
-            if item is _STOP:
-                try:
-                    if not self._disabled:
-                        self.sidecar.finalizar()
-                except Exception as exc:
-                    self._record_failure(exc)
-                else:
-                    with self._lock:
-                        if self._state is not ShadowRuntimeState.ERROR:
-                            self._state = ShadowRuntimeState.CLOSED
-                            self._detail = "writer shadow encerrado"
-                finally:
-                    self._queue.task_done()
-                return
+            try:
+                item = self._queue.get(timeout=0.05)
+            except queue.Empty:
+                if self._close_requested.is_set():
+                    self._finalizar_worker()
+                    return
+                continue
             try:
                 if isinstance(item, _ResetCommand):
                     self._process_reset(item)
@@ -194,6 +183,27 @@ class AsyncShadowWriter:
                 self._record_failure(exc)
             finally:
                 self._queue.task_done()
+            if self._close_requested.is_set() and self._queue.empty():
+                self._finalizar_worker()
+                return
+
+    def _finalizar_worker(self) -> None:
+        """Materializa o run quando a fila aceita foi integralmente drenada."""
+
+        try:
+            if not self._disabled:
+                self.sidecar.finalizar()
+        except Exception as exc:
+            self._record_failure(exc)
+        else:
+            with self._lock:
+                # Um timeout de ``close`` pode ter sido registrado enquanto
+                # uma escrita estava bloqueada. Quando ela finalmente drena,
+                # o artefato finalizado e a fonte de verdade: CLOSED, nao um
+                # falso ERROR permanente.
+                if not self._disabled:
+                    self._state = ShadowRuntimeState.CLOSED
+                    self._detail = "writer shadow encerrado"
 
     def _process_reset(self, comando: _ResetCommand) -> None:
         try:
