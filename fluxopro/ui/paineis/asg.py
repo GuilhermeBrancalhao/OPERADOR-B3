@@ -17,7 +17,7 @@ from dataclasses import dataclass, fields, replace as dataclass_replace
 from enum import Enum, unique
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPolygon
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPen, QPolygon
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
 
 from fluxopro.core.eventos import PriceGrid, WDO_GRID
@@ -1666,34 +1666,58 @@ class PainelNexoMercadoASG(_PainelASG):
             TrilhaEvidenciasASGSnapshot(0),
             contexto_bruto=ContextoBrutoASGSnapshot(0),
         )
-        self._serie: deque[tuple[int, int, float]] = deque(maxlen=180)
+        # Historico exclusivamente visual, limitado. Cada ponto vem de um
+        # negocio observado (quando a ponte o entrega), e nao de um valor
+        # sintetizado pela UI. Isso permite candles causais e um grafico que
+        # ganha densidade no pregão sem reter dados indefinidamente.
+        self._serie: deque[tuple[int, int, float, int]] = deque(maxlen=480)
 
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         self._snapshot = snapshot
         contexto = snapshot.contexto_bruto
-        if contexto is not None and contexto.ultimo_preco is not None:
+        negocios = () if contexto is None else tuple(contexto.negocios)
+        for negocio in sorted(negocios, key=lambda item: item.timestamp_ns):
+            self._registrar_amostra(
+                negocio.timestamp_ns,
+                negocio.preco,
+                self._forca_atual(),
+                negocio.quantidade,
+            )
+        if not negocios and contexto is not None and contexto.ultimo_preco is not None:
             self._registrar_amostra(
                 snapshot.timestamp_ns,
                 int(contexto.ultimo_preco),
                 self._forca_atual(),
+                0,
             )
         self.marcar_tudo_sujo()
 
     def aplicar_mercado(self, retrato: Instantaneo) -> None:
-        preco = retrato.ultimo_preco
-        if preco is not None and self._snapshot.timestamp_ns > 0:
+        negocios = tuple(retrato.novos_trades)
+        for negocio in sorted(negocios, key=lambda item: item.timestamp_ns):
             self._registrar_amostra(
-                self._snapshot.timestamp_ns,
+                negocio.timestamp_ns,
+                int(negocio.price),
+                self._forca_atual(),
+                int(negocio.qty),
+            )
+        preco = retrato.ultimo_preco
+        if not negocios and preco is not None and self._snapshot.timestamp_ns > 0:
+            self._registrar_amostra(
+                max(self._snapshot.timestamp_ns, retrato.ultimo_evento_ns),
                 int(preco),
                 self._forca_atual(),
+                0,
             )
         self.marcar_tudo_sujo()
 
-    def _registrar_amostra(self, timestamp_ns: int, preco: int, forca: float) -> None:
+    def _registrar_amostra(
+        self, timestamp_ns: int, preco: int, forca: float, quantidade: int = 0
+    ) -> None:
         if self._serie and timestamp_ns < self._serie[-1][0]:
             return
-        ponto = (timestamp_ns, preco, max(-1.0, min(1.0, forca)))
-        if self._serie and timestamp_ns == self._serie[-1][0]:
+        ponto = (timestamp_ns, preco, max(-1.0, min(1.0, forca)), max(0, quantidade))
+        if self._serie and timestamp_ns == self._serie[-1][0] and preco == self._serie[-1][1]:
             self._serie[-1] = ponto
         else:
             self._serie.append(ponto)
@@ -1758,7 +1782,7 @@ class PainelNexoMercadoASG(_PainelASG):
         # frames de referencia: bloco de contexto, nucleo de estado e bloco
         # de grafico. Os paineis tecnicos continuam existindo nos workspaces
         # legados e os seus dados chegam a esta superficie pelo snapshot.
-        cabecalho = QRect(0, 0, largura, 27)
+        cabecalho = QRect(0, 0, largura, 21)
         painter.fillRect(cabecalho, tema_asg.NEXO_PAINEL)
         painter.setPen(tema_asg.NEXO_GRADE)
         painter.drawLine(0, cabecalho.bottom(), largura, cabecalho.bottom())
@@ -1773,14 +1797,16 @@ class PainelNexoMercadoASG(_PainelASG):
                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                          f"{rotulo_estado(s.estado_operacional)}  ·  CONSULTIVO")
 
-        corpo = QRect(8, 34, max(0, largura - 16), max(0, altura - 61))
+        corpo = QRect(8, 27, max(0, largura - 16), max(0, altura - 54))
         vao = 8
-        esquerda_w = max(230, int(corpo.width() * 0.42))
-        nucleo_w = max(145, int(corpo.width() * 0.20))
+        # A evidencia decisoria mora no grafico. Contexto e sinal precisam
+        # ser lidos de relance, mas nao podem roubar a maior area do ativo.
+        esquerda_w = max(230, int(corpo.width() * 0.27))
+        nucleo_w = max(145, int(corpo.width() * 0.17))
         direita_w = corpo.width() - esquerda_w - nucleo_w - 2 * vao
         if direita_w < 250:
-            esquerda_w = max(190, int(corpo.width() * 0.38))
-            nucleo_w = max(130, int(corpo.width() * 0.19))
+            esquerda_w = max(190, int(corpo.width() * 0.30))
+            nucleo_w = max(130, int(corpo.width() * 0.17))
             direita_w = corpo.width() - esquerda_w - nucleo_w - 2 * vao
         esquerda = QRect(corpo.x(), corpo.y(), esquerda_w, corpo.height())
         nucleo = QRect(esquerda.right() + vao, corpo.y(), nucleo_w, corpo.height())
@@ -1802,15 +1828,76 @@ class PainelNexoMercadoASG(_PainelASG):
         painter.fillRect(rect, tema_asg.NEXO_PAINEL)
         painter.setPen(tema_asg.NEXO_GRADE)
         painter.drawRect(rect.adjusted(0, 0, -1, -1))
-        painter.setFont(tokens.fonte_rotulo(8))
+        painter.setFont(tokens.fonte_rotulo(9))
         painter.setPen(tema_asg.NEXO_MUTED)
         painter.drawText(rect.adjusted(9, 5, -9, -rect.height() + 18),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, titulo)
         return rect.adjusted(9, 23, -9, -8)
 
+    def _linhas_contexto_nexo(self) -> tuple[tuple[str, LinhaMatrizASG], ...]:
+        """Quatro leituras curtas para o bloco de contexto, sem nova regra."""
+
+        apelidos = {
+            "MACRO": "HORIZONTE",
+            "MICRO": "PULSO",
+            "MAKERPROXY": "PRESENCA",
+            "VELOCIMETRO": "RITMO",
+        }
+        saida = []
+        for linha in self._snapshot.matriz.linhas:
+            apelido = apelidos.get(linha.componente)
+            if apelido is not None:
+                saida.append((apelido, linha))
+        return tuple(saida[:4])
+
+    def _desenhar_ladder_nexo(self, painter: QPainter, rect: QRect) -> None:
+        """Mini DOM observado no bloco de contexto, limitado a seis niveis."""
+
+        contexto = self._snapshot.contexto_bruto
+        if contexto is None:
+            return
+        asks = tuple(contexto.asks[:3])
+        bids = tuple(contexto.bids[:3])
+        niveis = asks + bids
+        if not niveis or rect.height() < 64:
+            return
+        maximo = max(1, max(nivel.quantidade for nivel in niveis))
+        altura = max(9, rect.height() // len(niveis))
+        painter.setFont(tokens.fonte_numero(7, QFont.Weight.DemiBold))
+        for indice, nivel in enumerate(niveis):
+            y = rect.y() + indice * altura
+            eh_ask = indice < len(asks)
+            cor = tema_asg.NEXO_ROSA if eh_ask else tema_asg.NEXO_VERDE
+            largura = max(3, int((rect.width() - 34) * nivel.quantidade / maximo))
+            x = rect.right() - largura if eh_ask else rect.left()
+            painter.fillRect(QRect(x, y + 1, largura, max(2, altura - 3)), cor)
+            painter.setPen(tema_asg.NEXO_TEXTO)
+            preco = formato.formatar_preco(self.grid, nivel.preco)
+            painter.drawText(QRect(rect.left(), y, rect.width(), altura),
+                             Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
+                             f"{preco[0]}{preco[1]}")
+
+    def _desenhar_leituras_contexto(self, painter: QPainter, rect: QRect) -> None:
+        linhas = self._linhas_contexto_nexo()
+        if not linhas or rect.height() < 42:
+            return
+        altura = max(16, rect.height() // len(linhas))
+        for indice, (nome, linha) in enumerate(linhas):
+            y = rect.y() + indice * altura
+            cor = _cor_nexo_direcao(linha.direcao)
+            painter.setFont(tokens.fonte_rotulo(7))
+            painter.setPen(tema_asg.NEXO_MUTED)
+            painter.drawText(QRect(rect.left(), y, rect.width() // 2, altura),
+                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, nome)
+            painter.setFont(tokens.fonte_numero(8, QFont.Weight.Bold))
+            painter.setPen(cor)
+            painter.drawText(QRect(rect.left() + rect.width() // 2, y, rect.width() // 2, altura),
+                             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                             linha.valor)
+
     def _desenhar_contexto_nexo(self, painter: QPainter, rect: QRect) -> None:
         vao = 8
-        alto = max(80, int(rect.height() * 0.69))
+        alto = max(80, int(rect.height() * 0.59))
         contexto = self._painel_nexo(painter, QRect(rect.x(), rect.y(), rect.width(), alto),
                                      "CONTEXTO  ·  PRESSAO / MAKERPROXY")
         alerta = self._painel_nexo(
@@ -1864,6 +1951,10 @@ class PainelNexoMercadoASG(_PainelASG):
         painter.setFont(tokens.fonte_numero(9, QFont.Weight.Bold))
         painter.drawText(QRect(cubo_x - 12, cubo_y + cubo_h + 19, cubo_w + 40, 16),
                          Qt.AlignmentFlag.AlignCenter, f"{score * 100:+.1f}%")
+        painter.setFont(tokens.fonte_rotulo(7))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(QRect(cubo_x - 18, cubo_y - 22, cubo_w + 52, 14),
+                         Qt.AlignmentFlag.AlignCenter, "MAKER PROXY")
 
         ultimo = self._serie[-1][1] if self._serie else None
         painter.setFont(tokens.fonte_numero(9, QFont.Weight.DemiBold))
@@ -1874,6 +1965,19 @@ class PainelNexoMercadoASG(_PainelASG):
             preco = formato.formatar_preco(self.grid, ultimo)
             painter.drawText(contexto.adjusted(5, 25, -5, -5), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
                              f"{preco[0]}{preco[1]}")
+        # Preenche o vazio com informacao observada: livro compacto a
+        # esquerda e quatro leituras derivadas a direita. Sao os mesmos
+        # snapshots de DOM/Matriz, so reorganizados para leitura rapida.
+        self._desenhar_ladder_nexo(
+            painter,
+            QRect(contexto.left() + 6, contexto.top() + 26,
+                  min(78, max(46, contexto.width() // 7)), max(62, contexto.height() - 64)),
+        )
+        self._desenhar_leituras_contexto(
+            painter,
+            QRect(contexto.right() - min(126, contexto.width() // 3), contexto.top() + 54,
+                  min(120, contexto.width() // 3), min(100, contexto.height() // 3)),
+        )
 
         decisao = self._snapshot.decisao
         cor_decisao = _cor_nexo_direcao(decisao.direcao)
@@ -1896,16 +2000,46 @@ class PainelNexoMercadoASG(_PainelASG):
                                alerta.width() - 14, 14),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
                          f"CONFIANCA · {self._snapshot.decisao.confianca.value}")
-        linhas = tuple(linha.forca for linha in self._snapshot.matriz.linhas)
-        base_y = alerta.bottom() - 18
-        barra_x = alerta.left() + 4
-        for indice in range(12):
-            intensidade = abs(linhas[indice % len(linhas)]) if linhas else 0.0
-            altura_barra = max(3, int(28 * min(1.0, intensidade + indice / 55)))
-            cor_barra = tema_asg.NEXO_VERDE if indice % 2 == 0 else tema_asg.NEXO_ROSA
-            painter.fillRect(QRect(barra_x + indice * max(4, alerta.width() // 15),
-                                   base_y - altura_barra, max(2, alerta.width() // 35), altura_barra),
-                             cor_barra)
+        contexto_bruto = self._snapshot.contexto_bruto
+        cotacoes = []
+        if contexto_bruto is not None:
+            if contexto_bruto.bids:
+                cotacoes.append(("BID", contexto_bruto.bids[0].preco, tema_asg.NEXO_VERDE))
+            if contexto_bruto.ultimo_preco is not None:
+                cotacoes.append(("ULT", contexto_bruto.ultimo_preco, tema_asg.NEXO_CIANO))
+            if contexto_bruto.asks:
+                cotacoes.append(("ASK", contexto_bruto.asks[0].preco, tema_asg.NEXO_ROSA))
+        if cotacoes:
+            largura_cotacao = max(42, (alerta.width() - 6) // min(3, len(cotacoes)))
+            for indice, (nome, preco, cor_cotacao) in enumerate(cotacoes[:3]):
+                caixa = QRect(alerta.left() + indice * largura_cotacao, alerta.top() + 104,
+                              largura_cotacao - 4, 27)
+                painter.fillRect(caixa, tema_asg.NEXO_PAINEL_ALTO)
+                painter.setPen(cor_cotacao)
+                painter.drawRect(caixa.adjusted(0, 0, -1, -1))
+                formatado = formato.formatar_preco(self.grid, preco)
+                painter.setFont(tokens.fonte_rotulo(6))
+                painter.drawText(caixa.adjusted(3, 1, -3, -14), Qt.AlignmentFlag.AlignCenter, nome)
+                painter.setFont(tokens.fonte_numero(7, QFont.Weight.Bold))
+                painter.drawText(caixa.adjusted(3, 12, -3, -1), Qt.AlignmentFlag.AlignCenter,
+                                 f"{formatado[0]}{formatado[1]}")
+        leituras = self._linhas_contexto_nexo()
+        if leituras:
+            y_placar = alerta.bottom() - 39
+            largura = max(32, (alerta.width() - 6) // len(leituras))
+            for indice, (nome, linha) in enumerate(leituras):
+                caixa = QRect(alerta.left() + indice * largura, y_placar,
+                              largura - 4, 34)
+                cor_linha = _cor_nexo_direcao(linha.direcao)
+                painter.fillRect(caixa, tema_asg.NEXO_PAINEL_ALTO)
+                painter.fillRect(QRect(caixa.left(), caixa.top(), 2, caixa.height()), cor_linha)
+                painter.setFont(tokens.fonte_rotulo(6))
+                painter.setPen(tema_asg.NEXO_MUTED)
+                painter.drawText(caixa.adjusted(4, 2, -3, -17), Qt.AlignmentFlag.AlignCenter, nome[:7])
+                painter.setFont(tokens.fonte_numero(8, QFont.Weight.Bold))
+                painter.setPen(cor_linha)
+                painter.drawText(caixa.adjusted(4, 15, -3, -2), Qt.AlignmentFlag.AlignCenter,
+                                 f"{linha.forca * 100:+.0f}%")
 
     def _desenhar_nucleo_nexo(self, painter: QPainter, rect: QRect) -> None:
         alto = max(90, int(rect.height() * 0.56))
@@ -1940,15 +2074,41 @@ class PainelNexoMercadoASG(_PainelASG):
         painter.setPen(tema_asg.NEXO_MUTED)
         painter.drawText(estado_rect.adjusted(3, estado_rect.height() - 25, -3, -3),
                          Qt.AlignmentFlag.AlignCenter, "SINAL CONSULTIVO")
+        # Cartoes pequenos tornam o nucleo uma leitura operacional: estado,
+        # qualidade e evidencias cabem no mesmo olhar que o simbolo central.
+        regime = next((linha for linha in self._snapshot.matriz.linhas
+                       if linha.componente == "REGIME"), None)
+        leituras = (
+            ("REGIME", "—" if regime is None else regime.valor, tema_asg.NEXO_CIANO),
+            ("CONFIANCA", decisao.confianca.value.replace("CONF ", ""), cor),
+            ("EVID.", str(self._snapshot.evidencias.retidos), tema_asg.NEXO_AMARELO),
+        )
+        y_cartoes = estado_rect.bottom() - 98
+        largura_cartao = max(32, (estado_rect.width() - 8) // len(leituras))
+        for indice, (nome, valor, cor_cartao) in enumerate(leituras):
+            caixa = QRect(estado_rect.left() + indice * largura_cartao, y_cartoes,
+                          largura_cartao - 3, 28)
+            painter.fillRect(caixa, tema_asg.NEXO_PAINEL)
+            painter.setPen(tema_asg.NEXO_GRADE)
+            painter.drawRect(caixa.adjusted(0, 0, -1, -1))
+            painter.setFont(tokens.fonte_rotulo(6))
+            painter.setPen(tema_asg.NEXO_MUTED)
+            painter.drawText(caixa.adjusted(3, 1, -3, -14), Qt.AlignmentFlag.AlignCenter, nome)
+            painter.setFont(tokens.fonte_numero(7, QFont.Weight.Bold))
+            painter.setPen(cor_cartao)
+            painter.drawText(caixa.adjusted(3, 12, -3, -1), Qt.AlignmentFlag.AlignCenter, valor[:10])
 
         # Avatar geometrico autoral: rosto abstrato, sem copiar a fotografia
         # dos frames de referencia.
         acx = avatar_rect.center().x()
         acy = avatar_rect.top() + max(38, avatar_rect.height() // 2)
         ar = max(20, min(42, avatar_rect.width() // 3))
-        painter.setPen(tema_asg.NEXO_CIANO)
-        painter.drawEllipse(QPoint(acx, acy), ar + 9, ar + 9)
-        painter.setBrush(tema_asg.NEXO_PAINEL_ALTO)
+        painter.setPen(QPen(tema_asg.NEXO_CIANO, 1))
+        painter.drawEllipse(QPoint(acx, acy), ar + 12, ar + 12)
+        gradiente_rosto = QLinearGradient(acx - ar, acy - ar, acx + ar, acy + ar)
+        gradiente_rosto.setColorAt(0.0, tema_asg.NEXO_PAINEL_ALTO)
+        gradiente_rosto.setColorAt(1.0, tema_asg.NEXO_CIANO)
+        painter.setBrush(gradiente_rosto)
         painter.drawEllipse(QPoint(acx, acy - 5), ar, ar + 8)
         painter.setBrush(tema_asg.NEXO_CIANO)
         painter.drawPolygon(QPolygon([QPoint(acx - ar + 6, acy + ar), QPoint(acx, acy + ar // 3),
@@ -1960,6 +2120,10 @@ class PainelNexoMercadoASG(_PainelASG):
         painter.setFont(tokens.fonte_numero(12, QFont.Weight.Bold))
         painter.drawText(avatar_rect.adjusted(3, avatar_rect.height() - 31, -3, -5),
                          Qt.AlignmentFlag.AlignCenter, "NEXO")
+        painter.setFont(tokens.fonte_rotulo(7))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(avatar_rect.adjusted(3, avatar_rect.height() - 17, -3, -2),
+                         Qt.AlignmentFlag.AlignCenter, "FLOW INTELLIGENCE")
 
     def _desenhar_graficos_nexo(self, painter: QPainter, rect: QRect) -> None:
         vao = 8
@@ -1978,8 +2142,11 @@ class PainelNexoMercadoASG(_PainelASG):
         self._desenhar_estatistica_nexo(painter, estat)
 
     def _desenhar_forca_nexo(self, painter: QPainter, rect: QRect) -> None:
+        painter.fillRect(rect, tema_asg.NEXO_PAINEL_ALTO)
         painter.setPen(tema_asg.NEXO_GRADE)
-        painter.drawLine(rect.left(), rect.center().y(), rect.right(), rect.center().y())
+        for fracao in (0.25, 0.50, 0.75):
+            y_grade = rect.top() + round(rect.height() * fracao)
+            painter.drawLine(rect.left(), y_grade, rect.right(), y_grade)
         amostras = tuple(self._serie)
         if len(amostras) < 2:
             painter.setPen(tema_asg.NEXO_MUTED)
@@ -1987,13 +2154,22 @@ class PainelNexoMercadoASG(_PainelASG):
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "AGUARDANDO DADOS DE MERCADO")
             return
         pontos = []
-        for indice, (_, _, valor) in enumerate(amostras):
+        for indice, (_, _, valor, _) in enumerate(amostras):
             x = rect.left() + round(indice * max(1, rect.width() - 1) / max(1, len(amostras) - 1))
-            y = rect.bottom() - 6 - round((valor + 1.0) * max(1, rect.height() - 22) / 2.0)
+            y = rect.bottom() - 8 - round((valor + 1.0) * max(1, rect.height() - 26) / 2.0)
             pontos.append(QPoint(x, y))
         ultimo = amostras[-1][2]
         cor = tema_asg.NEXO_VERDE if ultimo >= 0 else tema_asg.NEXO_ROSA
-        painter.setPen(cor)
+        area = QPolygon(pontos + [QPoint(rect.right(), rect.bottom() - 7),
+                                  QPoint(rect.left(), rect.bottom() - 7)])
+        gradiente = QLinearGradient(rect.left(), rect.top(), rect.left(), rect.bottom())
+        gradiente.setColorAt(0.0, tema_asg.NEXO_VERDE_FAIXA if ultimo >= 0 else tema_asg.NEXO_ROSA_FAIXA)
+        gradiente.setColorAt(1.0, tema_asg.NEXO_PAINEL_ALTO)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(gradiente)
+        painter.drawPolygon(area)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(cor, 2))
         painter.drawPolyline(QPolygon(pontos))
         painter.setFont(tokens.fonte_numero(9, QFont.Weight.Bold))
         painter.drawText(rect.adjusted(5, 2, -5, -2), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
@@ -2002,51 +2178,154 @@ class PainelNexoMercadoASG(_PainelASG):
         painter.setFont(tokens.fonte_rotulo(8))
         painter.drawText(rect.adjusted(5, 2, -5, -2), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
                          "JANELA CAUSAL")
+        media = sum(item[2] for item in amostras) / len(amostras)
+        painter.setFont(tokens.fonte_rotulo(7))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(rect.adjusted(5, 2, -5, -2), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
+                         f"MEDIA {media * 100:+.0f}%")
+        painter.drawText(rect.adjusted(5, 2, -5, -2), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+                         f"{len(amostras)} NEGOCIOS")
 
     def _desenhar_candles_nexo(self, painter: QPainter, rect: QRect) -> None:
-        amostras = tuple(self._serie)[-48:]
-        painter.setPen(tema_asg.NEXO_GRADE)
-        for fracao in (0.25, 0.50, 0.75):
-            y = rect.top() + round(rect.height() * fracao)
-            painter.drawLine(rect.left(), y, rect.right(), y)
+        amostras = tuple(self._serie)[-360:]
         if len(amostras) < 2:
             painter.setPen(tema_asg.NEXO_MUTED)
             painter.setFont(tokens.fonte_rotulo(8))
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "AGUARDANDO GRAFICO DO ATIVO")
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "AGUARDANDO NEGOCIOS OBSERVADOS")
             return
-        grupos = []
-        passo = max(1, len(amostras) // 24)
-        for inicio in range(0, len(amostras), passo):
-            grupo = amostras[inicio:inicio + passo]
-            if grupo:
-                grupos.append(grupo)
+
+        # Agrega somente negócios já recebidos. A quantidade de candles se
+        # adapta à largura, sem abrir uma nova fonte de OHLC e sem lookahead.
+        n_velas = min(42, max(18, rect.width() // 17))
+        passo = max(1, (len(amostras) + n_velas - 1) // n_velas)
+        velas = [amostras[inicio:inicio + passo] for inicio in range(0, len(amostras), passo)]
+        velas = [grupo for grupo in velas if grupo]
         precos = [item[1] for item in amostras]
         minimo, maximo = min(precos), max(precos)
+        margem = max(1, (maximo - minimo) // 12)
+        minimo -= margem
+        maximo += margem
         escala = max(1, maximo - minimo)
-        largura = max(3, rect.width() // max(1, len(grupos) * 2))
-        for indice, grupo in enumerate(grupos):
+
+        area_plot = QRect(rect.left() + 4, rect.top() + 20,
+                          max(80, rect.width() - 66), max(60, rect.height() - 65))
+        area_volume = QRect(area_plot.left(), area_plot.bottom() + 7,
+                            area_plot.width(), max(16, rect.bottom() - area_plot.bottom() - 24))
+
+        painter.fillRect(area_plot, tema_asg.NEXO_PAINEL_ALTO)
+        painter.setPen(tema_asg.NEXO_GRADE)
+        for indice in range(6):
+            y = area_plot.top() + round(indice * max(1, area_plot.height() - 1) / 5)
+            painter.drawLine(area_plot.left(), y, area_plot.right(), y)
+            valor = maximo - round(indice * escala / 5)
+            texto = formato.formatar_preco(self.grid, valor)
+            painter.setFont(tokens.fonte_numero(7))
+            painter.setPen(tema_asg.NEXO_MUTED)
+            painter.drawText(QRect(area_plot.right() + 5, y - 7, 54, 14),
+                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                             f"{texto[0]}{texto[1]}")
+            painter.setPen(tema_asg.NEXO_GRADE)
+        for indice in range(1, 7):
+            x = area_plot.left() + round(indice * area_plot.width() / 7)
+            painter.drawLine(x, area_plot.top(), x, area_volume.bottom())
+
+        def y_preco(valor: int) -> int:
+            return area_plot.bottom() - round((valor - minimo) * max(1, area_plot.height() - 1) / escala)
+
+        # Faixa de preço efetivamente observada nos últimos candles: oferece
+        # profundidade à leitura sem alegar uma região proprietária.
+        recentes = [item[1] for item in amostras[-max(8, len(amostras) // 5):]]
+        faixa_min, faixa_max = min(recentes), max(recentes)
+        if faixa_max > faixa_min:
+            faixa = QRect(area_plot.left(), y_preco(faixa_max), area_plot.width(),
+                          max(2, y_preco(faixa_min) - y_preco(faixa_max)))
+            painter.fillRect(faixa, tema_asg.NEXO_CIANO_FAIXA)
+            painter.setFont(tokens.fonte_rotulo(7))
+            painter.setPen(tema_asg.NEXO_CIANO)
+            painter.drawText(faixa.adjusted(5, 1, -5, -1), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                             "FAIXA OBSERVADA")
+
+        max_volume = max(1, max(sum(item[3] for item in grupo) for grupo in velas))
+        largura = max(3, area_plot.width() // max(1, len(velas) * 2))
+        fechamentos: list[QPoint] = []
+        medias: list[QPoint] = []
+        historico_fechamentos: list[int] = []
+        for indice, grupo in enumerate(velas):
             abertura, fechamento = grupo[0][1], grupo[-1][1]
-            maxima, minima = max(item[1] for item in grupo), min(item[1] for item in grupo)
-            x = rect.left() + 9 + round(indice * max(1, rect.width() - 25) / max(1, len(grupos) - 1))
-            y_max = rect.bottom() - 9 - round((maxima - minimo) * max(1, rect.height() - 27) / escala)
-            y_min = rect.bottom() - 9 - round((minima - minimo) * max(1, rect.height() - 27) / escala)
-            y_abertura = rect.bottom() - 9 - round((abertura - minimo) * max(1, rect.height() - 27) / escala)
-            y_fechamento = rect.bottom() - 9 - round((fechamento - minimo) * max(1, rect.height() - 27) / escala)
+            maxima = max(item[1] for item in grupo)
+            minima = min(item[1] for item in grupo)
+            x = area_plot.left() + 4 + round(indice * max(1, area_plot.width() - 9) / max(1, len(velas) - 1))
+            y_max, y_min = y_preco(maxima), y_preco(minima)
+            y_abertura, y_fechamento = y_preco(abertura), y_preco(fechamento)
             cor = tema_asg.NEXO_VERDE if fechamento >= abertura else tema_asg.NEXO_ROSA
-            painter.setPen(cor)
+            painter.setPen(QPen(cor, 1))
             painter.drawLine(x, y_max, x, y_min)
-            topo = min(y_abertura, y_fechamento)
-            painter.fillRect(QRect(x - largura // 2, topo, largura,
-                                   max(2, abs(y_fechamento - y_abertura))), cor)
-        ultimo = formato.formatar_preco(self.grid, amostras[-1][1])
-        painter.setFont(tokens.fonte_numero(9, QFont.Weight.Bold))
-        painter.setPen(tema_asg.NEXO_TEXTO)
-        painter.drawText(rect.adjusted(5, 3, -5, -3), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
-                         f"{ultimo[0]}{ultimo[1]}")
+            corpo = QRect(x - largura // 2, min(y_abertura, y_fechamento), largura,
+                          max(2, abs(y_fechamento - y_abertura)))
+            painter.fillRect(corpo, cor)
+            volume = sum(item[3] for item in grupo)
+            altura_volume = max(2, round(volume * max(1, area_volume.height() - 2) / max_volume))
+            painter.fillRect(QRect(x - largura // 2, area_volume.bottom() - altura_volume,
+                                   largura, altura_volume), cor)
+            fechamentos.append(QPoint(x, y_fechamento))
+            historico_fechamentos.append(fechamento)
+            janela_media = historico_fechamentos[-min(6, len(historico_fechamentos)):]
+            medias.append(QPoint(x, y_preco(round(sum(janela_media) / len(janela_media)))))
+
+        # Duas camadas derivadas das mesmas velas observadas: o trajeto dos
+        # fechamentos e a média curta. Elas dão continuidade entre candles
+        # sem reivindicar VWAP, tendência ou fórmula de terceiro.
+        if len(fechamentos) >= 2:
+            painter.setPen(QPen(tema_asg.NEXO_CIANO, 1))
+            painter.drawPolyline(QPolygon(fechamentos))
+            painter.setPen(QPen(tema_asg.NEXO_AMARELO, 1, Qt.PenStyle.DotLine))
+            painter.drawPolyline(QPolygon(medias))
+            painter.setFont(tokens.fonte_rotulo(7))
+            painter.setPen(tema_asg.NEXO_AMARELO)
+            painter.drawText(QRect(area_plot.left() + 5, area_plot.top() + 3, 110, 12),
+                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                             "MEDIA OBS. 6")
+
+        ultimo_valor = amostras[-1][1]
+        y_ultimo = y_preco(ultimo_valor)
+        painter.setPen(QPen(tema_asg.NEXO_CIANO, 1, Qt.PenStyle.DashLine))
+        painter.drawLine(area_plot.left(), y_ultimo, area_plot.right(), y_ultimo)
+        ultimo = formato.formatar_preco(self.grid, ultimo_valor)
+        painter.fillRect(QRect(area_plot.right() - 63, y_ultimo - 9, 61, 18), tema_asg.NEXO_CIANO)
+        painter.setFont(tokens.fonte_numero(8, QFont.Weight.Bold))
+        painter.setPen(tema_asg.NEXO_FUNDO)
+        painter.drawText(QRect(area_plot.right() - 61, y_ultimo - 8, 57, 16),
+                         Qt.AlignmentFlag.AlignCenter, f"{ultimo[0]}{ultimo[1]}")
+
+        # Niveis de risco aparecem somente quando a decisao consultiva os
+        # publicou; sem dados, o painel se abstém em vez de desenhar alvo falso.
+        niveis = (("STOP", self._snapshot.decisao.stop, tema_asg.NEXO_ROSA),
+                  ("A1", self._snapshot.decisao.alvo_1, tema_asg.NEXO_VERDE),
+                  ("A2", self._snapshot.decisao.alvo_2, tema_asg.NEXO_VERDE),
+                  ("A3", self._snapshot.decisao.alvo_3, tema_asg.NEXO_VERDE))
+        for indice, (nome, valor, cor) in enumerate(niveis):
+            if valor == "—":
+                continue
+            y = area_plot.top() + 14 + indice * 14
+            painter.setPen(QPen(cor, 1, Qt.PenStyle.DotLine))
+            painter.drawLine(area_plot.left(), y, area_plot.right() - 70, y)
+            painter.setFont(tokens.fonte_rotulo(7))
+            painter.setPen(cor)
+            painter.drawText(QRect(area_plot.right() - 67, y - 7, 65, 14),
+                             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                             f"{nome} {valor}")
+
+        inicio = formato.formatar_hora_ns(amostras[0][0])
+        fim = formato.formatar_hora_ns(amostras[-1][0])
         painter.setFont(tokens.fonte_rotulo(7))
         painter.setPen(tema_asg.NEXO_MUTED)
-        painter.drawText(rect.adjusted(5, 3, -5, -3), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
-                         "OHLC AGREGADO DE OBSERVACOES · SEM LOOKAHEAD")
+        painter.drawText(QRect(area_plot.left(), rect.bottom() - 16, area_plot.width(), 14),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, inicio)
+        painter.drawText(QRect(area_plot.left(), rect.bottom() - 16, area_plot.width(), 14),
+                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, fim)
+        painter.drawText(QRect(area_plot.left(), rect.bottom() - 16, area_plot.width(), 14),
+                         Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter,
+                         "VOLUME OBSERVADO · OHLC CAUSAL")
 
     def _desenhar_estatistica_nexo(self, painter: QPainter, rect: QRect) -> None:
         maker = self._linha_maker()
@@ -2188,7 +2467,7 @@ class PainelNexoMercadoASG(_PainelASG):
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "AGUARDANDO FORCA DO FLUXO")
             return
         pontos = []
-        for indice, (_, _, forca) in enumerate(amostras):
+        for indice, (_, _, forca, _) in enumerate(amostras):
             x = rect.left() + round(indice * max(1, rect.width() - 1) / max(1, len(amostras) - 1))
             y = meio - round(forca * max(1, rect.height() // 2 - 7))
             pontos.append(QPoint(x, y))
@@ -2221,7 +2500,7 @@ class PainelNexoMercadoASG(_PainelASG):
             painter.setPen(tema_asg.BORDA)
             painter.drawLine(rect.left(), y, rect.right(), y)
         pontos = []
-        for indice, (_, preco, _) in enumerate(amostras):
+        for indice, (_, preco, _, _) in enumerate(amostras):
             x = rect.left() + round(indice * max(1, rect.width() - 1) / max(1, len(amostras) - 1))
             y = rect.bottom() - round((preco - minimo) * max(1, rect.height() - 18) / amplitude) - 8
             pontos.append(QPoint(x, y))

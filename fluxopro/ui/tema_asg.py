@@ -66,6 +66,7 @@ def _com_alpha(cor: QColor, alpha: int) -> QColor:
 
 NEXO_VERDE_FAIXA = _com_alpha(NEXO_VERDE, 34)
 NEXO_ROSA_FAIXA = _com_alpha(NEXO_ROSA, 34)
+NEXO_CIANO_FAIXA = _com_alpha(NEXO_CIANO, 28)
 
 
 # Pre-alocados: construir QColor dentro de uma linha quente de QPainter custa
@@ -105,6 +106,7 @@ __all__ = [
     "MATRIZ",
     "NEXO_AMARELO",
     "NEXO_CIANO",
+    "NEXO_CIANO_FAIXA",
     "NEXO_FUNDO",
     "NEXO_GRADE",
     "NEXO_MUTED",

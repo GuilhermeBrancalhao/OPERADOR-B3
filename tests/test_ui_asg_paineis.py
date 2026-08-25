@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 from fluxopro.ui import tokens  # noqa: E402
 from fluxopro.ui.paineis.asg import (  # noqa: E402
     ConfiancaASG,
+    ContextoBrutoASGSnapshot,
     DadosASGSnapshot,
     DecisaoASGSnapshot,
     DirecaoASG,
@@ -24,10 +25,12 @@ from fluxopro.ui.paineis.asg import (  # noqa: E402
     GateDecisaoASG,
     LinhaMatrizASG,
     MatrizASGSnapshot,
+    NegocioBrutoASG,
     PainelDadosASG,
     PainelDecisaoASG,
     PainelEvidenciasASG,
     PainelMatrizASG,
+    PainelNexoMercadoASG,
     PainelProcessamentoASG,
     ProcedenciaASG,
     ProcessamentoASGSnapshot,
@@ -176,6 +179,30 @@ def test_snapshot_unico_alimenta_os_cinco_filhos(qapp):
     for painel in workspace.paineis:
         assert any("REPLAY" in texto for texto in painel.textos_visiveis())
     assert workspace._snapshot is snapshot
+
+
+def test_nexo_gera_historico_causal_a_partir_de_cada_negocio_observado(qapp):
+    dados, proc, matriz, decisao, evid = _snapshots()
+    contexto = ContextoBrutoASGSnapshot(
+        T0,
+        EstadoASG.AO_VIVO,
+        negocios=(
+            NegocioBrutoASG(T0 + 1, 20_000, 3, 1),
+            NegocioBrutoASG(T0 + 2, 20_004, 7, -1),
+            NegocioBrutoASG(T0 + 3, 20_002, 5, 1),
+        ),
+        ultimo_preco=20_002,
+    )
+    painel = PainelNexoMercadoASG()
+    painel.aplicar(WorkspaceASGSnapshot(T0, dados, proc, matriz, decisao, evid,
+                                         contexto_bruto=contexto))
+    assert [(ponto[0], ponto[1], ponto[3]) for ponto in painel._serie] == [
+        (T0 + 1, 20_000, 3),
+        (T0 + 2, 20_004, 7),
+        (T0 + 3, 20_002, 5),
+    ]
+    imagem = _renderizar(painel, 1_280, 720)
+    assert not imagem.isNull()
 
 
 def test_modo_sem_cor_preserva_lado_em_texto_e_simbolo(qapp):
