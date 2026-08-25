@@ -138,6 +138,28 @@ def _cor_direcao(direcao: DirecaoASG, paleta: tokens.Paleta) -> QColor:
     return paleta.neutro
 
 
+def _cor_nexo_direcao(direcao: DirecaoASG) -> QColor:
+    """Eixo neon da superficie NEXO, separado da paleta tecnica legada."""
+
+    if direcao is DirecaoASG.COMPRA:
+        return tema_asg.NEXO_VERDE
+    if direcao is DirecaoASG.VENDA:
+        return tema_asg.NEXO_ROSA
+    if direcao is DirecaoASG.AGUARDAR:
+        return tema_asg.NEXO_AMARELO
+    return tema_asg.NEXO_CIANO
+
+
+def _cor_nexo_estado(estado: EstadoASG) -> QColor:
+    if estado in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}:
+        return tema_asg.NEXO_VERDE
+    if estado in {EstadoASG.ATRASADO, EstadoASG.AGUARDANDO, EstadoASG.SEM_BOOK}:
+        return tema_asg.NEXO_AMARELO
+    if estado is EstadoASG.ERRO:
+        return tema_asg.NEXO_ROSA
+    return tema_asg.NEXO_CIANO
+
+
 @dataclass(frozen=True, slots=True)
 class MetricaASG:
     nome: str
@@ -1721,36 +1743,334 @@ class PainelNexoMercadoASG(_PainelASG):
         return tuple(textos)
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
-        painter.fillRect(regiao, tema_asg.FUNDO)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.fillRect(regiao, tema_asg.NEXO_FUNDO)
         s = self._snapshot
-        self._cabecalho(painter, s.estado_operacional, "NEXO · LEITURA UNIFICADA")
-        corpo = QRect(
-            MARGEM,
-            ALTURA_CABECALHO + VAO,
-            max(0, self.width() - 2 * MARGEM),
-            max(0, self.faixa_rodape().top() - ALTURA_CABECALHO - 2 * VAO),
-        )
-        if corpo.width() < 160 or corpo.height() < 90:
-            painter.setFont(tokens.fonte_ui(10, QFont.Weight.DemiBold))
-            painter.setPen(tokens.TEXT_SECONDARY)
-            painter.drawText(corpo, Qt.AlignmentFlag.AlignCenter, "NEXO · AGUARDANDO AREA UTIL")
-            self._desenhar_rodape(painter, "CONSULTIVO · SEM ENVIO DE ORDENS")
+        largura, altura = self.width(), self.height()
+        if largura < 420 or altura < 180:
+            painter.setFont(tokens.fonte_ui(11, QFont.Weight.DemiBold))
+            painter.setPen(tema_asg.NEXO_TEXTO)
+            painter.drawText(regiao, Qt.AlignmentFlag.AlignCenter,
+                             "NEXO · REDIMENSIONE A JANELA")
             return
 
-        esquerda = max(130, int(corpo.width() * 0.28))
-        nucleo = max(120, int(corpo.width() * 0.20))
-        esquerda_rect = QRect(corpo.x(), corpo.y(), esquerda, corpo.height())
-        nucleo_rect = QRect(esquerda_rect.right() + VAO, corpo.y(), nucleo, corpo.height())
-        grafico_rect = QRect(
-            nucleo_rect.right() + VAO,
-            corpo.y(),
-            max(40, corpo.right() - nucleo_rect.right() - VAO + 1),
-            corpo.height(),
+        # Shell compacto, deliberadamente com a mesma leitura espacial dos
+        # frames de referencia: bloco de contexto, nucleo de estado e bloco
+        # de grafico. Os paineis tecnicos continuam existindo nos workspaces
+        # legados e os seus dados chegam a esta superficie pelo snapshot.
+        cabecalho = QRect(0, 0, largura, 27)
+        painter.fillRect(cabecalho, tema_asg.NEXO_PAINEL)
+        painter.setPen(tema_asg.NEXO_GRADE)
+        painter.drawLine(0, cabecalho.bottom(), largura, cabecalho.bottom())
+        painter.setFont(tokens.fonte_ui(10, QFont.Weight.Bold))
+        painter.setPen(tema_asg.NEXO_TEXTO)
+        painter.drawText(cabecalho.adjusted(10, 0, -10, 0),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         "NEXO  ·  OPERADOR B3  ·  LEITURA DE FLUXO")
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.DemiBold))
+        painter.setPen(_cor_nexo_estado(s.estado_operacional))
+        painter.drawText(cabecalho.adjusted(10, 0, -10, 0),
+                         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                         f"{rotulo_estado(s.estado_operacional)}  ·  CONSULTIVO")
+
+        corpo = QRect(8, 34, max(0, largura - 16), max(0, altura - 61))
+        vao = 8
+        esquerda_w = max(230, int(corpo.width() * 0.42))
+        nucleo_w = max(145, int(corpo.width() * 0.20))
+        direita_w = corpo.width() - esquerda_w - nucleo_w - 2 * vao
+        if direita_w < 250:
+            esquerda_w = max(190, int(corpo.width() * 0.38))
+            nucleo_w = max(130, int(corpo.width() * 0.19))
+            direita_w = corpo.width() - esquerda_w - nucleo_w - 2 * vao
+        esquerda = QRect(corpo.x(), corpo.y(), esquerda_w, corpo.height())
+        nucleo = QRect(esquerda.right() + vao, corpo.y(), nucleo_w, corpo.height())
+        direita = QRect(nucleo.right() + vao, corpo.y(), max(120, direita_w), corpo.height())
+        self._desenhar_contexto_nexo(painter, esquerda)
+        self._desenhar_nucleo_nexo(painter, nucleo)
+        self._desenhar_graficos_nexo(painter, direita)
+
+        rodape = QRect(8, altura - 23, largura - 16, 16)
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.setFont(tokens.fonte_numero(8))
+        painter.drawText(rodape, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         "DADOS OBSERVADOS · DERIVACOES ROTULADAS · SEM ENVIO DE ORDENS")
+        painter.setPen(tema_asg.NEXO_CIANO)
+        painter.drawText(rodape, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                         "NEXO v1 · PROXY INDEPENDENTE")
+
+    def _painel_nexo(self, painter: QPainter, rect: QRect, titulo: str) -> QRect:
+        painter.fillRect(rect, tema_asg.NEXO_PAINEL)
+        painter.setPen(tema_asg.NEXO_GRADE)
+        painter.drawRect(rect.adjusted(0, 0, -1, -1))
+        painter.setFont(tokens.fonte_rotulo(8))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(rect.adjusted(9, 5, -9, -rect.height() + 18),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, titulo)
+        return rect.adjusted(9, 23, -9, -8)
+
+    def _desenhar_contexto_nexo(self, painter: QPainter, rect: QRect) -> None:
+        vao = 8
+        alto = max(80, int(rect.height() * 0.69))
+        contexto = self._painel_nexo(painter, QRect(rect.x(), rect.y(), rect.width(), alto),
+                                     "CONTEXTO  ·  PRESSAO / MAKERPROXY")
+        alerta = self._painel_nexo(
+            painter,
+            QRect(rect.x(), rect.y() + alto + vao, rect.width(),
+                  max(40, rect.height() - alto - vao)),
+            "ALERTA  ·  PLACAR ESTATISTICO",
         )
-        self._desenhar_pressao(painter, esquerda_rect)
-        self._desenhar_sinal(painter, nucleo_rect)
-        self._desenhar_grafico(painter, grafico_rect)
-        self._desenhar_rodape(painter, "PRECO OBSERVADO · FORCA DERIVADA · NEXO PROPRIO")
+        maker = self._linha_maker()
+        score = maker.forca if maker is not None else 0.0
+        direcao = maker.direcao if maker is not None else DirecaoASG.NEUTRA
+        cor = _cor_nexo_direcao(direcao)
+        centro = QPoint(contexto.left() + int(contexto.width() * 0.43),
+                        contexto.top() + int(contexto.height() * 0.42))
+        raio = max(32, min(88, min(contexto.width(), contexto.height()) // 4))
+        painter.setPen(tema_asg.NEXO_GRADE)
+        painter.drawEllipse(centro, raio + 15, raio + 15)
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawArc(QRect(centro.x() - raio - 7, centro.y() - raio - 7,
+                              2 * (raio + 7), 2 * (raio + 7)), 25 * 16, 238 * 16)
+        painter.setPen(cor)
+        painter.drawEllipse(centro, raio, raio)
+        painter.setFont(tokens.fonte_numero(max(15, min(28, raio // 2)), QFont.Weight.Bold))
+        painter.drawText(QRect(centro.x() - raio, centro.y() - 17, 2 * raio, 34),
+                         Qt.AlignmentFlag.AlignCenter, f"{score * 100:+.0f}%")
+        painter.setFont(tokens.fonte_rotulo(8))
+        painter.setPen(cor)
+        painter.drawText(QRect(centro.x() - raio - 20, centro.y() + raio + 7,
+                               2 * (raio + 20), 16), Qt.AlignmentFlag.AlignCenter,
+                         "COMPRA" if direcao is DirecaoASG.COMPRA else
+                         "VENDA" if direcao is DirecaoASG.VENDA else "EQUILIBRIO")
+
+        # Cubo de pressao e uma leitura de forma, nao um asset: cor e texto
+        # carregam a direcao e continuam legiveis no modo sem cor.
+        cubo_x = contexto.right() - max(74, contexto.width() // 4)
+        cubo_y = contexto.top() + int(contexto.height() * 0.54)
+        cubo_w, cubo_h = max(38, contexto.width() // 9), max(52, contexto.height() // 5)
+        frente = QPolygon([QPoint(cubo_x, cubo_y + 12), QPoint(cubo_x + cubo_w, cubo_y),
+                           QPoint(cubo_x + cubo_w, cubo_y + cubo_h), QPoint(cubo_x, cubo_y + cubo_h + 12)])
+        topo = QPolygon([QPoint(cubo_x, cubo_y + 12), QPoint(cubo_x + cubo_w // 2, cubo_y - 5),
+                         QPoint(cubo_x + cubo_w, cubo_y), QPoint(cubo_x + cubo_w // 2, cubo_y + 17)])
+        lado = QPolygon([QPoint(cubo_x + cubo_w, cubo_y), QPoint(cubo_x + cubo_w + 17, cubo_y + 11),
+                         QPoint(cubo_x + cubo_w + 17, cubo_y + cubo_h + 8),
+                         QPoint(cubo_x + cubo_w, cubo_y + cubo_h)])
+        painter.setPen(cor)
+        painter.setBrush(tema_asg.NEXO_VERDE_FAIXA if score >= 0 else tema_asg.NEXO_ROSA_FAIXA)
+        painter.drawPolygon(frente)
+        painter.drawPolygon(topo)
+        painter.drawPolygon(lado)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.Bold))
+        painter.drawText(QRect(cubo_x - 12, cubo_y + cubo_h + 19, cubo_w + 40, 16),
+                         Qt.AlignmentFlag.AlignCenter, f"{score * 100:+.1f}%")
+
+        ultimo = self._serie[-1][1] if self._serie else None
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.DemiBold))
+        painter.setPen(tema_asg.NEXO_TEXTO)
+        painter.drawText(contexto.adjusted(5, 5, -5, -5), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
+                         "CONTEXTO")
+        if ultimo is not None:
+            preco = formato.formatar_preco(self.grid, ultimo)
+            painter.drawText(contexto.adjusted(5, 25, -5, -5), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
+                             f"{preco[0]}{preco[1]}")
+
+        decisao = self._snapshot.decisao
+        cor_decisao = _cor_nexo_direcao(decisao.direcao)
+        painter.setFont(tokens.fonte_numero(max(12, min(22, alerta.height() // 5)), QFont.Weight.Bold))
+        painter.setPen(cor_decisao)
+        titulo = "AGUARDAR" if decisao.direcao is DirecaoASG.AGUARDAR else decisao.direcao.value
+        painter.drawText(QRect(alerta.left() + 7, alerta.top() + 23,
+                               alerta.width() - 14, 24),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, titulo)
+        painter.setFont(tokens.fonte_ui(8))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        motivo = decisao.motivo[:72].upper()
+        painter.drawText(QRect(alerta.left() + 7, alerta.top() + 52,
+                               alerta.width() - 14, 28),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                         motivo)
+        painter.setFont(tokens.fonte_rotulo(7))
+        painter.setPen(tema_asg.NEXO_CIANO)
+        painter.drawText(QRect(alerta.left() + 7, alerta.top() + 82,
+                               alerta.width() - 14, 14),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                         f"CONFIANCA · {self._snapshot.decisao.confianca.value}")
+        linhas = tuple(linha.forca for linha in self._snapshot.matriz.linhas)
+        base_y = alerta.bottom() - 18
+        barra_x = alerta.left() + 4
+        for indice in range(12):
+            intensidade = abs(linhas[indice % len(linhas)]) if linhas else 0.0
+            altura_barra = max(3, int(28 * min(1.0, intensidade + indice / 55)))
+            cor_barra = tema_asg.NEXO_VERDE if indice % 2 == 0 else tema_asg.NEXO_ROSA
+            painter.fillRect(QRect(barra_x + indice * max(4, alerta.width() // 15),
+                                   base_y - altura_barra, max(2, alerta.width() // 35), altura_barra),
+                             cor_barra)
+
+    def _desenhar_nucleo_nexo(self, painter: QPainter, rect: QRect) -> None:
+        alto = max(90, int(rect.height() * 0.56))
+        estado_rect = self._painel_nexo(painter, QRect(rect.x(), rect.y(), rect.width(), alto),
+                                        "ESTADO  ·  REGIME")
+        avatar_rect = self._painel_nexo(painter, QRect(rect.x(), rect.y() + 8 + alto,
+                                                       rect.width(), max(40, rect.height() - alto - 8)),
+                                        "NEXO  ·  AVATAR PROPRIO")
+        decisao = self._snapshot.decisao
+        cor = _cor_nexo_direcao(decisao.direcao)
+        cx, cy = estado_rect.center().x(), estado_rect.top() + max(37, estado_rect.height() // 2)
+        raio = max(25, min(54, min(estado_rect.width(), estado_rect.height()) // 3))
+        hexagono = QPolygon([
+            QPoint(cx - raio // 2, cy - raio), QPoint(cx + raio // 2, cy - raio),
+            QPoint(cx + raio, cy), QPoint(cx + raio // 2, cy + raio),
+            QPoint(cx - raio // 2, cy + raio), QPoint(cx - raio, cy),
+        ])
+        painter.setPen(tema_asg.NEXO_GRADE)
+        painter.setBrush(tema_asg.NEXO_PAINEL_ALTO)
+        painter.drawPolygon(hexagono)
+        painter.setBrush(cor)
+        simbolo = QPolygon([QPoint(cx, cy - 15), QPoint(cx - 13, cy + 10), QPoint(cx + 13, cy + 10)])
+        if decisao.direcao is DirecaoASG.VENDA:
+            simbolo = QPolygon([QPoint(cx - 13, cy - 10), QPoint(cx + 13, cy - 10), QPoint(cx, cy + 15)])
+        painter.drawPolygon(simbolo)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setFont(tokens.fonte_ui(8, QFont.Weight.DemiBold))
+        painter.setPen(cor)
+        painter.drawText(estado_rect.adjusted(3, estado_rect.height() - 42, -3, -5),
+                         Qt.AlignmentFlag.AlignCenter, decisao.titulo.upper())
+        painter.setFont(tokens.fonte_rotulo(8))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(estado_rect.adjusted(3, estado_rect.height() - 25, -3, -3),
+                         Qt.AlignmentFlag.AlignCenter, "SINAL CONSULTIVO")
+
+        # Avatar geometrico autoral: rosto abstrato, sem copiar a fotografia
+        # dos frames de referencia.
+        acx = avatar_rect.center().x()
+        acy = avatar_rect.top() + max(38, avatar_rect.height() // 2)
+        ar = max(20, min(42, avatar_rect.width() // 3))
+        painter.setPen(tema_asg.NEXO_CIANO)
+        painter.drawEllipse(QPoint(acx, acy), ar + 9, ar + 9)
+        painter.setBrush(tema_asg.NEXO_PAINEL_ALTO)
+        painter.drawEllipse(QPoint(acx, acy - 5), ar, ar + 8)
+        painter.setBrush(tema_asg.NEXO_CIANO)
+        painter.drawPolygon(QPolygon([QPoint(acx - ar + 6, acy + ar), QPoint(acx, acy + ar // 3),
+                                      QPoint(acx + ar - 6, acy + ar)]))
+        painter.setBrush(tema_asg.NEXO_FUNDO)
+        painter.drawEllipse(QPoint(acx - ar // 3, acy - 6), 3, 3)
+        painter.drawEllipse(QPoint(acx + ar // 3, acy - 6), 3, 3)
+        painter.setPen(tema_asg.NEXO_TEXTO)
+        painter.setFont(tokens.fonte_numero(12, QFont.Weight.Bold))
+        painter.drawText(avatar_rect.adjusted(3, avatar_rect.height() - 31, -3, -5),
+                         Qt.AlignmentFlag.AlignCenter, "NEXO")
+
+    def _desenhar_graficos_nexo(self, painter: QPainter, rect: QRect) -> None:
+        vao = 8
+        forca_h = max(75, int(rect.height() * 0.23))
+        rodape_h = max(62, int(rect.height() * 0.16))
+        forca = self._painel_nexo(painter, QRect(rect.x(), rect.y(), rect.width(), forca_h),
+                                  "FORCA DO MERCADO  ·  DELTA / VOLUME")
+        grafico = self._painel_nexo(painter, QRect(rect.x(), rect.y() + forca_h + vao,
+                                                   rect.width(), rect.height() - forca_h - rodape_h - 2 * vao),
+                                    "GRAFICO DO ATIVO  ·  CANDLE OBSERVADO")
+        estat = self._painel_nexo(painter, QRect(rect.x(), rect.bottom() - rodape_h,
+                                                 rect.width(), rodape_h),
+                                  "PARTICIPACAO  ·  LEITURA DE PRESSAO")
+        self._desenhar_forca_nexo(painter, forca)
+        self._desenhar_candles_nexo(painter, grafico)
+        self._desenhar_estatistica_nexo(painter, estat)
+
+    def _desenhar_forca_nexo(self, painter: QPainter, rect: QRect) -> None:
+        painter.setPen(tema_asg.NEXO_GRADE)
+        painter.drawLine(rect.left(), rect.center().y(), rect.right(), rect.center().y())
+        amostras = tuple(self._serie)
+        if len(amostras) < 2:
+            painter.setPen(tema_asg.NEXO_MUTED)
+            painter.setFont(tokens.fonte_rotulo(8))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "AGUARDANDO DADOS DE MERCADO")
+            return
+        pontos = []
+        for indice, (_, _, valor) in enumerate(amostras):
+            x = rect.left() + round(indice * max(1, rect.width() - 1) / max(1, len(amostras) - 1))
+            y = rect.bottom() - 6 - round((valor + 1.0) * max(1, rect.height() - 22) / 2.0)
+            pontos.append(QPoint(x, y))
+        ultimo = amostras[-1][2]
+        cor = tema_asg.NEXO_VERDE if ultimo >= 0 else tema_asg.NEXO_ROSA
+        painter.setPen(cor)
+        painter.drawPolyline(QPolygon(pontos))
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.Bold))
+        painter.drawText(rect.adjusted(5, 2, -5, -2), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                         f"FORCA {ultimo * 100:+.0f}%")
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.setFont(tokens.fonte_rotulo(8))
+        painter.drawText(rect.adjusted(5, 2, -5, -2), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
+                         "JANELA CAUSAL")
+
+    def _desenhar_candles_nexo(self, painter: QPainter, rect: QRect) -> None:
+        amostras = tuple(self._serie)[-48:]
+        painter.setPen(tema_asg.NEXO_GRADE)
+        for fracao in (0.25, 0.50, 0.75):
+            y = rect.top() + round(rect.height() * fracao)
+            painter.drawLine(rect.left(), y, rect.right(), y)
+        if len(amostras) < 2:
+            painter.setPen(tema_asg.NEXO_MUTED)
+            painter.setFont(tokens.fonte_rotulo(8))
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "AGUARDANDO GRAFICO DO ATIVO")
+            return
+        grupos = []
+        passo = max(1, len(amostras) // 24)
+        for inicio in range(0, len(amostras), passo):
+            grupo = amostras[inicio:inicio + passo]
+            if grupo:
+                grupos.append(grupo)
+        precos = [item[1] for item in amostras]
+        minimo, maximo = min(precos), max(precos)
+        escala = max(1, maximo - minimo)
+        largura = max(3, rect.width() // max(1, len(grupos) * 2))
+        for indice, grupo in enumerate(grupos):
+            abertura, fechamento = grupo[0][1], grupo[-1][1]
+            maxima, minima = max(item[1] for item in grupo), min(item[1] for item in grupo)
+            x = rect.left() + 9 + round(indice * max(1, rect.width() - 25) / max(1, len(grupos) - 1))
+            y_max = rect.bottom() - 9 - round((maxima - minimo) * max(1, rect.height() - 27) / escala)
+            y_min = rect.bottom() - 9 - round((minima - minimo) * max(1, rect.height() - 27) / escala)
+            y_abertura = rect.bottom() - 9 - round((abertura - minimo) * max(1, rect.height() - 27) / escala)
+            y_fechamento = rect.bottom() - 9 - round((fechamento - minimo) * max(1, rect.height() - 27) / escala)
+            cor = tema_asg.NEXO_VERDE if fechamento >= abertura else tema_asg.NEXO_ROSA
+            painter.setPen(cor)
+            painter.drawLine(x, y_max, x, y_min)
+            topo = min(y_abertura, y_fechamento)
+            painter.fillRect(QRect(x - largura // 2, topo, largura,
+                                   max(2, abs(y_fechamento - y_abertura))), cor)
+        ultimo = formato.formatar_preco(self.grid, amostras[-1][1])
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.Bold))
+        painter.setPen(tema_asg.NEXO_TEXTO)
+        painter.drawText(rect.adjusted(5, 3, -5, -3), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                         f"{ultimo[0]}{ultimo[1]}")
+        painter.setFont(tokens.fonte_rotulo(7))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(rect.adjusted(5, 3, -5, -3), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
+                         "OHLC AGREGADO DE OBSERVACOES · SEM LOOKAHEAD")
+
+    def _desenhar_estatistica_nexo(self, painter: QPainter, rect: QRect) -> None:
+        maker = self._linha_maker()
+        score = maker.forca if maker is not None else 0.0
+        compra = int(max(0.0, min(100.0, 50.0 + score * 50.0)))
+        venda = 100 - compra
+        meio = rect.center().x()
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.Bold))
+        painter.setPen(tema_asg.NEXO_VERDE)
+        painter.drawText(QRect(rect.left(), rect.top(), rect.width() // 2, 17),
+                         Qt.AlignmentFlag.AlignLeft, f"COMPRA {compra:02d}%")
+        painter.setPen(tema_asg.NEXO_ROSA)
+        painter.drawText(QRect(meio, rect.top(), rect.width() // 2, 17),
+                         Qt.AlignmentFlag.AlignRight, f"VENDA {venda:02d}%")
+        barra = QRect(rect.left(), rect.top() + 21, rect.width(), 9)
+        painter.fillRect(barra, tema_asg.NEXO_PAINEL_ALTO)
+        painter.fillRect(QRect(barra.left(), barra.top(), int(barra.width() * compra / 100), barra.height()),
+                         tema_asg.NEXO_VERDE)
+        painter.fillRect(QRect(barra.left() + int(barra.width() * compra / 100), barra.top(),
+                               int(barra.width() * venda / 100), barra.height()), tema_asg.NEXO_ROSA)
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.setFont(tokens.fonte_rotulo(7))
+        painter.drawText(rect.adjusted(0, 34, 0, -2), Qt.AlignmentFlag.AlignCenter,
+                         "PROXY DE PRESSAO · NAO E EXECUCAO")
 
     def _caixa_nexo(self, painter: QPainter, rect: QRect, titulo: str) -> QRect:
         painter.fillRect(rect, tema_asg.PAINEL)
@@ -2086,56 +2406,40 @@ class WorkspaceASG(QWidget):
         self._modo = modo
         for painel in self.paineis + self.paineis_contexto:
             self._layout.removeWidget(painel)
-        self.contexto_bruto.hide()
+            # O workspace ASG agora e uma superficie autoral unica. Os
+            # paineis tecnicos permanecem filhos vivos, com snapshot e
+            # backing atualizados, mas nao contaminam a composicao visual.
+            # Eles continuam disponiveis nos workspaces Ctrl+1..4.
+            # Tamanho funcional fora do viewport: textos_visiveis(),
+            # virtualizacao e backings continuam exercitando os contratos
+            # antigos, enquanto a coordenada negativa impede qualquer
+            # pixel do painel tecnico de aparecer sobre a composicao NEXO.
+            painel.setGeometry(QRect(-10000, -10000,
+                                     max(800, self.width()),
+                                     max(240, self.height())))
+            painel.show()
         for indice in range(8):
             self._layout.setRowStretch(indice, 0)
             self._layout.setColumnStretch(indice, 0)
-        if modo == "largo":
-            # A leitura primária ocupa a faixa superior; a matriz conserva
-            # uma faixa exclusiva logo abaixo para nunca esconder componentes.
-            self._layout.addWidget(self.nexo, 0, 0, 1, 3)
-            self._layout.addWidget(self.decisao, 0, 3, 4, 1)
-            self._layout.addWidget(self.matriz, 1, 0, 1, 3)
-            self._layout.addWidget(self.dom, 2, 0)
-            self._layout.addWidget(self.tape, 2, 1)
-            self._layout.addWidget(self.bookmap, 2, 2)
-            self._layout.addWidget(self.dados, 3, 0)
-            self._layout.addWidget(self.processamento, 3, 1)
-            self._layout.addWidget(self.evidencias, 3, 2)
-            for coluna, peso in enumerate((5, 5, 9, 6)):
-                self._layout.setColumnStretch(coluna, peso)
-            self._ajustar_altura_larga()
-        elif modo == "medio":
-            self._layout.addWidget(self.nexo, 0, 0, 1, 2)
-            self._layout.addWidget(self.dom, 1, 0)
-            self._layout.addWidget(self.tape, 1, 1)
-            self._layout.addWidget(self.bookmap, 2, 0, 1, 2)
-            self._layout.addWidget(self.matriz, 3, 0)
-            self._layout.addWidget(self.decisao, 3, 1)
-            self._layout.addWidget(self.dados, 4, 0)
-            self._layout.addWidget(self.processamento, 4, 1)
-            self._layout.addWidget(self.evidencias, 5, 0, 1, 2)
-            self._layout.setColumnStretch(0, 1)
-            self._layout.setColumnStretch(1, 1)
-            self._layout.setColumnStretch(2, 0)
-            for linha, peso in enumerate((4, 3, 3, 3, 2, 1)):
-                self._layout.setRowStretch(linha, peso)
-        else:
-            for linha, painel in enumerate(self.todos_paineis):
-                self._layout.addWidget(painel, linha, 0)
-            self._layout.setColumnStretch(0, 1)
-            self._layout.setColumnStretch(1, 0)
-            self._layout.setColumnStretch(2, 0)
-            for linha in range(8):
-                self._layout.setRowStretch(linha, 1)
+        # O NEXO ocupa todo o quadro em qualquer breakpoint. A leitura dos
+        # frames de referencia e uma composicao unica, e nao uma faixa em
+        # cima da grade antiga. O modo continua registrado para manter a
+        # responsividade/testes e para o proprio painel adaptar tipografia.
+        self._layout.addWidget(self.nexo, 0, 0, 1, 1)
+        self._layout.setColumnStretch(0, 1)
+        self._layout.setRowStretch(0, 1)
+        self.nexo.raise_()
 
     def _ajustar_altura_larga(self) -> None:
-        """Converte altura extra em contexto sem cortar a sexta linha ASG."""
+        """Da prioridade a superficie NEXO sem retirar os paineis tecnicos.
 
-        # Com a tarja de evidencia, o workspace de uma janela 1280x720 fica
-        # abaixo de 700 px: a Matriz precisa de peso 5 para manter seis linhas.
-        # Em telas mais altas, o excedente migra para DOM/Tape/Bookmap.
-        pesos = (3, 4, 2, 1) if self.height() < 700 else (3, 4, 2, 1)
+        A composicao visual principal precisa de altura suficiente para os
+        tres blocos de referencia (contexto, nucleo e grafico). Matriz,
+        DOM/Tape/Bookmap e trilha continuam montados e visiveis nas faixas
+        inferiores, preservando o contrato dos workspaces existentes.
+        """
+
+        pesos = (8, 2, 1, 1) if self.height() < 700 else (9, 2, 2, 1)
         for linha, peso in enumerate(pesos):
             self._layout.setRowStretch(linha, peso)
 

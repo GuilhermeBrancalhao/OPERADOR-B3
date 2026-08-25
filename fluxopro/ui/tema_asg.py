@@ -43,11 +43,29 @@ ESTADO_SEM_BOOK = tokens.ABSORPTION
 ESTADO_ERRO = tokens.DANGER
 ESTADO_REPLAY = tokens.POC
 
+# Paleta da superficie NEXO. A referencia fornecida usa preto quase absoluto,
+# verde/rosa neon e linhas muito finas. Esta e uma identidade propria, sem
+# reutilizar logotipo, avatar ou ativo visual de terceiros.
+NEXO_FUNDO = QColor("#030609")
+NEXO_PAINEL = QColor("#070C12")
+NEXO_PAINEL_ALTO = QColor("#0B1118")
+NEXO_GRADE = QColor("#17232C")
+NEXO_CIANO = QColor("#53D5E8")
+NEXO_VERDE = QColor("#26F58A")
+NEXO_ROSA = QColor("#FF3F68")
+NEXO_AMARELO = QColor("#F5D547")
+NEXO_TEXTO = QColor("#DCE9EC")
+NEXO_MUTED = QColor("#6F858D")
+
 
 def _com_alpha(cor: QColor, alpha: int) -> QColor:
     copia = QColor(cor)
     copia.setAlpha(alpha)
     return copia
+
+
+NEXO_VERDE_FAIXA = _com_alpha(NEXO_VERDE, 34)
+NEXO_ROSA_FAIXA = _com_alpha(NEXO_ROSA, 34)
 
 
 # Pre-alocados: construir QColor dentro de uma linha quente de QPainter custa
@@ -85,6 +103,18 @@ __all__ = [
     "FUNDO_NEUTRO",
     "FUNDO_VENDA",
     "MATRIZ",
+    "NEXO_AMARELO",
+    "NEXO_CIANO",
+    "NEXO_FUNDO",
+    "NEXO_GRADE",
+    "NEXO_MUTED",
+    "NEXO_PAINEL",
+    "NEXO_PAINEL_ALTO",
+    "NEXO_ROSA",
+    "NEXO_ROSA_FAIXA",
+    "NEXO_TEXTO",
+    "NEXO_VERDE",
+    "NEXO_VERDE_FAIXA",
     "PAINEL",
     "PROCESSAMENTO",
 ]

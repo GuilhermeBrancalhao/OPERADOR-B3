@@ -643,8 +643,10 @@ def _parser():
     g.add_argument(
         "--workspace",
         choices=list(NOMES_DISPONIVEIS),
-        default=NOMES_DISPONIVEIS[0],
-        help="arranjo de fabrica inicial (§4.1). Ctrl+1..9 troca a quente.",
+        default="ASG-like",
+        help=(
+            "arranjo inicial (ASG-like por padrao; Ctrl+1..9 troca a quente)."
+        ),
     )
     g.add_argument(
         "--retrato-workspaces",
