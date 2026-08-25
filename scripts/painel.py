@@ -447,7 +447,12 @@ def montar_cenario_controlado_asg(
 
     ultimo_ts = _T0_EVIDENCIA_ASG
     publicar_book = estado is not EstadoASG.SEM_BOOK
-    for passo in range(24):
+    colunas_bookmap = janela.asg.bookmap.geometria.n_cols
+    passos = (
+        max(48, min(120, colunas_bookmap + 8))
+        if publicar_book else 48
+    )
+    for passo in range(passos):
         ultimo_ts = _T0_EVIDENCIA_ASG + passo * 250_000_000
         preco = 10_000 + (passo % 5) - 2
         if publicar_book:
@@ -528,6 +533,9 @@ def montar_cenario_controlado_asg(
             type(janela.asg.tape).__name__,
             type(janela.asg.bookmap).__name__,
         ],
+        "tape_rows_retained": len(janela.asg.tape._linhas),
+        "bookmap_columns_available": janela.asg.bookmap.geometria.n_cols,
+        "bookmap_columns_closed": janela.asg.bookmap._colunas_fechadas,
         "missing_matrix_labels": sorted(
             rotulos_matriz - set(janela.asg.matriz.textos_visiveis())
         ),
