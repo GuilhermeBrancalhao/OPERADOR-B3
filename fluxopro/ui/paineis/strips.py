@@ -54,6 +54,8 @@ _ROTULO_ESTADO = {
     EstadoFeed.ATRASADO: "ATRASADO",
     EstadoFeed.SEM_FEED: "SEM FEED",
     EstadoFeed.ENCERRADO: "ENCERRADO",
+    EstadoFeed.SEM_BOOK: "SEM BOOK",
+    EstadoFeed.ERRO: "ERRO",
 }
 
 _COR_ESTADO = {
@@ -62,6 +64,8 @@ _COR_ESTADO = {
     EstadoFeed.ATRASADO: tokens.ALERT,
     EstadoFeed.SEM_FEED: tokens.DANGER,
     EstadoFeed.ENCERRADO: tokens.TEXT_SECONDARY,
+    EstadoFeed.SEM_BOOK: tokens.ALERT,
+    EstadoFeed.ERRO: tokens.DANGER,
 }
 
 
@@ -133,6 +137,7 @@ class StripTopo(PainelDenso):
         self._atraso = 0.0
         self._modo = ""
         self._replay = False
+        self._estado_operacional: tuple[str, QColor] | None = None
 
     def definir_modo(self, texto: str, replay: bool = False) -> None:
         """`REPLAY 2,0x`, `SIMULADOR`, vazio para ao vivo.
@@ -151,7 +156,11 @@ class StripTopo(PainelDenso):
     def em_replay(self) -> bool:
         return self._replay
 
-    def aplicar(self, retrato: Instantaneo) -> None:
+    def aplicar(
+        self,
+        retrato: Instantaneo,
+        estado_operacional: tuple[str, QColor] | None = None,
+    ) -> None:
         # So marca sujo quando algo VISIVEL muda. O atraso e arredondado a
         # decimo de segundo de proposito: sem isso o campo mudaria a cada
         # quadro e a strip repintaria 62 vezes por segundo para sempre.
@@ -163,6 +172,7 @@ class StripTopo(PainelDenso):
             or retrato.volume_sessao != self._volume
             or retrato.volume_nao_atribuido != self._nao_atribuido
             or atraso != self._atraso
+            or estado_operacional != self._estado_operacional
         )
         self._estado = retrato.estado
         self._ultimo = retrato.ultimo_preco
@@ -171,6 +181,7 @@ class StripTopo(PainelDenso):
         self._volume = retrato.volume_sessao
         self._nao_atribuido = retrato.volume_nao_atribuido
         self._atraso = atraso
+        self._estado_operacional = estado_operacional
         if mudou:
             self.marcar_tudo_sujo()
 
@@ -186,8 +197,15 @@ class StripTopo(PainelDenso):
         x = self._campo(painter, x, altura, self.simbolo, tokens.TEXT_PRIMARY, tokens.fonte_ui(12, 600))
         x = self._separador(painter, x, altura)
 
-        rotulo, cor_estado = rotulo_do_estado(self._estado, self._replay)
-        if self._estado in (EstadoFeed.ATRASADO, EstadoFeed.SEM_FEED):
+        rotulo, cor_estado = (
+            self._estado_operacional
+            if self._estado_operacional is not None
+            else rotulo_do_estado(self._estado, self._replay)
+        )
+        if (
+            self._estado_operacional is None
+            and self._estado in (EstadoFeed.ATRASADO, EstadoFeed.SEM_FEED)
+        ):
             rotulo += " " + formato.formatar_duracao_s(self._atraso)
         x = self._campo(painter, x, altura, rotulo, cor_estado, tokens.fonte_ui(11))
         x = self._separador(painter, x, altura)
@@ -296,9 +314,14 @@ class StripRodape(PainelDenso):
         p95_ms: float,
         n_eventos: int,
         replay: bool = False,
+        estado_operacional: tuple[str, QColor] | None = None,
     ) -> None:
         contadores = retrato.contadores
-        esquerda, cor_rotulo = rotulo_do_estado(retrato.estado, replay)
+        esquerda, cor_rotulo = (
+            estado_operacional
+            if estado_operacional is not None
+            else rotulo_do_estado(retrato.estado, replay)
+        )
         direita = (
             f"{formato.formatar_inteiro(contadores.trades)} neg  ·  "
             f"{formato.formatar_inteiro(contadores.snapshots + contadores.deltas)} book  ·  "

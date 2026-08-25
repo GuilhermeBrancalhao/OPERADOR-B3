@@ -19,8 +19,13 @@ from PySide6.QtCore import QRect, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
 
+from fluxopro.core.eventos import PriceGrid, WDO_GRID
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.base.painel_denso import PainelDenso
+from fluxopro.ui.paineis.bookmap import PainelBookmap
+from fluxopro.ui.paineis.dom import PainelDOM
+from fluxopro.ui.paineis.tape import PainelTape
+from fluxopro.ui.ponte import Instantaneo
 
 ALTURA_CABECALHO = 28
 ALTURA_LINHA = 24
@@ -105,6 +110,12 @@ def rotulo_estado(estado: EstadoASG) -> str:
     """Estado por simbolo + palavra; nunca depende apenas de cor."""
 
     return _ROTULO_ESTADO[estado]
+
+
+def cor_estado(estado: EstadoASG) -> QColor:
+    """Cor do estado para strips globais e paineis usarem a mesma fonte."""
+
+    return _COR_ESTADO[estado]
 
 
 def rotulo_direcao(direcao: DirecaoASG) -> str:
@@ -485,6 +496,89 @@ class TrilhaEvidenciasASGSnapshot:
 
 
 @dataclass(frozen=True, slots=True)
+class NivelBrutoASG:
+    """Um nivel do livro, copiado para o quadro consultivo ASG."""
+
+    preco: int
+    quantidade: int
+    ordens: int
+
+
+@dataclass(frozen=True, slots=True)
+class NegocioBrutoASG:
+    """Uma impressao do tape que pertence ao mesmo quadro do DOM."""
+
+    timestamp_ns: int
+    preco: int
+    quantidade: int
+    agressor: int
+
+
+@dataclass(frozen=True, slots=True)
+class ContextoBrutoASGSnapshot:
+    """DOM, tape e liquidez tipo bookmap de um unico retrato de UI.
+
+    Nao e um segundo consumidor da ponte: a janela cria esta estrutura a
+    partir do ``Instantaneo`` que acabou de distribuir aos paineis historicos.
+    O carimbo e o do ``WorkspaceASGSnapshot`` para impedir que a superficie
+    ASG misture um retrato bruto de um quadro com uma decisao de outro.
+    """
+
+    timestamp_ns: int
+    estado: EstadoASG = EstadoASG.AGUARDANDO
+    bids: tuple[NivelBrutoASG, ...] = ()
+    asks: tuple[NivelBrutoASG, ...] = ()
+    negocios: tuple[NegocioBrutoASG, ...] = ()
+    ultimo_preco: int | None = None
+    detalhe: str = "AGUARDANDO RETRATO BRUTO"
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "bids", tuple(self.bids))
+        object.__setattr__(self, "asks", tuple(self.asks))
+        object.__setattr__(self, "negocios", tuple(self.negocios))
+
+    @classmethod
+    def de_instantaneo(
+        cls, instantaneo: object, timestamp_ns: int, estado: EstadoASG
+    ) -> ContextoBrutoASGSnapshot:
+        """Copia somente os campos imutaveis que o painel efetivamente le."""
+
+        livro = getattr(instantaneo, "livro", None)
+
+        def niveis(nome: str) -> tuple[NivelBrutoASG, ...]:
+            return tuple(
+                NivelBrutoASG(
+                    int(getattr(nivel, "price")),
+                    int(getattr(nivel, "qty")),
+                    int(getattr(nivel, "n_orders", 0)),
+                )
+                for nivel in tuple(getattr(livro, nome, ()) if livro is not None else ())[:8]
+            )
+
+        negocios = tuple(
+            NegocioBrutoASG(
+                int(getattr(item, "timestamp_ns")),
+                int(getattr(item, "price")),
+                int(getattr(item, "qty")),
+                int(getattr(item, "agressor", 0)),
+            )
+            for item in tuple(getattr(instantaneo, "novos_trades", ()))[:10]
+        )
+        return cls(
+            timestamp_ns=timestamp_ns,
+            estado=estado,
+            bids=niveis("bids"),
+            asks=niveis("asks"),
+            negocios=negocios,
+            ultimo_preco=getattr(instantaneo, "ultimo_preco", None),
+            detalhe=(
+                "DOM · TAPE · BOOKMAP NO MESMO QUADRO"
+                if livro is not None else "SEM SNAPSHOT DE BOOK NESTE QUADRO"
+            ),
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class WorkspaceASGSnapshot:
     """Um quadro coerente para os cinco paineis."""
 
@@ -495,6 +589,7 @@ class WorkspaceASGSnapshot:
     decisao: DecisaoASGSnapshot
     evidencias: TrilhaEvidenciasASGSnapshot
     estado_operacional: EstadoASG | None = None
+    contexto_bruto: ContextoBrutoASGSnapshot | None = None
 
     def __post_init__(self) -> None:
         carimbos = {
@@ -518,6 +613,11 @@ class WorkspaceASGSnapshot:
         if estados != {estado}:
             nomes = ", ".join(sorted(item.value for item in estados))
             raise ValueError(f"estado operacional contraditorio: {nomes}")
+        contexto = self.contexto_bruto
+        if contexto is not None and contexto.timestamp_ns != self.timestamp_ns:
+            raise ValueError("contexto bruto precisa pertencer ao mesmo quadro ASG")
+        if contexto is not None and contexto.estado is not estado:
+            raise ValueError("contexto bruto precisa declarar o estado operacional do quadro")
 
 
 class _PainelASG(PainelDenso):
@@ -914,7 +1014,8 @@ class PainelMatrizASG(_PainelASG):
     cor_secao = tema_asg.MATRIZ
 
     def __init__(self, parent: QWidget | None = None,
-                 paleta: tokens.Paleta = tokens.PALETA_COR) -> None:
+                 paleta: tokens.Paleta = tokens.PALETA_COR,
+                 grid: object | None = None) -> None:
         super().__init__(parent)
         self.paleta = paleta
         self._snapshot = MatrizASGSnapshot(0)
@@ -1085,7 +1186,8 @@ class PainelDecisaoASG(_PainelASG):
     cor_secao = tema_asg.DECISAO
 
     def __init__(self, parent: QWidget | None = None,
-                 paleta: tokens.Paleta = tokens.PALETA_COR) -> None:
+                 paleta: tokens.Paleta = tokens.PALETA_COR,
+                 grid: object | None = None) -> None:
         super().__init__(parent)
         self.paleta = paleta
         self._snapshot = DecisaoASGSnapshot(0)
@@ -1284,36 +1386,230 @@ class PainelEvidenciasASG(_PainelASG):
         self._desenhar_rodape(painter)
 
 
+class PainelContextoBrutoASG(_PainelASG):
+    """Leitura bruta compacta para conferir a conclusao ASG sem trocar tela."""
+
+    titulo = "CONTEXTO BRUTO"
+    etapa = "0"
+    cor_secao = tema_asg.DADOS
+
+    def __init__(self, parent: QWidget | None = None,
+                 grid: object | None = None) -> None:
+        super().__init__(parent)
+        self.grid = grid
+        self._snapshot = ContextoBrutoASGSnapshot(0)
+        self.setMinimumHeight(0)
+
+    def aplicar(self, snapshot: ContextoBrutoASGSnapshot) -> None:
+        mudou = _chave_visual(snapshot) != _chave_visual(self._snapshot)
+        self._snapshot = snapshot
+        if mudou:
+            self.marcar_tudo_sujo()
+
+    def total_itens(self) -> int:
+        return len(self._snapshot.bids) + len(self._snapshot.asks) + len(self._snapshot.negocios)
+
+    def capacidade_pagina(self) -> int:
+        return self.total_itens()
+
+    def retangulos_visiveis(self) -> tuple[tuple[int, QRect], ...]:
+        # Este painel pinta tres faixas proporcionais, nao uma lista
+        # virtualizada. As caixas sao derivadas no mesmo ``desenhar`` e nunca
+        # excedem o rodape; nao ha linhas indexadas para expor ao navegador.
+        return ()
+
+    def textos_visiveis(self) -> tuple[str, ...]:
+        s = self._snapshot
+        textos = [rotulo_estado(s.estado), s.detalhe, "DOM", "TAPE", "BOOKMAP · LIQUIDEZ"]
+        textos.extend(
+            f"BID {nivel.preco} {nivel.quantidade}" for nivel in s.bids
+        )
+        textos.extend(
+            f"ASK {nivel.preco} {nivel.quantidade}" for nivel in s.asks
+        )
+        textos.extend(
+            f"TAPE {negocio.preco} {negocio.quantidade}" for negocio in s.negocios
+        )
+        return tuple(textos)
+
+    def desenhar(self, painter: QPainter, regiao: QRect) -> None:
+        painter.fillRect(regiao, self.cor_fundo)
+        s = self._snapshot
+        self._cabecalho(painter, s.estado, "SINCRONIZADO")
+        corpo = QRect(MARGEM, ALTURA_CABECALHO + 4, self.width() - 2 * MARGEM,
+                      self.faixa_rodape().top() - ALTURA_CABECALHO - 8)
+        if corpo.height() <= 28:
+            return
+        if self.width() >= 560:
+            largura = (corpo.width() - 2 * VAO) // 3
+            self._desenhar_dom(painter, QRect(corpo.x(), corpo.y(), largura, corpo.height()))
+            self._desenhar_tape(painter, QRect(corpo.x() + largura + VAO, corpo.y(), largura,
+                                               corpo.height()))
+            self._desenhar_bookmap(painter, QRect(corpo.right() - largura + 1, corpo.y(), largura,
+                                                  corpo.height()))
+        else:
+            altura = max(42, (corpo.height() - 2 * VAO) // 3)
+            self._desenhar_dom(painter, QRect(corpo.x(), corpo.y(), corpo.width(), altura))
+            self._desenhar_tape(painter, QRect(corpo.x(), corpo.y() + altura + VAO,
+                                               corpo.width(), altura))
+            self._desenhar_bookmap(painter, QRect(corpo.x(), corpo.y() + 2 * (altura + VAO),
+                                                  corpo.width(),
+                                                  max(0, corpo.bottom() - (corpo.y() + 2 * (altura + VAO)) + 1)))
+        self._desenhar_rodape(painter, s.detalhe)
+
+    def _caixa(self, painter: QPainter, rect: QRect, titulo: str) -> QRect:
+        painter.fillRect(rect, tema_asg.FUNDO_NEUTRO)
+        painter.setPen(tema_asg.BORDA)
+        painter.drawRect(rect.adjusted(0, 0, -1, -1))
+        painter.setFont(tokens.fonte_rotulo(9))
+        painter.setPen(tokens.TEXT_SECONDARY)
+        painter.drawText(rect.adjusted(5, 0, -5, -rect.height() + 17),
+                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, titulo)
+        return rect.adjusted(5, 19, -5, -4)
+
+    def _preco(self, preco: int) -> str:
+        if self.grid is not None:
+            try:
+                return formato.formatar_preco(self.grid, preco)[0] + formato.formatar_preco(self.grid, preco)[1]
+            except (AttributeError, TypeError, ValueError):
+                pass
+        return formato.formatar_inteiro(preco)
+
+    def _desenhar_dom(self, painter: QPainter, rect: QRect) -> None:
+        area = self._caixa(painter, rect, "DOM · BID / ASK")
+        linhas = max(1, min(5, area.height() // 18))
+        bids, asks = self._snapshot.bids[:linhas], self._snapshot.asks[:linhas]
+        if not bids and not asks:
+            self._texto_vazio(painter, area, "SEM BOOK")
+            return
+        for indice in range(max(len(bids), len(asks))):
+            y = area.y() + indice * 18
+            if indice < len(bids):
+                item = bids[indice]
+                self._linha_lado(painter, QRect(area.x(), y, area.width() // 2 - 2, 17), item,
+                                 self.paleta.compra if hasattr(self, "paleta") else tokens.OK, True)
+            if indice < len(asks):
+                item = asks[indice]
+                self._linha_lado(painter, QRect(area.x() + area.width() // 2 + 2, y,
+                                                area.width() // 2 - 2, 17), item,
+                                 tokens.DANGER, False)
+
+    def _linha_lado(self, painter: QPainter, rect: QRect, item: NivelBrutoASG,
+                    cor: QColor, bid: bool) -> None:
+        frac = min(1.0, item.quantidade / max(1, max(
+            [nivel.quantidade for nivel in self._snapshot.bids + self._snapshot.asks] or [1]
+        )))
+        largura = max(1, int(rect.width() * frac))
+        barra = QRect(rect.x() if bid else rect.right() - largura + 1, rect.y(), largura, rect.height())
+        painter.fillRect(barra, cor.darker(170))
+        painter.setFont(tokens.fonte_numero(8, QFont.Weight.DemiBold))
+        painter.setPen(tokens.TEXT_PRIMARY)
+        texto = f"{self._preco(item.preco)} {item.quantidade}"
+        painter.drawText(rect.adjusted(2, 0, -2, 0),
+                         (Qt.AlignmentFlag.AlignLeft if bid else Qt.AlignmentFlag.AlignRight)
+                         | Qt.AlignmentFlag.AlignVCenter, texto)
+
+    def _desenhar_tape(self, painter: QPainter, rect: QRect) -> None:
+        area = self._caixa(painter, rect, "TAPE · NEGOCIOS")
+        itens = self._snapshot.negocios[:max(1, area.height() // 18)]
+        if not itens:
+            self._texto_vazio(painter, area, "SEM NEGOCIOS")
+            return
+        for indice, item in enumerate(itens):
+            linha = QRect(area.x(), area.y() + indice * 18, area.width(), 17)
+            cor = tokens.OK if item.agressor > 0 else tokens.DANGER if item.agressor < 0 else tokens.NEUTRAL
+            painter.setFont(tokens.fonte_numero(8, QFont.Weight.DemiBold))
+            painter.setPen(cor)
+            sinal = "▲" if item.agressor > 0 else "▼" if item.agressor < 0 else "◆"
+            painter.drawText(linha, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                             f"{sinal} {self._preco(item.preco)}")
+            painter.setPen(tokens.TEXT_PRIMARY)
+            painter.drawText(linha, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                             str(item.quantidade))
+
+    def _desenhar_bookmap(self, painter: QPainter, rect: QRect) -> None:
+        area = self._caixa(painter, rect, "BOOKMAP · LIQUIDEZ")
+        niveis = self._snapshot.asks[:4] + self._snapshot.bids[:4]
+        if not niveis:
+            self._texto_vazio(painter, area, "SEM LIQUIDEZ")
+            return
+        maximo = max(nivel.quantidade for nivel in niveis)
+        altura = max(3, area.height() // max(1, len(niveis)))
+        for indice, item in enumerate(niveis):
+            y = area.y() + indice * altura
+            cor = tokens.DANGER if indice < len(self._snapshot.asks[:4]) else tokens.OK
+            largura = max(2, int(area.width() * item.quantidade / maximo))
+            painter.fillRect(QRect(area.x(), y + 1, largura, max(2, altura - 2)), cor.darker(145))
+            painter.setFont(tokens.fonte_numero(8))
+            painter.setPen(tokens.TEXT_PRIMARY)
+            painter.drawText(QRect(area.x() + 3, y, area.width() - 6, altura),
+                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                             f"{self._preco(item.preco)} · {item.quantidade}")
+
+    def _texto_vazio(self, painter: QPainter, rect: QRect, texto: str) -> None:
+        painter.setFont(tokens.fonte_ui(9))
+        painter.setPen(tokens.TEXT_MUTED)
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, texto)
+
+
 class WorkspaceASG(QWidget):
     """Composto responsivo pronto para ser inserido pela janela central.
 
-    ``largo`` usa tres colunas, ``medio`` duas e ``estreito`` uma. A troca e
-    feita apenas no resize do composto; os cinco filhos preservam backing e
-    relogio proprios.
+    DOM, Tape e Bookmap sao as implementacoes operacionais reais, alimentadas
+    pelo mesmo ``Instantaneo`` que abastece as docas historicas. Instancias
+    dedicadas evitam reparentear docas e preservam os quatro workspaces
+    anteriores. Os cinco paineis ASG continuam consumindo um unico snapshot.
     """
 
     LIMIAR_LARGO = 1120
     LIMIAR_MEDIO = 720
 
     def __init__(self, parent: QWidget | None = None,
-                 paleta: tokens.Paleta = tokens.PALETA_COR) -> None:
+                 paleta: tokens.Paleta = tokens.PALETA_COR,
+                 grid: PriceGrid = WDO_GRID, symbol: str = "",
+                 densidade: tokens.Densidade = tokens.PADRAO) -> None:
         super().__init__(parent)
         # O composto e a superficie operacional inteira no Ctrl+5. ``Ignored``
         # impede que um sizeHint de desktop force a janela a crescer quando o
         # Qt ainda esta resolvendo a antiga arvore de docas durante a troca.
         self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.contexto_bruto = PainelContextoBrutoASG(self, grid)
         self.dados = PainelDadosASG(self)
         self.processamento = PainelProcessamentoASG(self)
         self.matriz = PainelMatrizASG(self, paleta)
         self.decisao = PainelDecisaoASG(self, paleta)
         self.evidencias = PainelEvidenciasASG(self)
-        self.paineis = (self.dados, self.processamento, self.matriz,
-                        self.decisao, self.evidencias)
+        self.dom = PainelDOM(grid, self, densidade=densidade, paleta=paleta)
+        self.tape = PainelTape(grid, self, densidade=densidade, paleta=paleta)
+        self.bookmap = PainelBookmap(
+            grid, symbol=symbol, parent=self, densidade=densidade, paleta=paleta
+        )
+        for painel in (self.dom, self.tape, self.bookmap):
+            painel.setMinimumSize(0, 0)
+            painel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.paineis = (self.contexto_bruto, self.dados, self.processamento,
+                        self.matriz, self.decisao, self.evidencias)
+        self.paineis_contexto = (self.dom, self.tape, self.bookmap)
+        self.todos_paineis = self.paineis_contexto + (
+            self.dados, self.processamento, self.matriz,
+            self.decisao, self.evidencias,
+        )
         self._layout = QGridLayout(self)
         self._layout.setContentsMargins(0, 0, 0, 0)
         self._layout.setSpacing(4)
         self._snapshot: WorkspaceASGSnapshot | None = None
         self._modo = ""
+        # Ctrl+5 pode ocorrer antes do primeiro tick. Entregar o retrato
+        # bloqueado e legivel evita expor a area operacional como quadro vazio.
+        self.aplicar(WorkspaceASGSnapshot(
+            0,
+            DadosASGSnapshot(0),
+            ProcessamentoASGSnapshot(0),
+            MatrizASGSnapshot(0),
+            DecisaoASGSnapshot(0),
+            TrilhaEvidenciasASGSnapshot(0),
+            contexto_bruto=ContextoBrutoASGSnapshot(0),
+        ))
         self._reorganizar(force=True)
 
     @property
@@ -1334,11 +1630,27 @@ class WorkspaceASG(QWidget):
         if not isinstance(snapshot, WorkspaceASGSnapshot):
             raise TypeError("WorkspaceASG.aplicar exige WorkspaceASGSnapshot tipado")
         self._snapshot = snapshot
+        self.contexto_bruto.aplicar(snapshot.contexto_bruto or ContextoBrutoASGSnapshot(
+            snapshot.timestamp_ns,
+            estado=snapshot.estado_operacional or snapshot.dados.estado,
+            detalhe="CONTEXTO BRUTO INDISPONIVEL NESTE QUADRO",
+        ))
         self.dados.aplicar(snapshot.dados)
         self.processamento.aplicar(snapshot.processamento)
         self.matriz.aplicar(snapshot.matriz)
         self.decisao.aplicar(snapshot.decisao)
         self.evidencias.aplicar(snapshot.evidencias)
+
+    def aplicar_mercado(self, retrato: Instantaneo) -> None:
+        """Distribui um unico retrato da ponte aos tres paineis reais."""
+
+        if not isinstance(retrato, Instantaneo):
+            raise TypeError("WorkspaceASG.aplicar_mercado exige Instantaneo tipado")
+        self.dom.aplicar(retrato.livro, retrato.ultimo_preco)
+        self.tape.aplicar(retrato.novos_trades)
+        self.bookmap.aplicar(
+            retrato.livro, retrato.ultimo_preco, retrato.novos_trades
+        )
 
     def resizeEvent(self, evento) -> None:  # noqa: N802
         super().resizeEvent(evento)
@@ -1351,45 +1663,52 @@ class WorkspaceASG(QWidget):
         if modo == self._modo and not force:
             return
         self._modo = modo
-        for painel in self.paineis:
+        for painel in self.paineis + self.paineis_contexto:
             self._layout.removeWidget(painel)
-        for indice in range(5):
+        self.contexto_bruto.hide()
+        for indice in range(8):
             self._layout.setRowStretch(indice, 0)
             self._layout.setColumnStretch(indice, 0)
         if modo == "largo":
-            self._layout.addWidget(self.dados, 0, 0)
-            self._layout.addWidget(self.processamento, 0, 1)
-            self._layout.addWidget(self.decisao, 0, 2, 2, 1)
-            self._layout.addWidget(self.matriz, 1, 0, 1, 2)
-            self._layout.addWidget(self.evidencias, 2, 0, 1, 3)
-            self._layout.setColumnStretch(0, 1)
-            self._layout.setColumnStretch(1, 1)
-            self._layout.setColumnStretch(2, 1)
-            # Em 1280x720 a matriz precisa de 6 linhas de 28 px, cabecalho,
-            # selo e rodape. Ela recebe a maior parte vertical; a decisao
-            # atravessa as duas linhas e continua legivel ao lado.
-            self._layout.setRowStretch(0, 2)
-            self._layout.setRowStretch(1, 3)
-            self._layout.setRowStretch(2, 1)
+            # 1280: ~230 DOM, ~230 Tape, ~460 Bookmap e ~340 Decisao.
+            # 1920: o ganho de area vai sobretudo para o contexto bruto.
+            self._layout.addWidget(self.dom, 0, 0)
+            self._layout.addWidget(self.tape, 0, 1)
+            self._layout.addWidget(self.bookmap, 0, 2)
+            self._layout.addWidget(self.decisao, 0, 3, 3, 1)
+            # A Matriz usa a largura conjunta dos tres paineis brutos. Em
+            # 1280 isso mantem as seis linhas no modo tabela e evita trocar
+            # decisao visivel por contexto adicional.
+            self._layout.addWidget(self.matriz, 1, 0, 1, 3)
+            self._layout.addWidget(self.dados, 2, 0)
+            self._layout.addWidget(self.processamento, 2, 1)
+            self._layout.addWidget(self.evidencias, 2, 2)
+            for coluna, peso in enumerate((4, 4, 8, 6)):
+                self._layout.setColumnStretch(coluna, peso)
+            self._layout.setRowStretch(0, 4)
+            self._layout.setRowStretch(1, 4)
+            self._layout.setRowStretch(2, 2)
         elif modo == "medio":
-            self._layout.addWidget(self.dados, 0, 0)
-            self._layout.addWidget(self.processamento, 0, 1)
-            self._layout.addWidget(self.matriz, 1, 0)
-            self._layout.addWidget(self.decisao, 1, 1)
-            self._layout.addWidget(self.evidencias, 2, 0, 1, 2)
+            self._layout.addWidget(self.dom, 0, 0)
+            self._layout.addWidget(self.tape, 0, 1)
+            self._layout.addWidget(self.bookmap, 1, 0, 1, 2)
+            self._layout.addWidget(self.matriz, 2, 0)
+            self._layout.addWidget(self.decisao, 2, 1)
+            self._layout.addWidget(self.dados, 3, 0)
+            self._layout.addWidget(self.processamento, 3, 1)
+            self._layout.addWidget(self.evidencias, 4, 0, 1, 2)
             self._layout.setColumnStretch(0, 1)
             self._layout.setColumnStretch(1, 1)
             self._layout.setColumnStretch(2, 0)
-            self._layout.setRowStretch(0, 2)
-            self._layout.setRowStretch(1, 3)
-            self._layout.setRowStretch(2, 1)
+            for linha, peso in enumerate((3, 3, 3, 2, 1)):
+                self._layout.setRowStretch(linha, peso)
         else:
-            for linha, painel in enumerate(self.paineis):
+            for linha, painel in enumerate(self.todos_paineis):
                 self._layout.addWidget(painel, linha, 0)
             self._layout.setColumnStretch(0, 1)
             self._layout.setColumnStretch(1, 0)
             self._layout.setColumnStretch(2, 0)
-            for linha in range(5):
+            for linha in range(8):
                 self._layout.setRowStretch(linha, 1)
 
 
@@ -1686,6 +2005,7 @@ def _chave_visual(snapshot: object) -> tuple[tuple[str, object], ...]:
 
 __all__ = [
     "ConfiancaASG",
+    "ContextoBrutoASGSnapshot",
     "DadosASGSnapshot",
     "DecisaoASGSnapshot",
     "DirecaoASG",
@@ -1696,6 +2016,9 @@ __all__ = [
     "LinhaMatrizASG",
     "MatrizASGSnapshot",
     "MetricaASG",
+    "NegocioBrutoASG",
+    "NivelBrutoASG",
+    "PainelContextoBrutoASG",
     "PainelDadosASG",
     "PainelDecisaoASG",
     "PainelEvidenciasASG",

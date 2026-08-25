@@ -120,6 +120,7 @@ from fluxopro.ui.paineis.matriz import (
 from fluxopro.ui.paineis.bookmap import PainelBookmap
 from fluxopro.ui.paineis.asg import (
     ConfiancaASG,
+    ContextoBrutoASGSnapshot,
     DadosASGSnapshot,
     DecisaoASGSnapshot,
     DirecaoASG,
@@ -130,6 +131,8 @@ from fluxopro.ui.paineis.asg import (
     TrilhaEvidenciasASGSnapshot,
     WorkspaceASG,
     WorkspaceASGSnapshot,
+    cor_estado as cor_estado_asg,
+    rotulo_estado as rotulo_estado_asg,
 )
 from fluxopro.ui.paineis.delta_acumulado import PainelDeltaAcumulado, derivar_delta
 from fluxopro.ui.paineis.footprint import PainelFootprint, derivar_footprint
@@ -1451,8 +1454,11 @@ class JanelaFluxo(QMainWindow):
         self._n_deteccoes = 0
         self._n_sinais = 0
         self._ultimo_sinal: object | None = None
+        self._ultimo_instantaneo: Instantaneo | None = None
+        self._estado_operacional_asg: EstadoASG | None = EstadoASG.AGUARDANDO
         self._leitura: LeituraMotor | None = None
         self._estado_faixa: EstadoFeed | None = None
+        self._chave_faixa: tuple[EstadoFeed, str | None] | None = None
         self._quadros_sem_players = 0
         self._players_visivel = True
         self._motivo_trilho = ""
@@ -1621,7 +1627,9 @@ class JanelaFluxo(QMainWindow):
         self.hud = PainelHUD(densidade=d, paleta=p)
         self.metodo = PainelMetodo(self.grid, densidade=d, paleta=p)
         self.regras = PainelRegras(self.config_motor)
-        self.asg = WorkspaceASG(paleta=p)
+        self.asg = WorkspaceASG(
+            paleta=p, grid=self.grid, symbol=self.simbolo, densidade=d
+        )
 
         self.controles_replay = ControlesReplay(densidade=d)
         self.controles_replay.buscou.connect(self._ao_buscar_replay)
@@ -1791,6 +1799,16 @@ class JanelaFluxo(QMainWindow):
         # em 1280x720. Os quatro workspaces historicos continuam usando
         # exatamente ``alvo.docas`` e o estado canonico congelado.
         eh_asg = alvo.nome == "ASG-like"
+        if eh_asg:
+            # O stack ASG so pode ficar visivel depois de receber o retrato
+            # mais recente. Se a sessao ainda nao produziu um, o construtor
+            # ja deixou um quadro AGUARDANDO legivel em vez de uma area vazia.
+            self._hidratar_asg(self._ultimo_instantaneo)
+        if self._ultimo_instantaneo is not None:
+            self._aplicar_estado_global(
+                self._ultimo_instantaneo,
+                self._estado_operacional_asg if eh_asg else None,
+            )
         visiveis = set() if eh_asg else set(alvo.docas)
         for chave, doca in self.docas.items():
             doca.setVisible(chave in visiveis)
@@ -1956,8 +1974,12 @@ class JanelaFluxo(QMainWindow):
         for painel in antigos:
             if isinstance(painel, PainelDenso):
                 painel.parar_relogio()
+        for painel in asg_antigo.todos_paineis:
+            painel.parar_relogio()
 
         self._montar_paineis(preservados=preservados)
+        if asg_ativo:
+            self._hidratar_asg(self._ultimo_instantaneo)
         for chave, doca in self.docas.items():
             if chave == "asg":
                 doca.setWidget(self._asg_doca_placeholder)
@@ -1993,6 +2015,7 @@ class JanelaFluxo(QMainWindow):
         """Todo painel da janela — usado para parar relogio e para os testes."""
         base: list[PainelDenso] = [self.topo, self.trilho, self.rodape, self.tarja_replay]
         base += [p for p in self._paineis.values() if isinstance(p, PainelDenso)]
+        base += list(self.asg.todos_paineis)
         if self.ressalva is not None:
             base.append(self.ressalva)
         return tuple(base)
@@ -2115,6 +2138,7 @@ class JanelaFluxo(QMainWindow):
     # ---------------------------------------------------------------- quadro
     def _tick(self) -> None:
         retrato = self.ponte.ler()
+        self._ultimo_instantaneo = retrato
         eventos = self.ponte.drenar_eventos()
         self._n_eventos += len(eventos)
 
@@ -2136,7 +2160,6 @@ class JanelaFluxo(QMainWindow):
             anterior=self._leitura,
         )
 
-        self.topo.aplicar(retrato)
         self.dom.aplicar(retrato.livro, retrato.ultimo_preco)
         self.tape.aplicar(retrato.novos_trades)
         self.bookmap.aplicar(
@@ -2145,15 +2168,12 @@ class JanelaFluxo(QMainWindow):
         self.matriz.aplicar(self._leitura, deteccoes)
         self.hud.aplicar(self._contexto(retrato))
         self._aplicar_metodo()
-        self._aplicar_asg()
+        estado_asg = self._aplicar_asg(retrato)
         self._aplicar_footprint()
         self._aplicar_players()
         self.painel_trilha.aplicar()
         self.conduto.aplicar(retrato, self._n_deteccoes, self._n_sinais)
-        self.rodape.aplicar(
-            retrato, self.dom.p95_ms(), self._n_eventos, replay=self._em_replay
-        )
-        self._atualizar_faixa(retrato.estado)
+        self._aplicar_estado_global(retrato, estado_asg)
 
     def _aplicar_footprint(self) -> None:
         """Footprint, perfil e delta — nesta ordem, e a ordem e o contrato.
@@ -2209,15 +2229,15 @@ class JanelaFluxo(QMainWindow):
         ler = getattr(self.sessao, "leitura_do_metodo", None) if self.sessao else None
         self.metodo.aplicar(ler() if callable(ler) else None)
 
-    def _aplicar_asg(self) -> None:
-        """Aplica um retrato congelado somente quando o workspace o exibe."""
+    def _hidratar_asg(self, instantaneo: Instantaneo | None) -> EstadoASG | None:
+        """Atualiza o ASG antes de o Ctrl+5 expor seu stack."""
 
-        if "asg" not in self._workspace.docas or self.sessao is None:
-            return
+        if self.sessao is None:
+            return None
         ler = getattr(self.sessao, "retrato_asg", None)
         retrato = ler() if callable(ler) else None
         if retrato is None:
-            return
+            return None
 
         dados = DadosASGSnapshot.de_feed(retrato.feed_quality)
         taxa = getattr(self.sessao, "taxa_eventos_s", None)
@@ -2259,8 +2279,54 @@ class JanelaFluxo(QMainWindow):
                 decisao=decisao,
                 evidencias=evidencias,
                 estado_operacional=estado,
+                contexto_bruto=(
+                    ContextoBrutoASGSnapshot.de_instantaneo(
+                        instantaneo, retrato.timestamp_ns, estado
+                    )
+                    if instantaneo is not None else ContextoBrutoASGSnapshot(
+                        retrato.timestamp_ns,
+                        estado=estado,
+                        detalhe="AGUARDANDO RETRATO BRUTO DO MESMO QUADRO",
+                    )
+                ),
             )
         )
+        if instantaneo is not None:
+            layout = self.asg.layout()
+            if layout is not None:
+                layout.activate()
+            self.asg.aplicar_mercado(instantaneo)
+        self._estado_operacional_asg = estado
+        return estado
+
+    def _aplicar_asg(self, instantaneo: Instantaneo) -> EstadoASG | None:
+        """Atualiza o workspace ASG visivel com o retrato unico do quadro."""
+
+        if "asg" not in self._workspace.docas:
+            return None
+        return self._hidratar_asg(instantaneo) or self._estado_operacional_asg
+
+    def _aplicar_estado_global(
+        self,
+        retrato: Instantaneo,
+        estado_asg: EstadoASG | None,
+    ) -> None:
+        """Fecha strips, faixa e ASG sobre uma unica leitura operacional."""
+
+        operacional = (
+            None
+            if estado_asg is None
+            else (rotulo_estado_asg(estado_asg), cor_estado_asg(estado_asg))
+        )
+        self.topo.aplicar(retrato, estado_operacional=operacional)
+        self.rodape.aplicar(
+            retrato,
+            self.dom.p95_ms(),
+            self._n_eventos,
+            replay=self._em_replay,
+            estado_operacional=operacional,
+        )
+        self._atualizar_faixa(retrato.estado, operacional)
 
     def desenhar_agora(self) -> None:
         """Fecha um quadro inteiro AGORA — le os dados e forca o desenho."""
@@ -2306,11 +2372,19 @@ class JanelaFluxo(QMainWindow):
             if self._quadros_sem_players >= CARENCIA_PLAYERS_QUADROS:
                 self.definir_players_visivel(False)
 
-    def _atualizar_faixa(self, estado: EstadoFeed) -> None:
-        if estado is self._estado_faixa:
+    def _atualizar_faixa(
+        self,
+        estado: EstadoFeed,
+        estado_operacional: tuple[str, QColor] | None = None,
+    ) -> None:
+        chave = (estado, None if estado_operacional is None else estado_operacional[0])
+        if chave == self._chave_faixa:
             return
+        self._chave_faixa = chave
         self._estado_faixa = estado
-        if estado in (EstadoFeed.VIVO, EstadoFeed.AGUARDANDO):
+        if estado_operacional is not None:
+            cor = estado_operacional[1]
+        elif estado in (EstadoFeed.VIVO, EstadoFeed.AGUARDANDO):
             cor = QColor(tokens.BG_BASE)  # discreta: sem noticia e boa noticia
         else:
             cor = cor_do_estado(estado)

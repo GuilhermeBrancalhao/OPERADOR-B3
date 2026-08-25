@@ -316,14 +316,18 @@ def test_janela_aplica_asg_somente_quando_workspace_esta_ativo(qapp) -> None:
 
         _publicar_quadro(barramento, T0, suffix="ui-oculto")
         janela._tick()
-        assert janela.asg._snapshot is None
+        aguardando = janela.asg._snapshot
+        assert aguardando is not None
+        assert aguardando.timestamp_ns == 0
 
         assert janela.workspace_por_atalho(5)
         assert janela.workspace is WORKSPACE_ASG
-        janela._tick()
+        # A troca hidrata ANTES de expor o stack; nao depende do proximo tick.
         aplicado = janela.asg._snapshot
         assert aplicado is not None
         assert aplicado.timestamp_ns == T0
+        assert janela.asg.dom._ultimo_preco == PRICE
+        assert len(janela.asg.tape._linhas) == 1
 
         assert janela.workspace_por_atalho(1)
         _publicar_quadro(

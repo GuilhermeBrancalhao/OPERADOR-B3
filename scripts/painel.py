@@ -61,6 +61,7 @@ from fluxopro.ui.janela import (  # noqa: E402
 )
 from fluxopro.ui.paineis.asg import (  # noqa: E402
     ConfiancaASG,
+    ContextoBrutoASGSnapshot,
     DadosASGSnapshot,
     DecisaoASGSnapshot,
     DirecaoASG,
@@ -70,6 +71,8 @@ from fluxopro.ui.paineis.asg import (  # noqa: E402
     GateDecisaoASG,
     LinhaMatrizASG,
     MatrizASGSnapshot,
+    NegocioBrutoASG,
+    NivelBrutoASG,
     ProcessamentoASGSnapshot,
     ProcedenciaASG,
     ResultadoGate,
@@ -77,7 +80,8 @@ from fluxopro.ui.paineis.asg import (  # noqa: E402
     WorkspaceASGSnapshot,
 )
 from fluxopro.ui.paineis.replay import EstadoReplay  # noqa: E402
-from fluxopro.ui.ponte import PonteFluxo  # noqa: E402
+from fluxopro.ui.ponte import Contadores, EstadoFeed, Instantaneo, ItemTape, PonteFluxo  # noqa: E402
+from fluxopro.core.eventos import BookLevel, BookSnapshot  # noqa: E402
 from fluxopro.ui.trilha import TrilhaEventos  # noqa: E402
 from fluxopro.ui.workspace import (  # noqa: E402
     NOMES_DISPONIVEIS,
@@ -150,11 +154,11 @@ _T0_EVIDENCIA_ASG = 1_777_200_000_000_000_000
 
 
 def quadro_evidencia_asg(estado: EstadoASG) -> WorkspaceASGSnapshot:
-    """Cenario congelado para screenshots end-to-end da janela real.
+    """Fixture sintetica e rotulada para retratos de estados do produto.
 
-    Nao entra no pipeline nem simula ticks. E apenas um snapshot de
-    apresentacao, explicitamente rotulado, aplicado ao mesmo ``JanelaFluxo``
-    aberto pelo operador para provar estados de falha e replay.
+    Nao percorre fonte, ponte ou sessao e, portanto, nao e evidencia e2e.
+    Serve para exercitar a composicao completa da janela com uma fixture
+    deterministica e declarada na propria imagem.
     """
 
     t = _T0_EVIDENCIA_ASG
@@ -262,9 +266,89 @@ def quadro_evidencia_asg(estado: EstadoASG) -> WorkspaceASGSnapshot:
         )
     )
     evidencias = TrilhaEvidenciasASGSnapshot(t, estado, itens, len(itens), len(itens))
-    return WorkspaceASGSnapshot(
-        t, dados, processamento, matriz, decisao, evidencias, estado
+    contexto = ContextoBrutoASGSnapshot(
+        timestamp_ns=t,
+        estado=estado,
+        bids=tuple(NivelBrutoASG(5_086 - indice, 360 - indice * 32, 4 + indice)
+                   for indice in range(6)),
+        asks=tuple(NivelBrutoASG(5_087 + indice, 332 - indice * 27, 3 + indice)
+                   for indice in range(6)),
+        negocios=tuple(NegocioBrutoASG(t - indice * 75_000_000, 5_086 + (indice % 2),
+                                        8 + indice * 3, 1 if indice % 3 else -1)
+                        for indice in range(8)),
+        ultimo_preco=5_086,
+        detalhe=f"FIXTURE SINTETICA · {estado.value} · MESMO QUADRO",
     )
+    return WorkspaceASGSnapshot(
+        t, dados, processamento, matriz, decisao, evidencias, estado, contexto
+    )
+
+
+def instantaneo_fixture_asg(estado: EstadoASG) -> Instantaneo:
+    """Retrato global correspondente a ``quadro_evidencia_asg``.
+
+    Mantem topo, rodape, faixa e contexto bruto coerentes com a fixture ASG;
+    o uso e estritamente de captura visual, nunca de fonte de negociacao.
+    """
+
+    feed = {
+        EstadoASG.AO_VIVO: EstadoFeed.VIVO,
+        EstadoASG.ATRASADO: EstadoFeed.ATRASADO,
+        EstadoASG.SEM_BOOK: EstadoFeed.SEM_BOOK,
+        EstadoASG.ERRO: EstadoFeed.ERRO,
+        EstadoASG.REPLAY: EstadoFeed.VIVO,
+    }[estado]
+    livro = (
+        None
+        if estado in {EstadoASG.SEM_BOOK, EstadoASG.ERRO}
+        else BookSnapshot(
+            _T0_EVIDENCIA_ASG,
+            "WDOV26",
+            tuple(BookLevel(5_086 - indice, 360 - indice * 32, 4 + indice)
+                  for indice in range(6)),
+            tuple(BookLevel(5_087 + indice, 332 - indice * 27, 3 + indice)
+                  for indice in range(6)),
+        )
+    )
+    return Instantaneo(
+        estado=feed,
+        ultimo_preco=5_086,
+        primeiro_preco=5_074,
+        volume_sessao=18_420,
+        delta_sessao=340,
+        volume_nao_atribuido=0,
+        ultimo_evento_ns=_T0_EVIDENCIA_ASG,
+        atraso_s=3.3 if estado is EstadoASG.ATRASADO else 0.0,
+        contadores=Contadores(trades=184_221, snapshots=612, deltas=4_812),
+        novos_trades=tuple(
+            ItemTape(_T0_EVIDENCIA_ASG - indice * 75_000_000, 5_086 + (indice % 2),
+                     8 + indice * 3, 1 if indice % 3 else -1)
+            for indice in range(8)
+        ),
+        livro=livro,
+    )
+
+
+def aplicar_fixture_asg(janela: JanelaFluxo, estado: EstadoASG) -> None:
+    """Aplica a fixture em todas as regioes globais da janela visivel."""
+
+    replay = estado is EstadoASG.REPLAY
+    janela.definir_estado_replay(
+        EstadoReplay(
+            ativo=replay,
+            symbol=janela.simbolo,
+            data=date(2026, 4, 26),
+            inicio_ns=_T0_EVIDENCIA_ASG - 1_800_000_000_000,
+            fim_ns=_T0_EVIDENCIA_ASG + 1_800_000_000_000,
+            posicao_ns=_T0_EVIDENCIA_ASG,
+            velocidade=2.0,
+        )
+    )
+    instantaneo = instantaneo_fixture_asg(estado)
+    janela.topo.definir_modo(f"FIXTURE SINTETICA · {estado.value}", replay=replay)
+    janela.asg.aplicar(quadro_evidencia_asg(estado))
+    janela.asg.aplicar_mercado(instantaneo)
+    janela._aplicar_estado_global(instantaneo, estado)
 
 
 def ressalva_da_config(config: ConfigOperacao) -> tuple[str, str]:
@@ -381,8 +465,8 @@ def _parser():
         action="store_true",
         dest="retrato_estados_asg",
         help=(
-            "com --retrato, captura a janela completa ASG-like nos cenarios "
-            "congelados AO VIVO, ATRASADO, SEM BOOK, ERRO e REPLAY"
+            "com --retrato, captura fixtures sinteticas e rotuladas da janela "
+            "ASG-like em AO VIVO, ATRASADO, SEM BOOK, ERRO e REPLAY"
         ),
     )
     g.add_argument(
@@ -570,7 +654,10 @@ def main(argv: list[str] | None = None) -> int:
             if atualizar_dados:
                 janela.desenhar_agora()
             else:
-                for painel in janela.asg.paineis:
+                # A fixture ja aplicou o snapshot global; ainda precisamos
+                # fechar os backings dos tres paineis brutos reais, que nao
+                # pertencem a ``paineis`` por tambem servirem ao layout.
+                for painel in janela.asg.todos_paineis:
                     painel._quadro()
             caminho.parent.mkdir(parents=True, exist_ok=True)
             janela.grab().save(str(caminho))
@@ -621,18 +708,7 @@ def main(argv: list[str] | None = None) -> int:
                 EstadoASG.REPLAY,
             ):
                 janela.resize(args.largura, args.altura)
-                janela.definir_estado_replay(
-                    EstadoReplay(
-                        ativo=estado is EstadoASG.REPLAY,
-                        symbol=config.symbol,
-                        data=date(2026, 4, 26),
-                        inicio_ns=_T0_EVIDENCIA_ASG - 1_800_000_000_000,
-                        fim_ns=_T0_EVIDENCIA_ASG + 1_800_000_000_000,
-                        posicao_ns=_T0_EVIDENCIA_ASG,
-                        velocidade=2.0,
-                    )
-                )
-                janela.asg.aplicar(quadro_evidencia_asg(estado))
+                aplicar_fixture_asg(janela, estado)
                 aplicacao.processEvents()
                 seguro = estado.name.lower()
                 _salvar(

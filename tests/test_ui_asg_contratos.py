@@ -11,6 +11,7 @@ pytest.importorskip("PySide6.QtWidgets", reason="PySide6 nao instalado")
 
 from fluxopro.ui.paineis.asg import (  # noqa: E402
     ConfiancaASG,
+    ContextoBrutoASGSnapshot,
     DadosASGSnapshot,
     DecisaoASGSnapshot,
     DirecaoASG,
@@ -88,6 +89,22 @@ def test_snapshots_sao_congelados_e_normalizam_colecoes_para_tuplas():
     assert isinstance(snapshot.processamento.etapas, tuple)
     assert isinstance(snapshot.matriz.linhas, tuple)
     assert isinstance(snapshot.decisao.gates, tuple)
+
+
+def test_contexto_bruto_exige_o_mesmo_quadro_e_estado_do_asg():
+    snapshot = _workspace()
+    with pytest.raises(ValueError, match="mesmo quadro ASG"):
+        WorkspaceASGSnapshot(
+            T0, snapshot.dados, snapshot.processamento, snapshot.matriz,
+            snapshot.decisao, snapshot.evidencias,
+            contexto_bruto=ContextoBrutoASGSnapshot(T0 + 1, EstadoASG.AO_VIVO),
+        )
+    with pytest.raises(ValueError, match="estado operacional"):
+        WorkspaceASGSnapshot(
+            T0, snapshot.dados, snapshot.processamento, snapshot.matriz,
+            snapshot.decisao, snapshot.evidencias,
+            contexto_bruto=ContextoBrutoASGSnapshot(T0, EstadoASG.ATRASADO),
+        )
     assert isinstance(snapshot.evidencias.itens, tuple)
     with pytest.raises(FrozenInstanceError):
         snapshot.dados.fonte = "OUTRA"  # type: ignore[misc]
