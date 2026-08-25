@@ -23,6 +23,7 @@ from fluxopro.core.eventos import (  # noqa: E402
 )
 from fluxopro.ui.janela import JanelaFluxo  # noqa: E402
 from fluxopro.ui.ponte import EstadoFeed, PonteFluxo  # noqa: E402
+from fluxopro.ui.workspace import WORKSPACE_ASG  # noqa: E402
 
 T0 = 1_700_000_000_000_000_000
 BASE = WDO_GRID.to_ticks(5086.5)
@@ -131,6 +132,45 @@ class TestFaixaDeEstado:
         agora[0] += mod_ponte.LIMITE_DESCONEXAO_S + 1
         janela._tick()
         assert janela._estado_faixa is EstadoFeed.SEM_FEED
+
+
+class TestASGR6:
+    def test_ctrl5_tem_retrato_bloqueado_antes_do_primeiro_tick(self, montagem_ui, qapp):
+        _, _, janela = montagem_ui
+        janela.aplicar_workspace(WORKSPACE_ASG)
+        qapp.processEvents()
+        assert janela._area_operacional.currentWidget() is janela.asg
+        assert janela.asg._snapshot is not None
+        for painel in janela.asg.paineis:
+            painel._quadro()
+        assert "AGUARDANDO" in " ".join(janela.asg.contexto_bruto.textos_visiveis())
+
+    @pytest.mark.parametrize(
+        ("estado_asg", "estado_global"),
+        [
+            ("AO_VIVO", EstadoFeed.VIVO),
+            ("ATRASADO", EstadoFeed.ATRASADO),
+            ("SEM_BOOK", EstadoFeed.SEM_BOOK),
+            ("ERRO", EstadoFeed.ERRO),
+            ("REPLAY", EstadoFeed.VIVO),
+        ],
+    )
+    def test_fixture_de_estados_sincroniza_topo_rodape_tarja_e_asg(
+        self, montagem_ui, estado_asg, estado_global
+    ):
+        from fluxopro.ui.paineis.asg import EstadoASG
+        from scripts.painel import aplicar_fixture_asg
+
+        _, _, janela = montagem_ui
+        estado = EstadoASG[estado_asg]
+        aplicar_fixture_asg(janela, estado)
+
+        assert janela.topo._estado is estado_global
+        assert janela._estado_faixa is estado_global
+        assert estado.value in janela.rodape._texto_esquerda
+        assert all(estado.value in " ".join(painel.textos_visiveis())
+                   for painel in janela.asg.paineis)
+        assert janela.tarja_replay.isVisible() is (estado is EstadoASG.REPLAY)
 
 
 class TestFechamento:

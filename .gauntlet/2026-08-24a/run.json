@@ -1,0 +1,23 @@
+{
+  "runId": "2026-08-24a",
+  "status": "active",
+  "formalWorkflowAvailable": false,
+  "models": {
+    "decomposer": "inherited",
+    "builder": "inherited",
+    "critic": "inherited"
+  },
+  "budget": {
+    "agentRunsCeiling": 60,
+    "outputTokensTarget": 1000000
+  },
+  "bar_name": "ASG-like Reference Pack v1",
+  "bar_slug": "asg-like-reference-pack-v1",
+  "product_slug": "operador-b3-asg-like",
+  "parts": {
+    "market-core": "builder-market-core",
+    "feed-health": "builder-feed-health",
+    "workspace-ui": "builder-workspace-ui",
+    "shadow-audit": "builder-shadow-audit"
+  }
+}

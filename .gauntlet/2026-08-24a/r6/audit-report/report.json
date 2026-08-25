@@ -1,0 +1,22 @@
+{
+  "status": "SKIPPED",
+  "status_ordens": "PASS",
+  "status_shadow": "SKIPPED",
+  "arquivos_python_inspecionados": 178,
+  "particoes_shadow_inspecionadas": 0,
+  "registros_shadow_inspecionados": 0,
+  "achados": [],
+  "politica_promocao": {
+    "status": "BLOQUEADA_POR_PADRAO",
+    "versao": "human-gate-v1",
+    "aplicacao_automatica": false,
+    "min_pregoes": 20,
+    "min_amostras": 10000,
+    "walk_forward_obrigatorio": true,
+    "limite_inferior_ci_deve_superar_baseline": true,
+    "degradacao_guardrail_maxima": 0.05,
+    "aprovacao_humana_obrigatoria": true,
+    "config_versionada_obrigatoria": true,
+    "rollback_testado_obrigatorio": true
+  }
+}

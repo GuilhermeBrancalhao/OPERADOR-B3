@@ -136,7 +136,10 @@ def construir_parser() -> argparse.ArgumentParser:
     g_cal = p.add_argument_group("calibracao do motor de sinais")
     g_cal.add_argument(
         "--dominancia-minima", type=float, dest="dominancia_minima",
-        help=f"corte de 'direcional' (default {ConfigMotorSinais.dominancia_minima})",
+        help=(
+            "corte de 'direcional' "
+            f"(default {ConfigMotorSinais().dominancia_minima})"
+        ),
     )
     g_cal.add_argument(
         "--janela-dominancia-s", type=float, dest="janela_dominancia_s",

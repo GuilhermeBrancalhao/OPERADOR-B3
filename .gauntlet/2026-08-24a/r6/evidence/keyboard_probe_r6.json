@@ -1,0 +1,101 @@
+{
+  "platform": "windows",
+  "timer_stopped_before_ctrl5": true,
+  "snapshot_before_ctrl5": 0,
+  "snapshot_immediate_ctrl5": 1777200000000000000,
+  "immediate_blank": false,
+  "missing_matrix_labels": [],
+  "decision_visible": true,
+  "no_orders_banner": true,
+  "real_context": [
+    "PainelDOM",
+    "PainelTape",
+    "PainelBookmap"
+  ],
+  "window_size": [
+    1280,
+    720
+  ],
+  "historical_workspaces": [
+    {
+      "shortcut": "Ctrl+1",
+      "workspace": "Fluxo",
+      "expected": "Fluxo",
+      "size": [
+        1280,
+        720
+      ],
+      "visible_docks": [
+        "conduto",
+        "delta",
+        "dom",
+        "footprint",
+        "hud",
+        "matriz",
+        "metodo",
+        "perfil",
+        "players",
+        "regras",
+        "tape"
+      ]
+    },
+    {
+      "shortcut": "Ctrl+2",
+      "workspace": "Book & Tape",
+      "expected": "Book & Tape",
+      "size": [
+        1280,
+        720
+      ],
+      "visible_docks": [
+        "conduto",
+        "dom",
+        "hud",
+        "matriz",
+        "metodo",
+        "players",
+        "regras",
+        "tape"
+      ]
+    },
+    {
+      "shortcut": "Ctrl+3",
+      "workspace": "Bookmap",
+      "expected": "Bookmap",
+      "size": [
+        1280,
+        720
+      ],
+      "visible_docks": [
+        "bookmap",
+        "conduto",
+        "delta",
+        "hud",
+        "metodo",
+        "tape"
+      ]
+    },
+    {
+      "shortcut": "Ctrl+4",
+      "workspace": "Revisão",
+      "expected": "Revisão",
+      "size": [
+        1280,
+        720
+      ],
+      "visible_docks": [
+        "conduto",
+        "delta",
+        "footprint",
+        "matriz",
+        "metodo",
+        "perfil",
+        "regras",
+        "replay",
+        "tape",
+        "trilha"
+      ]
+    }
+  ],
+  "classification": "native_ui_keyboard_integration_not_external_e2e"
+}

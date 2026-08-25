@@ -48,9 +48,11 @@ mínimo — ver a docstring daquele módulo). O que esta camada faz é duas cois
 
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Callable
 
 from fluxopro.analytics.agressao import MedidorAgressao
@@ -71,16 +73,37 @@ from fluxopro.analytics.volume_profile import (
 from fluxopro.analytics.vwap import VWAP
 from fluxopro.app.config import (
     PRIORIDADE_ANALYTICS,
+    PRIORIDADE_ASG,
+    PRIORIDADE_FEED_QUALITY,
+    PRIORIDADE_MAKER,
     PRIORIDADE_METODO,
     PRIORIDADE_MICRO,
     PRIORIDADE_MOTOR,
     PRIORIDADE_PERFIL_SESSAO,
     PRIORIDADE_SAIDA,
     ConfigOperacao,
+    FonteDados,
+)
+from fluxopro.app.shadow_runtime import AsyncShadowWriter, ShadowRuntimeSnapshot
+from fluxopro.asg import (
+    DecisionSnapshot,
+    LeituraASG,
+    MakerProxy,
+    MakerProxySnapshot,
+    MotorDecisaoASG,
+    ProcedenciaASG,
+    RegiaoOperacional,
 )
 from fluxopro.core.barramento import Barramento
 from fluxopro.core.estado_mercado import EstadoMercado
 from fluxopro.core.eventos import BookDelta, BookSnapshot, Trade
+from fluxopro.dados.feed_observavel import FeedQualityMonitor, FeedQualityObserver
+from fluxopro.dados.qualidade import (
+    AggressorQuality,
+    BookKind,
+    FeedQualitySnapshot,
+    FeedSource,
+)
 from fluxopro.metodologia.leitura import LeitorMetodo, LeituraMetodo
 from fluxopro.microestrutura.detectores import (
     Deteccao,
@@ -102,6 +125,7 @@ from fluxopro.microestrutura.inferencia_mbp import InferidorMBP
 from fluxopro.microestrutura.livro_mbo import CruzamentoLivro, LivroMBO
 from fluxopro.microestrutura.perfil_player import PerfilPlayer
 from fluxopro.motor.sinais import EstagioSinal, MotorSinais, Sinal
+from fluxopro.shadow import AmostraFeatures, SidecarShadow
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,6 +322,82 @@ class RetratoAnalytics:
     n_colunas: int
 
 
+@dataclass(frozen=True, slots=True)
+class RetratoASG:
+    """Um quadro ASG-like inteiro, congelado na thread publicadora.
+
+    A UI recebe uma unica referencia e nunca consulta Maker, feed, metodo ou
+    decisao separadamente. Assim, todos os numeros do quadro pertencem ao
+    mesmo evento de mercado, mesmo quando a fonte publica noutra thread.
+    """
+
+    timestamp_ns: int
+    symbol: str
+    feed_quality: FeedQualitySnapshot
+    maker: MakerProxySnapshot
+    leitura: LeituraASG
+    regiao: RegiaoOperacional
+    decisao: DecisionSnapshot
+
+    def __post_init__(self) -> None:
+        carimbos = {
+            self.timestamp_ns,
+            self.maker.timestamp_ns,
+            self.leitura.timestamp_ns,
+            self.regiao.timestamp_ns,
+            self.decisao.timestamp_ns,
+            self.feed_quality.market_timestamp_ns,
+        }
+        if carimbos != {self.timestamp_ns}:
+            raise ValueError("RetratoASG exige um unico timestamp de mercado")
+        simbolos = {
+            self.symbol,
+            self.maker.symbol,
+            self.leitura.symbol,
+            self.regiao.symbol,
+            self.decisao.symbol,
+            self.feed_quality.symbol,
+        }
+        if simbolos != {self.symbol}:
+            raise ValueError("RetratoASG exige um unico symbol")
+
+
+def _contrato_da_fonte(fonte: FonteDados) -> tuple[FeedSource, BookKind, AggressorQuality]:
+    """Metadados declarados das fontes existentes; nunca inferidos do texto."""
+
+    if fonte is FonteDados.SIMULADOR:
+        return FeedSource.SIMULATOR, BookKind.MBP, AggressorQuality.NATIVE
+    if fonte is FonteDados.REPLAY:
+        # O replay CSV pode conter somente tape. O observador eleva para MBP
+        # quando um BookSnapshot/BookDelta real for visto.
+        return FeedSource.REPLAY, BookKind.NONE, AggressorQuality.UNKNOWN
+    if fonte is FonteDados.MT5:
+        # Disponibilidade declarada não é disponibilidade observada:
+        # market_book_add/get podem falhar. O monitor eleva para MBP somente
+        # após receber um BookSnapshot/BookDelta válido.
+        return FeedSource.MT5, BookKind.NONE, AggressorQuality.INFERRED
+    raise ValueError(f"fonte sem contrato de qualidade: {fonte!r}")
+
+
+def _run_id_replay_deterministico(config: ConfigOperacao) -> str:
+    """Identidade estável do replay quando o chamador não informou uma.
+
+    A fonte, o símbolo e o contrato shadow (incluindo sua versão) delimitam a
+    unidade reproduzível disponível nesta fronteira. Integrações que conheçam
+    o recorte físico devem passar ``shadow_run_id`` explícito à sessão.
+    """
+    identidade = {
+        "fonte": config.fonte.value,
+        "symbol": config.symbol,
+        "shadow": asdict(config.shadow),
+    }
+    serializado = json.dumps(
+        identidade, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+    )
+    digest = hashlib.sha256(serializado.encode("utf-8")).hexdigest()
+    return f"replay-{digest[:56]}"
+
+
 def _congelar_candle(footprint: Footprint) -> Footprint:
     """Cópia do candle VIVO — o único que a thread da fonte ainda muta.
 
@@ -408,6 +508,8 @@ class SessaoFluxo:
         config: ConfigOperacao | None = None,
         ao_sinal: Callable[[Sinal], None] | None = None,
         ao_deteccao: Callable[[DeteccaoAnotada], None] | None = None,
+        *,
+        shadow_run_id: str | None = None,
     ) -> None:
         self.barramento = barramento
         self.config = config if config is not None else ConfigOperacao()
@@ -418,6 +520,14 @@ class SessaoFluxo:
 
         cfg = self.config
         symbol = cfg.symbol
+        # Falhar antes da primeira assinatura evita deixar uma sessão parcial
+        # viva no barramento quando a configuração opt-in é incoerente.
+        if type(cfg.intervalo_retrato_asg_ns) is not int or cfg.intervalo_retrato_asg_ns < 1:
+            raise ValueError("intervalo_retrato_asg_ns deve ser inteiro positivo")
+        if cfg.ligar_shadow_learning and not cfg.ligar_leitura_asg:
+            raise ValueError("ligar_shadow_learning exige ligar_leitura_asg=True")
+        if cfg.ligar_shadow_learning and cfg.shadow_dir is None:
+            raise ValueError("ligar_shadow_learning exige shadow_dir")
 
         # ------------------------------------------------------------------
         # Faixa 0 — núcleo primeiro, analytics depois. A ordem AQUI é a única
@@ -442,6 +552,28 @@ class SessaoFluxo:
             self.agressao = MedidorAgressao(barramento, symbol, cfg.agressao)
             self.vwap = VWAP(barramento, symbol, cfg.vwap)
             self.brokers = RankingCorretoras(barramento, symbol, cfg.brokers)
+
+        # ------------------------------------------------------------------
+        # Saúde do feed — canal lateral, observador e sem publicação aninhada.
+        # Maker e LeituraASG dependem dela, portanto a ativam implicitamente.
+        # ------------------------------------------------------------------
+        self.feed_monitor: FeedQualityMonitor | None = None
+        self.feed_observer: FeedQualityObserver | None = None
+        if cfg.ligar_feed_quality or cfg.ligar_maker_proxy or cfg.ligar_leitura_asg:
+            fonte_feed, tipo_book, qualidade_agressor = _contrato_da_fonte(cfg.fonte)
+            self.feed_monitor = FeedQualityMonitor(
+                source=fonte_feed,
+                book_kind=tipo_book,
+                aggressor_quality=qualidade_agressor,
+                symbol=symbol,
+                config=cfg.feed_quality,
+            )
+            self.feed_observer = FeedQualityObserver(
+                barramento,
+                self.feed_monitor,
+                priority=PRIORIDADE_FEED_QUALITY,
+            )
+            self.feed_observer.iniciar()
 
         # ------------------------------------------------------------------
         # Perfil de sessão — o que o motor lê (ver docstring do módulo).
@@ -497,6 +629,16 @@ class SessaoFluxo:
         )
 
         # ------------------------------------------------------------------
+        # MakerProxy — consumidor causal da microestrutura e do tape.
+        # ------------------------------------------------------------------
+        self.maker_proxy: MakerProxy | None = None
+        if cfg.ligar_maker_proxy or cfg.ligar_leitura_asg:
+            self.maker_proxy = MakerProxy(symbol, cfg.maker_proxy)
+            barramento.assinar(
+                Trade, self._ao_trade_maker, prioridade=PRIORIDADE_MAKER
+            )
+
+        # ------------------------------------------------------------------
         # Motor de confluência.
         # ------------------------------------------------------------------
         self.motor: MotorSinais | None = None
@@ -505,6 +647,7 @@ class SessaoFluxo:
             barramento.assinar(Trade, self._ao_trade_motor, prioridade=PRIORIDADE_MOTOR)
 
         self._ultimo_estagio: tuple[EstagioSinal, object] | None = None
+        self._sinal_corrente: Sinal | None = None
 
         # ------------------------------------------------------------------
         # Método — os componentes de `fluxopro/metodologia/`, o último
@@ -521,6 +664,37 @@ class SessaoFluxo:
             self.metodo = LeitorMetodo(symbol, cfg.metodologia)
             barramento.assinar(
                 Trade, self._ao_trade_metodo, prioridade=PRIORIDADE_METODO
+            )
+
+        # ------------------------------------------------------------------
+        # Matriz/decisão e sidecar shadow — último produtor antes da saída.
+        # ------------------------------------------------------------------
+        self.motor_decisao_asg: MotorDecisaoASG | None = None
+        self.shadow: SidecarShadow | None = None
+        self.shadow_writer: AsyncShadowWriter | None = None
+        self._lock_retrato_asg = threading.Lock()
+        self._retrato_asg: RetratoASG | None = None
+        self._ultimo_retrato_asg_timestamp_ns: int | None = None
+        if cfg.ligar_shadow_learning:
+            assert cfg.shadow_dir is not None
+            run_id = shadow_run_id
+            reutilizar_finalizado = False
+            if cfg.fonte is FonteDados.REPLAY:
+                run_id = run_id or _run_id_replay_deterministico(cfg)
+                reutilizar_finalizado = True
+            self.shadow = SidecarShadow(
+                cfg.shadow_dir,
+                cfg.shadow,
+                run_id=run_id,
+                reutilizar_finalizado=reutilizar_finalizado,
+            )
+            self.shadow_writer = AsyncShadowWriter(
+                self.shadow, capacity=cfg.shadow_queue_capacity
+            )
+        if cfg.ligar_leitura_asg:
+            self.motor_decisao_asg = MotorDecisaoASG(cfg.decisao_asg)
+            barramento.assinar(
+                Trade, self._ao_trade_asg, prioridade=PRIORIDADE_ASG
             )
 
         # ------------------------------------------------------------------
@@ -595,12 +769,26 @@ class SessaoFluxo:
     def _ao_trade_perfil_player(self, trade: Trade) -> None:
         self.perfil_player.ao_trade(trade)
 
+    def _ao_trade_maker(self, trade: Trade) -> None:
+        """Atualiza feed e tape no Maker usando somente o relógio do mercado."""
+
+        assert self.maker_proxy is not None
+        if trade.symbol != self.config.symbol:
+            return
+        if self.feed_monitor is not None:
+            self.maker_proxy.ingerir_feed_quality(self.feed_monitor.snapshot())
+        self.maker_proxy.ingerir_trade(trade)
+
     def _ao_trade_motor(self, trade: Trade) -> None:
         assert self.motor is not None
         if trade.symbol != self.config.symbol:
             return
         self.contadores.n_trades_motor += 1
         sinal = self.motor.ao_trade(trade)
+        # Estado corrente e emissão são contratos distintos. A matriz precisa
+        # do sinal deste trade mesmo quando o callback externo é suprimido por
+        # `emitir_apenas_mudanca_de_estagio`.
+        self._sinal_corrente = sinal
         chave = (sinal.estagio, sinal.direcao)
         if self.config.emitir_apenas_mudanca_de_estagio and chave == self._ultimo_estagio:
             return
@@ -640,6 +828,167 @@ class SessaoFluxo:
             return None
         return self.metodo.ler()
 
+    def feed_quality(self) -> FeedQualitySnapshot | None:
+        """Última saúde imutável, lida diretamente e sem publicar no bus."""
+
+        return self.feed_monitor.snapshot() if self.feed_monitor is not None else None
+
+    def retrato_asg(self) -> RetratoASG | None:
+        """Último quadro ASG-like consistente; não drena e não toca em vivos."""
+
+        with self._lock_retrato_asg:
+            return self._retrato_asg
+
+    def _regiao_operacional(self, trade: Trade, maker: MakerProxySnapshot) -> RegiaoOperacional:
+        area = self.motor.regiao_atual(trade.timestamp_ns) if self.motor is not None else None
+        if area is None:
+            return RegiaoOperacional(
+                symbol=trade.symbol,
+                timestamp_ns=trade.timestamp_ns,
+                inicio_ticks=trade.price,
+                fim_ticks=trade.price,
+                nome="SEM REGIAO",
+                confianca=0.0,
+                procedencia=ProcedenciaASG.DESCONHECIDA,
+                qualidade="SEM_REGIAO",
+                valida=False,
+            )
+        val, vah = area
+        invalidacao = None
+        if maker.direcao is not None:
+            invalidacao = val if maker.direcao.value == "BUY" else vah
+        return RegiaoOperacional(
+            symbol=trade.symbol,
+            timestamp_ns=trade.timestamp_ns,
+            inicio_ticks=val,
+            fim_ticks=vah,
+            nome="VALUE AREA DA SESSAO",
+            confianca=1.0,
+            procedencia=ProcedenciaASG.OBSERVADA,
+            qualidade="DERIVADA_DO_VOLUME_OBSERVADO",
+            valida=True,
+            invalidacao_ticks=invalidacao,
+        )
+
+    def _ao_trade_asg(self, trade: Trade) -> None:
+        """Congela matriz e decisão do mesmo trade, na thread publicadora."""
+
+        assert self.maker_proxy is not None
+        assert self.motor_decisao_asg is not None
+        if trade.symbol != self.config.symbol:
+            return
+        ultimo = self._ultimo_retrato_asg_timestamp_ns
+        if (
+            ultimo is not None
+            and trade.timestamp_ns - ultimo < self.config.intervalo_retrato_asg_ns
+        ):
+            return
+        feed = self.feed_monitor.snapshot() if self.feed_monitor is not None else None
+        maker = self.maker_proxy.snapshot()
+        # Evento regressivo/duplicado não pode costurar um quadro novo com o
+        # estado causal anterior. O monitor já registra a anomalia.
+        if maker.timestamp_ns != trade.timestamp_ns:
+            return
+        if feed is None or feed.market_timestamp_ns != trade.timestamp_ns:
+            return
+
+        metodo = self.metodo.ler() if self.metodo is not None else None
+        metodo_map = (
+            asdict(metodo)
+            if metodo is not None
+            else {"timestamp_ns": trade.timestamp_ns, "symbol": trade.symbol}
+        )
+        metodo_map.setdefault("symbol", trade.symbol)
+        sinal = self._sinal_corrente
+        sinal_map = (
+            asdict(sinal)
+            if sinal is not None and sinal.timestamp_ns == trade.timestamp_ns
+            else {"timestamp_ns": trade.timestamp_ns, "symbol": trade.symbol}
+        )
+        feed_map = asdict(feed)
+
+        divergencias: list[str] = []
+        if sinal is not None and sinal.direcao is not None and maker.direcao is not None:
+            if sinal.direcao is not maker.direcao:
+                divergencias.append("MAKER_DIVERGE_DO_MOTOR")
+        if metodo is not None and metodo.placar.lado is not None and maker.direcao is not None:
+            if metodo.placar.lado is not maker.direcao:
+                divergencias.append("MAKER_DIVERGE_DO_PLACAR")
+
+        leitura = LeituraASG.do_maker(
+            maker,
+            metodo=metodo_map,
+            sinal=sinal_map,
+            feed_quality=feed_map,
+            divergencias=tuple(divergencias),
+            provenance=(
+                "maker:proxy-independente",
+                "metodo:operador-b3",
+                f"feed:{feed.source.value}/{feed.book_kind.value}",
+            ),
+        )
+        regiao = self._regiao_operacional(trade, maker)
+        decisao = self.motor_decisao_asg.avaliar(leitura, regiao, trade.price)
+        retrato = RetratoASG(
+            timestamp_ns=trade.timestamp_ns,
+            symbol=trade.symbol,
+            feed_quality=feed,
+            maker=maker,
+            leitura=leitura,
+            regiao=regiao,
+            decisao=decisao,
+        )
+        with self._lock_retrato_asg:
+            self._retrato_asg = retrato
+        self._ultimo_retrato_asg_timestamp_ns = trade.timestamp_ns
+        self._observar_shadow(trade, retrato)
+
+    def _observar_shadow(self, trade: Trade, retrato: RetratoASG) -> None:
+        if self.shadow is None:
+            return
+        decisao = retrato.decisao
+        proposta = decisao.proposta_risco
+        estado = (
+            "CONFIRMACAO" if decisao.confirmacao
+            else "PRE_SINAL" if decisao.pre_sinal
+            else retrato.maker.estado.value
+        )
+        amostra = AmostraFeatures(
+            timestamp_ns=trade.timestamp_ns,
+            symbol=trade.symbol,
+            price_ticks=trade.price,
+            estado=estado,
+            direcao=decisao.direcao,
+            features={
+                "maker": retrato.maker.como_dict(),
+                "matriz": retrato.leitura.como_dict(),
+                "decisao": {
+                    "nivel": decisao.nivel.value,
+                    "pre_sinal": decisao.pre_sinal,
+                    "confirmacao": decisao.confirmacao,
+                    "bloqueios": decisao.bloqueios,
+                    "confianca": decisao.confianca,
+                },
+            },
+            qualidade_origem={
+                "state": retrato.feed_quality.state.value,
+                "source": retrato.feed_quality.source.value,
+                "book_kind": retrato.feed_quality.book_kind.value,
+                "latency_ns": retrato.feed_quality.latency_ns,
+                "anomalies": retrato.feed_quality.anomalies,
+            },
+            alvo_preco_ticks=proposta.a1_ticks if proposta is not None else None,
+            invalidacao_preco_ticks=(
+                proposta.stop_ticks if proposta is not None else None
+            ),
+        )
+        assert self.shadow_writer is not None
+        self.shadow_writer.submit(amostra)
+
+    def shadow_status(self) -> ShadowRuntimeSnapshot | None:
+        """Telemetria explícita; erro do sidecar nunca vira erro do mercado."""
+        return None if self.shadow_writer is None else self.shadow_writer.snapshot()
+
     # ------------------------------------------------------------------
     # Retrato de analytics
     # ------------------------------------------------------------------
@@ -663,12 +1012,17 @@ class SessaoFluxo:
         que escreve. Montar por trade seria pagar O(níveis) 5.000 vezes por
         segundo para desenhar 62.
         """
-        if not self._retrato_pedido:
-            return
-        retrato = self._montar_retrato(self._retrato_n_colunas)
+        # A UI pode pedir um novo retrato enquanto o produtor congela o
+        # anterior. A solicitação precisa ser consumida atomicamente; limpar
+        # a flag depois da construção perderia esse pedido intercalado.
+        with self._lock_retrato:
+            if not self._retrato_pedido:
+                return
+            n_colunas = self._retrato_n_colunas
+            self._retrato_pedido = False
+        retrato = self._montar_retrato(n_colunas)
         with self._lock_retrato:
             self._retrato_analytics = retrato
-            self._retrato_pedido = False
 
     def retrato_de_analytics(self, n_colunas: int = 0) -> RetratoAnalytics | None:
         """Footprint, perfil e delta num instante só — a UI chama isto.
@@ -840,6 +1194,13 @@ class SessaoFluxo:
         cont.deteccoes_por_tipo[deteccao.tipo] = (
             cont.deteccoes_por_tipo.get(deteccao.tipo, 0) + 1
         )
+        # O MakerProxy é uma síntese de tape + microestrutura. Antes deste
+        # elo, as detecções eram auditáveis no callback externo, mas nunca
+        # chegavam à síntese que a UI e a decisão consultiva exibem. A entrega
+        # ocorre na mesma thread publicadora e preserva o timestamp causal do
+        # evento; o Proxy descarta regressões e só aceita tipos mapeados.
+        if self.maker_proxy is not None:
+            self.maker_proxy.ao_deteccao(deteccao)
         if self._ao_deteccao is not None:
             self._ao_deteccao(anotada)
 
@@ -975,6 +1336,14 @@ class SessaoFluxo:
         cfg = self.config
         symbol = cfg.symbol
 
+        # Barreira ANTES de liberar qualquer estado da sessão seguinte. O
+        # writer confirma que censurou os horizontes pendentes em ordem; se
+        # não puder confirmar, ele se desliga de forma visível e não aceita
+        # novas amostras. Assim, fila cheia nunca transforma o pregão seguinte
+        # em futuro de um label anterior.
+        if self.shadow_writer is not None:
+            self.shadow_writer.reset_session(symbol)
+
         # (a) quem tem API própria
         self.estado.iniciar_nova_sessao(timestamp_ns)
         if self.delta is not None:
@@ -1034,6 +1403,12 @@ class SessaoFluxo:
             self._ligar_livro(self.livro)
 
         self._ultimo_estagio = None
+        self._sinal_corrente = None
+        if self.maker_proxy is not None:
+            self.maker_proxy.iniciar_nova_sessao()
+        with self._lock_retrato_asg:
+            self._retrato_asg = None
+        self._ultimo_retrato_asg_timestamp_ns = None
 
         # O retrato guardado é do pregão que acabou. Mantê-lo faria a UI
         # desenhar o footprint de ontem no primeiro quadro de hoje — a mesma
@@ -1056,6 +1431,10 @@ class SessaoFluxo:
             if base is None:
                 base = self.contadores.ts_ultimo_ns or 0
             self.inferidor.drenar(base + self.config.inferencia.janela_reconciliacao_ns + 1)
+        if self.shadow_writer is not None:
+            self.shadow_writer.close()
+        if self.feed_observer is not None:
+            self.feed_observer.parar()
         self._perf_fim = time.perf_counter()
 
     # ------------------------------------------------------------------

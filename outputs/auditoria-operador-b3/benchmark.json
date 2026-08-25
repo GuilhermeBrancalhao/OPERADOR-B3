@@ -1,0 +1,113 @@
+{
+  "schema": "operador-b3-benchmark-asg-v1",
+  "passos": 1500,
+  "eventos_por_execucao": 3000,
+  "execucoes_por_variante": 3,
+  "resumo": {
+    "barra_eventos_s": 10000,
+    "limite_overhead_maker_percent": 10.0,
+    "variantes": {
+      "baseline_observavel": {
+        "execucoes": 3,
+        "eventos_por_execucao": 3000,
+        "eventos_s_mediana": 12018.031855188827,
+        "eventos_s_min": 11954.763176136112,
+        "micros_evento_p50": 83.20829999865964,
+        "micros_evento_p95": 83.60462999989977
+      },
+      "maker_proxy": {
+        "execucoes": 3,
+        "eventos_por_execucao": 3000,
+        "eventos_s_mediana": 9947.767588342464,
+        "eventos_s_min": 8763.458481258791,
+        "micros_evento_p50": 100.52506666640208,
+        "micros_evento_p95": 112.75168666785854
+      },
+      "asg_completo": {
+        "execucoes": 3,
+        "eventos_por_execucao": 3000,
+        "eventos_s_mediana": 9063.41125046806,
+        "eventos_s_min": 4770.164718558856,
+        "micros_evento_p50": 110.33373333339114,
+        "micros_evento_p95": 199.70610333330114
+      }
+    },
+    "overhead_maker_percent": 20.811345344180076,
+    "throughput_pass": false,
+    "maker_overhead_pass": false
+  },
+  "medicoes": [
+    {
+      "variante": "baseline_observavel",
+      "repeticao": 1,
+      "eventos": 3000,
+      "segundos": 0.24962489999597892,
+      "eventos_s": 12018.031855188827,
+      "micros_evento": 83.20829999865964
+    },
+    {
+      "variante": "maker_proxy",
+      "repeticao": 1,
+      "eventos": 3000,
+      "segundos": 0.29995169999892823,
+      "eventos_s": 10001.610259287476,
+      "micros_evento": 99.98389999964274
+    },
+    {
+      "variante": "asg_completo",
+      "repeticao": 1,
+      "eventos": 3000,
+      "segundos": 0.3250052999937907,
+      "eventos_s": 9230.618700856005,
+      "micros_evento": 108.33509999793023
+    },
+    {
+      "variante": "baseline_observavel",
+      "repeticao": 2,
+      "eventos": 3000,
+      "segundos": 0.24805819999892265,
+      "eventos_s": 12093.936019905932,
+      "micros_evento": 82.68606666630755
+    },
+    {
+      "variante": "maker_proxy",
+      "repeticao": 2,
+      "eventos": 3000,
+      "segundos": 0.30157519999920623,
+      "eventos_s": 9947.767588342464,
+      "micros_evento": 100.52506666640208
+    },
+    {
+      "variante": "asg_completo",
+      "repeticao": 2,
+      "eventos": 3000,
+      "segundos": 0.3310012000001734,
+      "eventos_s": 9063.41125046806,
+      "micros_evento": 110.33373333339114
+    },
+    {
+      "variante": "baseline_observavel",
+      "repeticao": 3,
+      "eventos": 3000,
+      "segundos": 0.2509460000001127,
+      "eventos_s": 11954.763176136112,
+      "micros_evento": 83.64866666670423
+    },
+    {
+      "variante": "maker_proxy",
+      "repeticao": 3,
+      "eventos": 3000,
+      "segundos": 0.3423306000040611,
+      "eventos_s": 8763.458481258791,
+      "micros_evento": 114.1102000013537
+    },
+    {
+      "variante": "asg_completo",
+      "repeticao": 3,
+      "eventos": 3000,
+      "segundos": 0.6289090999998734,
+      "eventos_s": 4770.164718558856,
+      "micros_evento": 209.63636666662447
+    }
+  ]
+}
