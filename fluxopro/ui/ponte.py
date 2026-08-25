@@ -62,6 +62,8 @@ class EstadoFeed(Enum):
     ATRASADO = "atrasado"          # ultimo evento ha mais de LIMITE_ATRASO_S
     SEM_FEED = "sem_feed"          # mais de LIMITE_DESCONEXAO_S
     ENCERRADO = "encerrado"        # a fonte terminou por conta propria
+    SEM_BOOK = "sem_book"          # transporte vivo, mas sem livro utilizavel
+    ERRO = "erro"                  # falha declarada da fonte/adaptador
 
 
 @dataclass(frozen=True, slots=True)

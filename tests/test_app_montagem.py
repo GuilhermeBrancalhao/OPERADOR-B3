@@ -40,6 +40,7 @@ from fluxopro.core.eventos import WDO_GRID, WIN_GRID, AgressorSide, Trade
 from fluxopro.dados.leitor_gravacao import AdaptadorLeitorGravacao
 from fluxopro.dados.replay import AdaptadorReplay
 from fluxopro.dados.simulador import SimuladorWDO
+from fluxopro.dados.qualidade import BookKind, FeedState
 from fluxopro.gravacao.catalogo import Catalogo
 from fluxopro.metodologia.leitura import ConfigMetodologia
 from fluxopro.microestrutura.detectores import (
@@ -64,6 +65,25 @@ def config_curta(**kwargs) -> ConfigOperacao:
     )
     base.update(kwargs)
     return ConfigOperacao(**base)  # type: ignore[arg-type]
+
+
+def test_montagem_vincula_monitor_ao_ciclo_fisico_mt5_sem_fingir_conexao():
+    montagem = montar(
+        config_curta(fonte=FonteDados.MT5, ligar_feed_quality=True)
+    )
+
+    assert montagem.sessao.feed_monitor is not None
+    assert montagem.fonte._feed_monitor is montagem.sessao.feed_monitor
+    snap = montagem.sessao.feed_monitor.snapshot()
+    assert snap.state is FeedState.STOPPED
+    assert snap.book_kind is BookKind.NONE
+
+
+def test_montagem_preserva_prontidao_das_fontes_locais():
+    montagem = montar(config_curta(ligar_feed_quality=True))
+
+    assert montagem.sessao.feed_monitor is not None
+    assert montagem.sessao.feed_monitor.snapshot().state is FeedState.CONNECTED
 
 
 def donos(barramento, tipo) -> list[tuple[str, str]]:

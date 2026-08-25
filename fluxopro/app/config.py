@@ -95,6 +95,7 @@ from fluxopro.analytics.delta import ConfigDelta
 from fluxopro.analytics.footprint import ConfigFootprint
 from fluxopro.analytics.volume_profile import ConfigVolumeProfile
 from fluxopro.analytics.vwap import ConfigVWAP
+from fluxopro.asg import ConfigMakerProxy, ConfigMotorDecisaoASG
 from fluxopro.core.eventos import WDO_GRID, WIN_GRID, PriceGrid
 from fluxopro.metodologia.leitura import ConfigMetodologia
 from fluxopro.microestrutura.detectores import (
@@ -108,6 +109,8 @@ from fluxopro.microestrutura.detectores import (
 from fluxopro.microestrutura.inferencia_mbp import ConfigInferenciaMBP
 from fluxopro.microestrutura.livro_mbo import ConfigLivroMBO
 from fluxopro.motor.sinais import ConfigMotorSinais
+from fluxopro.dados.feed_observavel import FeedQualityConfig
+from fluxopro.shadow import ConfigShadow
 
 NS_POR_SEGUNDO = 1_000_000_000
 NS_POR_MINUTO = 60 * NS_POR_SEGUNDO
@@ -144,6 +147,15 @@ mesmo trade. Ver "a quarta seta" na docstring do módulo."""
 
 PRIORIDADE_SAIDA = 50
 """Contadores e consumidor de saída — leem o mundo já atualizado."""
+
+PRIORIDADE_FEED_QUALITY = 20
+"""Observador não filtrante da qualidade, depois da aceitação do evento."""
+
+PRIORIDADE_MAKER = 35
+"""MakerProxy — depois de microestrutura/detectores e antes do motor."""
+
+PRIORIDADE_ASG = 47
+"""Snapshot ASG consistente — depois do método e antes da saída."""
 
 
 @unique
@@ -229,6 +241,10 @@ class ConfigOperacao:
 
     motor: ConfigMotorSinais = field(default_factory=ConfigMotorSinais)
     metodologia: ConfigMetodologia = field(default_factory=ConfigMetodologia)
+    feed_quality: FeedQualityConfig = field(default_factory=FeedQualityConfig)
+    maker_proxy: ConfigMakerProxy = field(default_factory=ConfigMakerProxy)
+    decisao_asg: ConfigMotorDecisaoASG = field(default_factory=ConfigMotorDecisaoASG)
+    shadow: ConfigShadow = field(default_factory=ConfigShadow)
     simulador: ConfigSimulador = field(default_factory=ConfigSimulador)
 
     # --- estágios ligáveis ---
@@ -243,6 +259,27 @@ class ConfigOperacao:
     não hook de teste. Desligar tem efeito medível — cinco leituras a menos
     por trade — e é a chave para quem quer só o motor e o footprint.
     `SessaoFluxo.metodo` fica `None`, e nenhum retrato é publicado."""
+
+    ligar_feed_quality: bool = False
+    """Saúde observável do feed. `ligar_leitura_asg` também a ativa."""
+
+    ligar_maker_proxy: bool = False
+    """Proxy independente; desligado por default para preservar o baseline."""
+
+    ligar_leitura_asg: bool = False
+    """Matriz/decisão ASG-like; implica feed quality e MakerProxy na sessão."""
+
+    ligar_shadow_learning: bool = False
+    """Coleta lateral somente quando `shadow_dir` é informado explicitamente."""
+
+    shadow_dir: str | None = None
+    """Raiz do sidecar. `None` impede qualquer escrita mesmo com config criada."""
+
+    shadow_queue_capacity: int = 4_096
+    """Snapshots aguardando o writer; limite evita crescimento pelo pregão."""
+
+    intervalo_retrato_asg_ns: int = 33_333_333
+    """Cadência máxima da matriz consultiva (30 Hz) no relógio de mercado."""
 
     emitir_apenas_mudanca_de_estagio: bool = True
     """Se `True`, um `Sinal` só sai quando (estágio, direção) MUDA. `False`

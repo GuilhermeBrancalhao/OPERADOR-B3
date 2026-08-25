@@ -691,6 +691,16 @@ class MotorSinais:
     # ------------------------------------------------------------------
     # Condição 2 — região de interesse (VAL/VAH cacheados)
     # ------------------------------------------------------------------
+    def regiao_atual(self, timestamp_ns: int) -> tuple[int, int] | None:
+        """Expõe a mesma região cacheada usada pelo motor, sem recalculá-la.
+
+        A decisão ASG-like precisa explicar a região que condicionou o sinal.
+        Uma API pública evita tanto acessar `_regiao` de fora quanto executar
+        um segundo `value_area()` O(n log n) no caminho quente.
+        """
+
+        return self._regiao(timestamp_ns)
+
     def _regiao(self, timestamp_ns: int) -> tuple[int, int] | None:
         """(VAL, VAH) do Volume Profile, com cache.
 

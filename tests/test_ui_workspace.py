@@ -40,7 +40,7 @@ import pytest
 
 pytest.importorskip("PySide6.QtWidgets", reason="PySide6 nao instalado")
 
-from PySide6.QtCore import QRect  # noqa: E402
+from PySide6.QtCore import QRect, Qt  # noqa: E402
 from PySide6.QtGui import QPainter, QPixmap  # noqa: E402
 
 from fluxopro.core.barramento import Barramento  # noqa: E402
@@ -335,6 +335,48 @@ class TestWorkspaces:
         assert bytes(g2) == bytes(geometria)
         assert bytes(e2) == bytes(estado)
         assert extra["densidade"] == "Padrao"
+
+    def test_a_janela_restaura_geometria_e_estado_do_workspace(self, janela, tmp_path, monkeypatch):
+        monkeypatch.setenv("FLUXOPRO_WORKSPACES", str(tmp_path))
+        geometria = janela.saveGeometry()
+        estado = janela._host.saveState()
+        W.salvar("Fluxo", geometria, estado, {})
+        janela._persistir = True
+        recebidas = []
+
+        def restaurar(blob):
+            recebidas.append(bytes(blob))
+            return True
+
+        monkeypatch.setattr(janela, "restoreGeometry", restaurar)
+        retorno = janela._estado_salvo(W.WORKSPACES_DE_FABRICA[0])
+        assert retorno is not None
+        assert recebidas == [bytes(geometria)]
+
+    def test_estado_legado_sem_doca_nexo_nao_quebra_workspace_historico(
+        self, janela, tmp_path, monkeypatch, qapp
+    ):
+        """Um saveState anterior ao NEXO deve continuar abrindo Fluxo."""
+
+        from PySide6.QtWidgets import QDockWidget, QMainWindow, QWidget
+
+        monkeypatch.setenv("FLUXOPRO_WORKSPACES", str(tmp_path))
+        legado = QMainWindow()
+        for chave in ("dom", "tape", "conduto", "matriz", "hud"):
+            doca = QDockWidget(legado)
+            doca.setObjectName("doca_" + chave)
+            doca.setWidget(QWidget())
+            legado.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, doca)
+        estado_legado = legado.saveState()
+        geometria = janela.saveGeometry()
+        W.salvar("Fluxo", geometria, estado_legado, {})
+        janela._persistir = True
+
+        assert janela.workspace_por_atalho(1)
+        qapp.processEvents()
+        assert janela.workspace.nome == "Fluxo"
+        assert janela.docas["dom"].isVisible()
+        assert janela.docas["asg"].isVisible() is False
 
     def test_workspace_inexistente_nao_e_erro(self, tmp_path, monkeypatch):
         monkeypatch.setenv("FLUXOPRO_WORKSPACES", str(tmp_path))

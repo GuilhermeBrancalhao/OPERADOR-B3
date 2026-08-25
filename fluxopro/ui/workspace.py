@@ -89,6 +89,9 @@ ELO_DA_DOCA: dict[str, int] = {
     "hud": ELO_DECISAO,
     "metodo": ELO_DECISAO,
     "regras": ELO_DECISAO,
+    # Camada ASG-like consultiva. Ela resume os quatro elos, mas ocupa a
+    # coluna de decisão ao lado dos painéis originais — nunca os substitui.
+    "asg": ELO_DECISAO,
     # fora da cadeia: transporte e meta. Não têm elo porque não SÃO elo —
     # pô-los num elo qualquer para "completar" o trilho seria mentir sobre a
     # cadeia para poder desenhá-la.
@@ -109,6 +112,9 @@ TITULO_DA_DOCA: dict[str, str] = {
     "hud": "HUD",
     "metodo": "MÉTODO",
     "regras": "REGISTRO DE REGRAS",
+    # A chave ``asg`` é uma ABI interna/persistida; a identidade exibida é
+    # própria e não sugere vínculo, reprodução ou licença de terceiro.
+    "asg": "OPERADOR B3 · NEXO",
     "replay": "REPLAY",
     "trilha": "TRILHA DE EVENTOS",
 }
@@ -129,6 +135,7 @@ class Workspace:
     """1..9, o dígito de `Ctrl+N`."""
     descricao: str
     docas: tuple[str, ...]
+    rotulo: str = ""
 
     def __post_init__(self) -> None:
         if not 1 <= self.atalho <= 9:
@@ -152,6 +159,12 @@ class Workspace:
         que o trilho tem de dizer `ARRANJO LIVRE` em vez de inventar segmento.
         """
         return self.elos_cobertos == frozenset(range(1, N_ELOS + 1))
+
+    @property
+    def nome_exibicao(self) -> str:
+        """Nome público da sala, sem quebrar o identificador persistido."""
+
+        return self.rotulo or self.nome
 
 
 WORKSPACES_DE_FABRICA: tuple[Workspace, ...] = (
@@ -186,17 +199,35 @@ WORKSPACES_DE_FABRICA: tuple[Workspace, ...] = (
 NOMES_DE_FABRICA: tuple[str, ...] = tuple(w.nome for w in WORKSPACES_DE_FABRICA)
 PADRAO = WORKSPACES_DE_FABRICA[0]
 
+# Extensão opt-in. Os quatro nomes e atalhos de fábrica acima permanecem uma
+# ABI pública (testes, perfis salvos e documentação). O ASG-like entra como
+# quinto arranjo disponível sem reescrever essa lista histórica.
+WORKSPACE_ASG = Workspace(
+    "ASG-like",
+    5,
+    "fluxo completo com MakerProxy independente e decisão consultiva",
+    ("dom", "tape", "players", "bookmap", "conduto", "footprint", "perfil",
+    "delta", "asg", "trilha"),
+    "OPERADOR B3",
+)
+WORKSPACES_DISPONIVEIS: tuple[Workspace, ...] = (
+    *WORKSPACES_DE_FABRICA,
+    WORKSPACE_ASG,
+)
+NOMES_DISPONIVEIS: tuple[str, ...] = tuple(w.nome for w in WORKSPACES_DISPONIVEIS)
+NOMES_DE_ENTRADA: tuple[str, ...] = tuple(w.nome_exibicao for w in WORKSPACES_DISPONIVEIS)
+
 
 def por_atalho(digito: int) -> Workspace | None:
-    for w in WORKSPACES_DE_FABRICA:
+    for w in WORKSPACES_DISPONIVEIS:
         if w.atalho == digito:
             return w
     return None
 
 
 def por_nome(nome: str) -> Workspace | None:
-    for w in WORKSPACES_DE_FABRICA:
-        if w.nome == nome:
+    for w in WORKSPACES_DISPONIVEIS:
+        if w.nome == nome or w.nome_exibicao == nome:
             return w
     return None
 

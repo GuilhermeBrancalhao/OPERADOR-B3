@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+.venv-asg/
+.gauntlet/current/
 # ANCORADO na raiz de proposito: `dados/` sem a barra inicial casava tambem
 # com `fluxopro/dados/`, tirando 7 modulos de codigo-fonte (~1.400 linhas,
 # incluindo mt5.py e simulador.py) do controle de versao. O repositorio nao

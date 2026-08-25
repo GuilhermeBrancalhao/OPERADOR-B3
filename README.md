@@ -192,8 +192,23 @@ cheio — razão de 13×, e o portão de CI reprova abaixo de 5×.
 1. **O livro.** O tape real já entra por `scripts/importar_mt5.py`; o book não, porque o MT5 não
    guarda histórico dele. DOM, bookmap e tudo que depende de liquidez parada só se enchem com
    `scripts/operar.py --fonte mt5 --gravar` durante o pregão aberto.
-2. **Componentes da fonte cujo mecanismo não é público** — o "Maker" está classificado
-   `NÃO REPLICÁVEL`, e construir a caixa visual dele seria dar aparência de autoridade a algo que
-   o sistema não consegue calcular.
+2. **Human gate visual.** O workspace `ASG-like` está implementado, mas a comparação permanece
+   `proxy-biased` até o operador fornecer capturas reais autorizadas da ASG. Não há alegação de
+   paridade visual ou pixel-perfect.
+3. **Fórmula proprietária do Maker.** Ela continua classificada `NÃO REPLICÁVEL`. O produto usa
+   um `MakerProxy` independente, aberto, versionado e acompanhado de evidências, cobertura,
+   procedência e confiança; ele não é apresentado como fórmula da ASG.
+4. **Comprovação ao vivo nesta máquina.** O adaptador MT5 e seus estados de falha estão
+   implementados, mas uma sessão viva exige terminal autenticado, pacote `MetaTrader5`, símbolo
+   selecionado e pregão aberto. Veja `FEED_DISCOVERY.md`.
+
+O workspace novo abre com `Ctrl+5` ou:
+
+```bash
+python scripts/painel.py --fonte simulador --workspace ASG-like --simbolo WDOV26
+```
+
+Ele é estritamente consultivo: Stop, A1, A2 e A3 são propostas informativas e não existe envio
+de ordens no produto.
 
 `PROGRESSO.md` e `GAUNTLET_ASG.md` têm o histórico rodada a rodada, incluindo os erros.
