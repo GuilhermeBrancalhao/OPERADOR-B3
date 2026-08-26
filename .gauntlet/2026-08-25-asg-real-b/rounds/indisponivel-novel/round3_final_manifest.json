@@ -1,0 +1,195 @@
+{
+  "classification": "controlled_synthetic_integration_not_end_to_end",
+  "captures": [
+    {
+      "classification": "controlled_synthetic_integration_not_end_to_end",
+      "end_to_end": false,
+      "external_adapter_exercised": false,
+      "path_exercised": [
+        "Barramento",
+        "SessaoFluxo",
+        "PonteFluxo",
+        "JanelaFluxo._tick",
+        "window_grab"
+      ],
+      "state_requested": "AO VIVO",
+      "state_asg": "AO VIVO",
+      "state_top": "● AO VIVO",
+      "state_footer": "● AO VIVO",
+      "replay_banner": false,
+      "workspace": "ASG-like",
+      "resolution": [
+        1480,
+        900
+      ],
+      "market_timestamp_ns": 1777200029750000000,
+      "trades_session": 360,
+      "books_session": 120,
+      "real_context_panels": [
+        "PainelDOM",
+        "PainelTape",
+        "PainelBookmap"
+      ],
+      "tape_rows_retained": 360,
+      "bookmap_columns_available": 352,
+      "bookmap_columns_closed": 119,
+      "missing_matrix_labels": [],
+      "decision_visible": true,
+      "no_orders_banner": true,
+      "orders": "not_available_in_ui",
+      "file": "round3_final_ao_vivo.png"
+    },
+    {
+      "classification": "controlled_synthetic_integration_not_end_to_end",
+      "end_to_end": false,
+      "external_adapter_exercised": false,
+      "path_exercised": [
+        "Barramento",
+        "SessaoFluxo",
+        "PonteFluxo",
+        "JanelaFluxo._tick",
+        "window_grab"
+      ],
+      "state_requested": "ATRASADO",
+      "state_asg": "ATRASADO",
+      "state_top": "! ATRASADO",
+      "state_footer": "! ATRASADO",
+      "replay_banner": false,
+      "workspace": "ASG-like",
+      "resolution": [
+        1480,
+        900
+      ],
+      "market_timestamp_ns": 1777200030000000000,
+      "trades_session": 361,
+      "books_session": 120,
+      "real_context_panels": [
+        "PainelDOM",
+        "PainelTape",
+        "PainelBookmap"
+      ],
+      "tape_rows_retained": 361,
+      "bookmap_columns_available": 352,
+      "bookmap_columns_closed": 119,
+      "missing_matrix_labels": [],
+      "decision_visible": true,
+      "no_orders_banner": true,
+      "orders": "not_available_in_ui",
+      "file": "round3_final_atrasado.png"
+    },
+    {
+      "classification": "controlled_synthetic_integration_not_end_to_end",
+      "end_to_end": false,
+      "external_adapter_exercised": false,
+      "path_exercised": [
+        "Barramento",
+        "SessaoFluxo",
+        "PonteFluxo",
+        "JanelaFluxo._tick",
+        "window_grab"
+      ],
+      "state_requested": "SEM BOOK",
+      "state_asg": "SEM BOOK",
+      "state_top": "× SEM BOOK",
+      "state_footer": "× SEM BOOK",
+      "replay_banner": false,
+      "workspace": "ASG-like",
+      "resolution": [
+        1480,
+        900
+      ],
+      "market_timestamp_ns": 1777200011750000000,
+      "trades_session": 144,
+      "books_session": 0,
+      "real_context_panels": [
+        "PainelDOM",
+        "PainelTape",
+        "PainelBookmap"
+      ],
+      "tape_rows_retained": 144,
+      "bookmap_columns_available": 352,
+      "bookmap_columns_closed": 0,
+      "missing_matrix_labels": [],
+      "decision_visible": true,
+      "no_orders_banner": true,
+      "orders": "not_available_in_ui",
+      "file": "round3_final_sem_book.png"
+    },
+    {
+      "classification": "controlled_synthetic_integration_not_end_to_end",
+      "end_to_end": false,
+      "external_adapter_exercised": false,
+      "path_exercised": [
+        "Barramento",
+        "SessaoFluxo",
+        "PonteFluxo",
+        "JanelaFluxo._tick",
+        "window_grab"
+      ],
+      "state_requested": "ERRO",
+      "state_asg": "ERRO",
+      "state_top": "× ERRO",
+      "state_footer": "× ERRO",
+      "replay_banner": false,
+      "workspace": "ASG-like",
+      "resolution": [
+        1480,
+        900
+      ],
+      "market_timestamp_ns": 1777200030000000000,
+      "trades_session": 361,
+      "books_session": 120,
+      "real_context_panels": [
+        "PainelDOM",
+        "PainelTape",
+        "PainelBookmap"
+      ],
+      "tape_rows_retained": 361,
+      "bookmap_columns_available": 352,
+      "bookmap_columns_closed": 119,
+      "missing_matrix_labels": [],
+      "decision_visible": true,
+      "no_orders_banner": true,
+      "orders": "not_available_in_ui",
+      "file": "round3_final_erro.png"
+    },
+    {
+      "classification": "controlled_synthetic_integration_not_end_to_end",
+      "end_to_end": false,
+      "external_adapter_exercised": false,
+      "path_exercised": [
+        "Barramento",
+        "SessaoFluxo",
+        "PonteFluxo",
+        "JanelaFluxo._tick",
+        "window_grab"
+      ],
+      "state_requested": "REPLAY",
+      "state_asg": "REPLAY",
+      "state_top": "▶ REPLAY",
+      "state_footer": "▶ REPLAY",
+      "replay_banner": true,
+      "workspace": "ASG-like",
+      "resolution": [
+        1480,
+        900
+      ],
+      "market_timestamp_ns": 1777200029750000000,
+      "trades_session": 360,
+      "books_session": 120,
+      "real_context_panels": [
+        "PainelDOM",
+        "PainelTape",
+        "PainelBookmap"
+      ],
+      "tape_rows_retained": 360,
+      "bookmap_columns_available": 352,
+      "bookmap_columns_closed": 119,
+      "missing_matrix_labels": [],
+      "decision_visible": true,
+      "no_orders_banner": true,
+      "orders": "not_available_in_ui",
+      "file": "round3_final_replay.png"
+    }
+  ]
+}

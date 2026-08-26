@@ -8,10 +8,11 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
-> **Estado corrente — 25/08/2026.** `python -m pytest tests/ -q` → **1.602 passed**.
+> **Estado corrente — 26/08/2026.** `python -m pytest tests/ -q` → **1.602 passed**.
 > Fases 1, 2, 3 e 5 do plano de UI entregues e montadas numa janela só; `fluxopro/metodologia/`
-> ligado ao pipeline vivo; workspace `ASG-like` incorporado via merge de `origin/main` (PR #1).
-> Detalhe do ciclo em `GAUNTLET_ASG.md`.
+> ligado ao pipeline vivo; workspace `OPERADOR B3` redesenhado por Gauntlet Loop (builder+crítico
+> cego real, 13 partes) contra capturas de vídeo do produto real A.S.G — Algorithmic System
+> Generation. Detalhe do ciclo em `GAUNTLET_ASG.md` e `.gauntlet/2026-08-25-asg-real-b/`.
 > **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
 >
 > *(Este é o único lugar do arquivo onde o número de testes é mantido. Número velho sob selo de
@@ -363,6 +364,65 @@ cheio custa ~4 ms. É o mesmo "25 ms" que a docstring da matriz cita, mesma
 causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
 
 Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
+
+## Onda 17 — Gauntlet Loop real contra o A.S.G de verdade (25-26/08)
+
+O usuário trouxe 100 quadros de um vídeo do produto real **A.S.G — Algorithmic
+System Generation** (wordmark confirmado em `destaque_5007_referencia_alvo.jpg`)
+e pediu fidelidade visual do workspace `OPERADOR B3`, sem tocar fórmula
+proprietária, sem copiar marca, e sem quebrar nenhuma invariante do produto.
+Duas tentativas anteriores no mesmo repositório (`.gauntlet/2026-08-25-asg-ref-ui-a`,
+`2026-08-25-operador-b3`, `2026-08-25-ui`) já tinham tentado isso contra um bar
+genérico (Profit SuperDOM/Tape) e ficaram registradas honestamente como
+incompletas: *"esta execução não possui um crítico cego independente disponível
+no contexto"*. Esta rodada substitui isso por um Workflow real.
+
+**Achado estrutural, antes de qualquer builder tocar região:** só uma classe
+(`PainelNexoMercadoASG` em `asg.py`) pintava a superfície inteira; `cockpit.py`,
+`placar_visual.py` e `grafico.py` compunham o workspace nominalmente mas não
+pintavam pixel nenhum. Uma parte de extração (parte 0) quebrou isso em dez
+módulos-região (`fluxopro/ui/paineis/nexo/`), cada um com `desenhar(painter,
+rect, estado)`, para builders paralelos terem arquivo exclusivo — pré-requisito
+que um decompositor Opus só descobriu inspecionando o código vivo, não o plano.
+
+**Doze partes, builder Sonnet + crítico cego Opus cada, três rodadas**, mais
+duas sondas de mimetismo desenhadas pelo próprio decompositor: uma região que
+o bar nunca mostra (estado degradado sem book — prova se o produto fabrica
+liquidez sintética ou degrada honestamente) e uma entrada regente trocada
+(WDO→WIN, grades de tick diferentes — prova se a tela adapta ou copia calado
+o formato do bar). Portão de compliance (grep de execução de ordem, `float()`
+em preço, acoplamento ao barramento) rodou como veto duro a cada rodada,
+independente do veredito visual — nunca achou nada.
+
+**Dois defeitos genuínos do próprio Workflow, achados e corrigidos por mim
+antes de fechar:**
+1. O painel delta (rodada N vs rodada N-1) recebia o MESMO arquivo nos dois
+   lados — bug de estado mutável no script (a variável "rodada anterior" era
+   sobrescrita antes de ser lida). Os cinco críticos, corretamente, recusaram
+   julgar ("Artifact A e B resolvem para o mesmo arquivo") em vez de inventar
+   um veredito — exatamente o comportamento que a disciplina de crítico cego
+   exige. Sem efeito na parte que importa (os 12 críticos por-parte, reais,
+   produziram gaps específicos e acionáveis a cada rodada).
+2. O achado mais sério: `scripts/auditoria_asg.py` (o auditor oficial do
+   projeto para esta invariante) reprovou `ORDENS: FAIL` num import dinâmico
+   (`importlib.import_module`) que a parte 0 introduziu para quebrar o ciclo
+   `asg.py` ↔ `nexo/`. Falso positivo — mas a forma textual era idêntica à de
+   um carregador de plugin de verdade. Corrigido para import literal
+   (`from . import ladder, contexto, ...`), auditável por grep; `ORDENS: PASS`
+   depois.
+3. `indisponivel.py` (a sonda 11) foi construído e testado isoladamente em
+   todas as três rodadas — e o próprio builder sinalizou em TODAS elas, com
+   total honestidade, que seu módulo nunca era chamado pela composição real
+   (fora do seu arquivo, não era dele consertar). Fio de uma linha em
+   `asg.py.desenhar()` depois de fechado o Gauntlet: chama-se
+   `indisponivel.desenhar()` por cima de tudo, no-op quando saudável.
+
+**Suíte inteira, três vezes**: 1602 passed antes do gauntlet, 1602 depois das
+12 partes, 1602 depois dos dois consertos finais — zero regressão. Crítico
+final (blind, honesto, achou o vazio real que sobra no meio do quadro) preferiu
+o candidato sobre o bar, margem leve, e observou que o próprio A.S.G mistura
+pelo menos quatro linguagens visuais sem borda/paleta compartilhada — achado
+que só um julgamento cego de verdade produz.
 
 ## Onda 16 — o supervisor se prova, e o workspace ASG-like chega por PR (25/08)
 

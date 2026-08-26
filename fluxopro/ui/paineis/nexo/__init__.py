@@ -24,7 +24,6 @@ mora aqui em vez de ficar espalhado como numero solto no meio da pintura.
 
 from __future__ import annotations
 
-import importlib
 from dataclasses import dataclass
 from types import ModuleType
 
@@ -118,13 +117,50 @@ def modulo(nome: str) -> ModuleType:
     ``paineis.asg`` (enums de direcao, resolucao de cor por estado) e
     ``paineis.asg`` depende deste pacote. Importar so no primeiro quadro
     desfaz o ciclo sem exigir que ``asg`` exporte nada novo.
+
+    A resolucao e por ``import`` literal, um por nome fixo de
+    ``ORDEM_DESENHO`` — nunca ``importlib.import_module`` com string
+    formatada. O auditor de ordens (`scripts/auditoria_asg.py`) reprova
+    qualquer import dinamico por principio (poderia carregar API de
+    corretora); aqui nao ha string vinda de fora, mas o padrao textual e
+    identico ao de um carregador de plugin de verdade, entao a forma
+    literal e a unica que passa o portao sem exigir excecao no auditor.
     """
 
     modulo_regiao = _MODULOS.get(nome)
-    if modulo_regiao is None:
-        modulo_regiao = importlib.import_module(f"{__name__}.{nome}")
-        _MODULOS[nome] = modulo_regiao
-    return modulo_regiao
+    if modulo_regiao is not None:
+        return modulo_regiao
+    if nome not in ORDEM_DESENHO:
+        raise ValueError(f"regiao desconhecida: {nome!r}")
+
+    from . import (
+        banner,
+        candles,
+        contexto,
+        estatistica,
+        forca,
+        ladder,
+        niveis,
+        nucleo,
+        pressao,
+        vies,
+    )
+
+    _MODULOS.update(
+        {
+            "banner": banner,
+            "candles": candles,
+            "contexto": contexto,
+            "estatistica": estatistica,
+            "forca": forca,
+            "ladder": ladder,
+            "niveis": niveis,
+            "nucleo": nucleo,
+            "pressao": pressao,
+            "vies": vies,
+        }
+    )
+    return _MODULOS[nome]
 
 
 __all__ = [

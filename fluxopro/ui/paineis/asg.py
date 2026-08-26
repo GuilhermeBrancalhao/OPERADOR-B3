@@ -1824,6 +1824,25 @@ class PainelNexoMercadoASG(_PainelASG):
             finally:
                 painter.restore()
 
+        # Camada de honestidade: no-op quando o quadro esta saudavel
+        # (`diagnosticar` devolve None), e um veu+cartao nomeando o que
+        # esta contaminado quando nao esta — nunca fabrica leitura sobre
+        # dado que a fonte nao tem. Desenhada por cima de tudo, de
+        # proposito: e a ultima palavra sobre o quadro, nao uma regiao a
+        # mais competindo por atencao.
+        #
+        # Import tardio (mesmo motivo do `nexo.modulo()`): indisponivel.py
+        # importa `asg` de volta para os enums de estado, e nao esta em
+        # `ORDEM_DESENHO` porque nao e uma regiao espacial, e sim uma
+        # camada que cobre todas elas.
+        from fluxopro.ui.paineis.nexo import indisponivel as nexo_indisponivel
+
+        painter.save()
+        try:
+            nexo_indisponivel.desenhar(painter, quadro, estado)
+        finally:
+            painter.restore()
+
         self._ressalva(painter, QRect(0, quadro.bottom() + 1, largura,
                                       nexo.ALTURA_RESSALVA))
 
