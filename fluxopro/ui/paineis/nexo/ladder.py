@@ -1,43 +1,35 @@
-"""Regiao ESCADA DE PRECO (x 0,00-0,06 · y 0,00-0,56).
+"""Regiao VAP — Volume At Price (x 0,00-0,06 · y 0,00-0,56).
 
-Escada de ticks CONTIGUA do livro observado, sangrando ate a borda esquerda
-do quadro, sem moldura de cartao. Duas micro-colunas lado a lado dentro da
-mesma faixa estreita:
+Trocado de escada tipo DOM para VAP por pedido do operador: a fonte
+(`pesquisa/ferramenta_componentes.md` §5, `f0hrhzhLDVM.txt`) descreve essa
+regiao como "um vap, um volume profile, um volume at price" — mas
+customizado, nao o perfil classico de plataforma de varejo.
 
-* a lane esquerda e o numero do preco daquele tick;
-* a lane direita e a barra de profundidade daquele tick MAIS o numeral da
-  quantidade (`formato.abreviar`), alinhado a direita por cima da barra —
-  a segunda micro-coluna que o esqueleto original nao tinha, e que o round
-  anterior deixava como barra muda (sem ler o tamanho, so o comprimento).
+Regras da fonte, com rotulo de confianca:
 
-Uma capsula solida (fundo `NEXO_AMARELO`, texto `CHIP_TEXTO` escuro por
-cima) marca a linha do ultimo preco negociado — o mesmo par
-fundo-claro/texto-escuro que `paineis/metodo.py` e `nexo/niveis.py` ja usam
-para chip legivel, entao nao e uma regra nova.
+- **CONFIRMADO, numero exato** — "voce so vai dar importancia pra ela pra
+  esses TRES precos que aparecem destacados... do contrario, voce esquece
+  ela". So 3 niveis por vez sao "destacados"; o resto e "lixo" na
+  linguagem do autor — mostrado apagado (`NEXO_MUTED`), NUNCA escondido (a
+  fonte nunca fala em ocultar nivel, so em reduzir a importancia visual).
+- **CONFIRMADO** — "quanto maior a barra, mais importancia ela tem": o
+  comprimento da barra e o proprio volume negociado naquele preco.
+- **CONFIRMADO** — zonas sem barra destacada ("lacunas") sao onde o preco
+  "corre mais rapido" — o LVN classico, ja calculado por
+  `VolumeProfile.lvn()`.
+- **AUSENTE NA FONTE** — o criterio exato de SELECAO dos 3 destacados
+  (o autor diz "eu filtrei do jeito que eu gosto" sem revelar a regra).
+  Aqui o criterio e o volume total do nivel — maior proxy honesto
+  disponivel, rotulado como tal, nunca apresentado como a formula do autor.
+- **CONFIRMADO, decisao deliberada de design** — a fonte explicitamente NAO
+  poe este painel do lado do grafico de candles ("nao vou por do lado do
+  grafico... e para voces desfocarem do grafico"). Este painel continua
+  isolado na lateral esquerda, longe do candle M5 — por design, nao por
+  limitacao de espaco.
 
-A escada cobre a ALTURA INTEIRA da regiao, no passo continuo da grade de
-tick do simbolo (`estado.grid`) centrado no preco corrente: o numero de
-linhas sai so da altura disponivel dividido pelo passo alvo (nunca do
-tamanho do livro recebido), porque a grade de precos existe
-independentemente de quantos niveis o quadro capturou — parar a escada no
-ultimo tick com dado e deixar o resto da coluna em preto era o defeito
-(critico do round anterior: 11 linhas desenhadas, coluna com espaco para
-o dobro).
-
-Um tick com nivel explicito mostra bar + numeral de quantidade. Um tick
-sem nivel — DENTRO ou FORA do alcance ``[menor tick recebido, maior tick
-recebido]`` entre bids/asks/ultimo_preco — recebe o MESMO tratamento visual
-neutro que ja existia para o gap dentro do alcance: preco em
-`NEXO_MUTED`, sem barra, sem numeral. Isso nunca fabrica tamanho (nenhum
-numero de quantidade aparece onde nao ha nivel), so estende a mesma régua
-de precos que a grade do simbolo ja define objetivamente — nao e uma
-alegacao sobre profundidade, e a mesma linha em branco que ja se desenhava
-dentro do alcance (rank K salta rank K+1 = zero ali,
-`fluxopro/ui/paineis/asg.py::ContextoBrutoASGSnapshot.de_instantaneo` corta
-em 8 por lado mas preserva ordem por rank). Mesmo cuidado do estado "SEM
-BOOK": honesto sobre o que falta, nunca sintetico.
-
-Nao ha clique, callback nem campo: a coluna inteira e leitura.
+Volume vem de `fluxopro.analytics.volume_profile.VolumeProfile`, alimentado
+pelos MESMOS negocios que ja alimentam `estado.serie` — nunca um segundo
+feed. Preco em `int` de ticks; a barra e so a fronteira de desenho.
 """
 
 from __future__ import annotations
@@ -48,22 +40,11 @@ from PySide6.QtGui import QFont, QPainter
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.paineis.nexo import EstadoNexo
 
-# Faixa de altura de linha aceitavel. Fora dela a coluna vira ou uma lista de
-# tres numeros gigantes ou uma serrilha ilegivel.
 ALTURA_LINHA_MIN = 9
 ALTURA_LINHA_MAX = 20
-
-# Altura que a coluna MIRA — sempre perto do extremo denso da faixa
-# aceitavel, porque a leitura desta regiao e uma escada continua de
-# dezenas de linhas (ver referencia do round: ~45 linhas a ~10px), nunca
-# 3+3 melhores ofertas com folga em branco embaixo. O numero de linhas sai
-# so de `altura_util // ALTURA_LINHA_ALVO`; nao ha teto pelo tamanho do
-# livro recebido (ver docstring do modulo).
 ALTURA_LINHA_ALVO = 10
 
-# Fracao da largura da regiao dedicada ao numero do preco. O resto e a
-# segunda micro-coluna: a barra de profundidade daquele tick.
-FRACAO_LANE_PRECO = 0.50
+FRACAO_LANE_PRECO = 0.42
 
 LARGURA_MIN = 24
 ALTURA_ROTULO = 12
@@ -74,27 +55,17 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if rect.width() < LARGURA_MIN or rect.height() < ALTURA_LINHA_MIN * 2:
         return
 
-    contexto = getattr(estado.snapshot, "contexto_bruto", None)
-    bids = tuple(contexto.bids) if contexto is not None else ()
-    asks = tuple(contexto.asks) if contexto is not None else ()
-    ultimo = (
-        int(contexto.ultimo_preco)
-        if contexto is not None and contexto.ultimo_preco is not None
-        else None
-    )
+    niveis = estado.vap_niveis
+    ultimo = estado.serie[-1][1] if estado.serie else None
 
-    if not bids and not asks:
+    if not niveis:
         _desenhar_indisponivel(painter, rect, ultimo, estado)
         return
 
-    # tick -> (quantidade, eh_bid). Ultima escrita vence num book cruzado
-    # (nunca deveria acontecer, mas nao e este arquivo que valida a fonte).
-    por_tick: dict[int, tuple[int, bool]] = {}
-    for nivel in bids:
-        por_tick[nivel.preco] = (nivel.quantidade, True)
-    for nivel in asks:
-        por_tick[nivel.preco] = (nivel.quantidade, False)
-
+    por_tick: dict[int, tuple[int, int, int, bool]] = {
+        preco: (volume_total, volume_comprador, volume_vendedor, destacado)
+        for preco, volume_total, volume_comprador, volume_vendedor, destacado in niveis
+    }
     ticks_conhecidos = list(por_tick.keys())
     if ultimo is not None:
         ticks_conhecidos.append(ultimo)
@@ -102,78 +73,64 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     reservar_rotulo = rect.height() >= ALTURA_MIN_PARA_ROTULO
     altura_util = rect.height() - (ALTURA_ROTULO if reservar_rotulo else 0)
-
-    # Preenche a altura INTEIRA da regiao no passo continuo da grade — o
-    # numero de linhas nunca e limitado pelo tamanho do livro recebido (essa
-    # era a coluna truncada que o critico do round anterior pegou: 11
-    # linhas desenhadas, resto da altura em preto).
     n_linhas = max(1, altura_util // ALTURA_LINHA_ALVO)
     altura = max(ALTURA_LINHA_MIN, min(ALTURA_LINHA_MAX, altura_util // n_linhas))
 
-    if ultimo is not None:
-        centro = ultimo
-    elif bids and asks:
-        centro = round((bids[0].preco + asks[0].preco) / 2)
-    else:
-        centro = ticks_conhecidos[0]
+    centro = ultimo if ultimo is not None else round((tick_min + tick_max) / 2)
     centro = min(max(centro, tick_min), tick_max)
 
-    # Janela CONTIGUA de `n_linhas` ticks centrada em `centro`, no passo
-    # continuo de 1 tick por linha (a propria grade do simbolo — ver
-    # docstring do modulo). Pode extrapolar [tick_min, tick_max]: no loop
-    # abaixo, um tick sem nivel explicito — dentro ou fora desse alcance —
-    # cai no mesmo ramo `else` (cor NEXO_MUTED, sem barra, sem numeral), so
-    # estendendo a régua de precos, nunca afirmando tamanho onde nao ha
-    # dado.
     topo = centro + n_linhas // 2
     ticks = list(range(topo, topo - n_linhas, -1))
 
-    maior_qtd = max((por_tick.get(t, (0, False))[0] for t in ticks), default=0) or 1
+    maior_volume = max((por_tick.get(t, (0, 0, 0, False))[0] for t in ticks), default=0) or 1
 
     largura_preco = max(1, int(rect.width() * FRACAO_LANE_PRECO))
     x_barra = rect.left() + largura_preco
     largura_barra = rect.width() - largura_preco
 
     fonte_preco = tokens.fonte_numero(6, QFont.Weight.DemiBold)
-    # Peso mais leve que o preco: o numeral de quantidade e uma leitura de
-    # apoio (compete pela mesma lane estreita com a barra, ver
-    # `formato.abreviar`), o preco continua sendo o dado primario da linha.
     fonte_qtd = tokens.fonte_numero(6, QFont.Weight.Normal)
     painter.setFont(fonte_preco)
     y_destaque: int | None = None
     for indice, tick in enumerate(ticks):
         y = rect.top() + indice * altura
-        quantidade, eh_bid = por_tick.get(tick, (0, None))
-        if eh_bid is True:
-            cor, cor_barra = tema_asg.NEXO_VERDE, tema_asg.NEXO_VERDE_FAIXA
-        elif eh_bid is False:
-            cor, cor_barra = tema_asg.NEXO_ROSA, tema_asg.NEXO_ROSA_FAIXA
-        else:
-            cor, cor_barra = tema_asg.NEXO_MUTED, None
+        volume_total, volume_comprador, volume_vendedor, destacado = por_tick.get(
+            tick, (0, 0, 0, False)
+        )
 
-        if quantidade > 0 and cor_barra is not None and largura_barra > 2:
-            comprimento = max(2, int(largura_barra * quantidade / maior_qtd))
+        if volume_total <= 0:
+            cor, cor_barra = tema_asg.NEXO_MUTED, None
+        elif volume_comprador >= volume_vendedor:
+            cor, cor_barra = tema_asg.NEXO_VERDE, tema_asg.NEXO_VERDE_FAIXA
+        else:
+            cor, cor_barra = tema_asg.NEXO_ROSA, tema_asg.NEXO_ROSA_FAIXA
+
+        # Niveis fora dos 3 destacados sao "lixo" na linguagem da fonte:
+        # apagados, nunca escondidos — a barra continua real, so perde
+        # saturacao/prioridade visual.
+        if not destacado and volume_total > 0:
+            cor_barra = tema_asg.NEXO_MUTED
+
+        if volume_total > 0 and cor_barra is not None and largura_barra > 2:
+            comprimento = max(2, int(largura_barra * volume_total / maior_volume))
             painter.fillRect(
                 QRect(x_barra, y + 1, comprimento, max(2, altura - 2)), cor_barra
             )
-            # Numeral legivel por cima da barra — sem isto a barra so da o
-            # comprimento relativo, nunca o tamanho real que o operador lê.
-            painter.setFont(fonte_qtd)
-            painter.setPen(cor)
-            painter.drawText(
-                QRect(x_barra + 2, y, largura_barra - 4, altura),
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                formato.abreviar(quantidade, com_sinal=False),
-            )
-            painter.setFont(fonte_preco)
+            if destacado:
+                painter.setFont(fonte_qtd)
+                painter.setPen(cor)
+                painter.drawText(
+                    QRect(x_barra + 2, y, largura_barra - 4, altura),
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                    formato.abreviar(volume_total, com_sinal=False),
+                )
+                painter.setFont(fonte_preco)
 
         if tick == ultimo:
-            # A capsula de destaque cobre esta linha inteira depois do loop;
-            # nao pinta o numero duas vezes por cima dela.
             y_destaque = y
             continue
 
-        painter.setPen(cor)
+        painter.setPen(cor if destacado else tema_asg.NEXO_MUTED)
         preco = formato.formatar_preco(estado.grid, tick)
         painter.drawText(
             QRect(rect.left(), y, largura_preco - 3, altura),
@@ -199,20 +156,17 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         painter.drawText(
             QRect(rect.left(), rect.bottom() - ALTURA_ROTULO, rect.width(), ALTURA_ROTULO),
             Qt.AlignmentFlag.AlignCenter,
-            "LIVRO",
+            "VAP",
         )
 
 
 def _desenhar_indisponivel(
     painter: QPainter, rect: QRect, ultimo: int | None, estado: EstadoNexo
 ) -> None:
-    """Estado honesto quando o quadro nao trouxe nivel nenhum de book.
+    """Estado honesto quando o VAP ainda nao tem negocio nenhum registrado.
 
-    Nunca desenha barra aqui: sem nivel nao ha profundidade para medir, e uma
-    barra de comprimento chutado seria liquidez sintetica — exatamente o que
-    o contrato do replay sem historico de book proibe. Se ao menos o ultimo
-    preco negociado chegou (tape vivo sem DOM), mostra so ele; sem nem isso,
-    e so o rotulo.
+    Nunca desenha barra aqui: sem volume nao ha o que medir, e uma barra de
+    comprimento chutado seria volume sintetico.
     """
     if ultimo is not None:
         painter.setPen(tema_asg.NEXO_MUTED)
@@ -224,9 +178,9 @@ def _desenhar_indisponivel(
         painter.drawText(
             QRect(rect.left(), centro.bottom(), rect.width(), 14),
             Qt.AlignmentFlag.AlignCenter,
-            "SEM\nBOOK",
+            "SEM\nVAP",
         )
     else:
         painter.setPen(tema_asg.NEXO_MUTED)
         painter.setFont(tokens.fonte_rotulo(7))
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "SEM\nBOOK")
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "SEM\nVAP")

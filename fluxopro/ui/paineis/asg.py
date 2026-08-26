@@ -22,7 +22,8 @@ from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
 
 from fluxopro.analytics.candle_temporal import CandleTemporal, ConfigCandleTemporal
 from fluxopro.analytics.renko import ConfigRenko, Renko
-from fluxopro.core.eventos import AgressorSide, PriceGrid, WDO_GRID
+from fluxopro.analytics.volume_profile import VolumeProfile
+from fluxopro.core.eventos import AgressorSide, PriceGrid, Trade, WDO_GRID
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.base.painel_denso import PainelDenso
 from fluxopro.ui.paineis.bookmap import PainelBookmap
@@ -1700,6 +1701,15 @@ class PainelNexoMercadoASG(_PainelASG):
         # docstring de `fluxopro/analytics/renko.py` para os rótulos de
         # confiança (CONFIRMADO/IMPRECISO/AUSENTE NA FONTE) por regra.
         self._renko = Renko(grid, ConfigRenko(tamanho_tijolo_pontos=4.0))
+        # VAP (volume por preço): substitui a escada tipo DOM na lateral
+        # esquerda, por pedido do operador — "é um vap, é um volume
+        # profile... só que eu consigo trabalhar num nível de refinamento"
+        # (pesquisa/ferramenta_componentes.md §5, 3mfeHZhMZrc.txt).
+        # Alimentado pelos MESMOS negocios que ja alimentam `_serie` — nunca
+        # um segundo feed. Retenção: um nível por PREÇO distinto realmente
+        # negociado, não por evento — bounded pela faixa de preço da sessão,
+        # não pelo número de trades.
+        self._vap = VolumeProfile()
         # Candle temporal M5 (gráfico inferior direito): mesmo padrão de
         # bucketing de `estado_mercado.py`, mas com retenção limitada — ver
         # docstring de `fluxopro/analytics/candle_temporal.py`. O candle em
@@ -1767,6 +1777,11 @@ class PainelNexoMercadoASG(_PainelASG):
         # nunca um segundo feed, so um segundo agregador sobre o mesmo dado.
         self._renko.registrar(timestamp_ns, preco)
         self._candles_m15.registrar(timestamp_ns, preco, quantidade, agressor)
+        if quantidade > 0:
+            self._vap.registrar_trade(
+                Trade(timestamp_ns=timestamp_ns, symbol="", price=preco,
+                     qty=quantidade, side_agressor=agressor, trade_id="")
+            )
 
     def _forca_atual(self) -> float:
         linhas = self._snapshot.matriz.linhas
@@ -1812,6 +1827,39 @@ class PainelNexoMercadoASG(_PainelASG):
             textos.append("AGUARDANDO PRECO")
         return tuple(textos)
 
+    N_NIVEIS_DESTACADOS = 3
+    """CONFIRMADO na fonte (f0hrhzhLDVM.txt): "voce so vai dar importancia
+    pra ela pra esses TRES precos que aparecem destacados... do contrario,
+    voce esquece ela". Nunca um numero solto — e o unico caso em que a
+    contagem exata vem dita na transcricao, nao inferida."""
+
+    def _congelar_vap(self, top_n: int = 120) -> tuple[tuple[int, int, int, int, bool], ...]:
+        """Congela ate `top_n` niveis do VAP em tuplas planas (retencao
+        limitada — `VolumeProfile` e objeto vivo, uma regiao NUNCA pode
+        reter referencia a ele).
+
+        (preco, volume_total, volume_comprador, volume_vendedor,
+        e_destacado). "e_destacado" = esta entre os `N_NIVEIS_DESTACADOS`
+        de maior volume do perfil inteiro — os outros sao "lixo" na
+        linguagem da fonte, mostrados apagados, nunca escondidos (a fonte
+        e explicita: nao existe filtro que apague o nivel, so que reduz a
+        importancia visual dele). O criterio de SELECAO do autor para
+        quais 3 destacar continua AUSENTE NA FONTE al'em de "volume"; aqui
+        e literalmente o volume total do nivel, rotulado como proxy.
+        """
+
+        niveis = self._vap.niveis_ordenados()
+        por_volume = sorted(niveis, key=lambda kv: kv[1].volume_total, reverse=True)
+        destacados = {preco for preco, _ in por_volume[: self.N_NIVEIS_DESTACADOS]}
+        recortados = por_volume[:top_n]
+        saida = [
+            (preco, nivel.volume_total, nivel.volume_comprador, nivel.volume_vendedor,
+             preco in destacados)
+            for preco, nivel in recortados
+        ]
+        saida.sort(key=lambda item: item[0])
+        return tuple(saida)
+
     def _estado_nexo(self) -> nexo.EstadoNexo:
         """Congela o quadro em um valor imutavel antes de qualquer pintura.
 
@@ -1833,6 +1881,10 @@ class PainelNexoMercadoASG(_PainelASG):
             alvos_renko=self._renko.alvos(),
             candles_m15=self._candles_m15.candles_fechados
             + ((self._candles_m15.candle_atual,) if self._candles_m15.candle_atual else ()),
+            vap_niveis=self._congelar_vap(),
+            vap_poc=self._vap.poc,
+            vap_val=self._vap.val(),
+            vap_vah=self._vap.vah(),
         )
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:

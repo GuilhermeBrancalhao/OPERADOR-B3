@@ -98,6 +98,10 @@ class EstadoNexo:
     fase_renko: object = None
     alvos_renko: object | None = None
     candles_m15: tuple[object, ...] = ()
+    vap_niveis: tuple[tuple[int, int, int, int, bool], ...] = ()
+    vap_poc: int | None = None
+    vap_val: int | None = None
+    vap_vah: int | None = None
 
 
 def retangulos(quadro: QRect) -> dict[str, QRect]:
