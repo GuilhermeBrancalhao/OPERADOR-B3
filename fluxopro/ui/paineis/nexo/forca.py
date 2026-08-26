@@ -37,9 +37,11 @@ RAIL_NIVEIS_MIN = 5
 RAIL_NIVEIS_MAX = 17
 
 # Quantos tijolos, no maximo, cabem visiveis de uma vez — mais que isso e
-# cada tijolo vira uma coluna fina demais para ler a direcao.
-MAX_TIJOLOS_VISIVEIS = 40
-LARGURA_MIN_TIJOLO_PX = 6
+# cada tijolo vira uma coluna fina demais para ler a direcao. Poucos tijolos
+# largos, com vao real entre eles, leem melhor que muitos colados.
+MAX_TIJOLOS_VISIVEIS = 16
+LARGURA_MIN_TIJOLO_PX = 18
+VAO_ENTRE_TIJOLOS_PX = 6
 
 _ROTULO_FASE = {
     FaseRenko.TENDENCIA: "TENDENCIA",
@@ -107,7 +109,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         cor = tema_asg.NEXO_VERDE if tijolo.direcao > 0 else tema_asg.NEXO_ROSA
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(cor)
-        painter.drawRect(QRect(x + 1, topo, max(1, largura_tijolo - 2), altura))
+        painter.drawRect(QRect(x + VAO_ENTRE_TIJOLOS_PX // 2, topo,
+                               max(1, largura_tijolo - VAO_ENTRE_TIJOLOS_PX), altura))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         x += largura_tijolo
 
