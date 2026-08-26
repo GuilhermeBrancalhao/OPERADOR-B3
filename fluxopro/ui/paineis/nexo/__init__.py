@@ -78,6 +78,12 @@ class EstadoNexo:
     que esta aqui e nada mais. ``serie`` ja vem como tupla (o ``deque`` vivo
     do painel nunca atravessa a fronteira) e ``precos`` seguem ``int`` em
     ticks.
+
+    ``tijolos_renko``/``fase_renko``/``alvos_renko`` e ``candles_m15`` vem de
+    ``fluxopro.analytics.renko``/``candle_temporal`` — agregadores puros
+    alimentados por chamada direta (nunca por assinatura de barramento),
+    ja em forma de tupla/objeto imutavel antes de cruzar para a regiao.
+    Default vazio para nao quebrar quem constroi ``EstadoNexo`` sem eles.
     """
 
     snapshot: object
@@ -88,6 +94,10 @@ class EstadoNexo:
     leituras: tuple[tuple[str, object], ...]
     largura: int
     altura: int
+    tijolos_renko: tuple[object, ...] = ()
+    fase_renko: object = None
+    alvos_renko: object | None = None
+    candles_m15: tuple[object, ...] = ()
 
 
 def retangulos(quadro: QRect) -> dict[str, QRect]:

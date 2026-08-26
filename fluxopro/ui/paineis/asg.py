@@ -20,7 +20,9 @@ from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPen, QPolygon
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
 
-from fluxopro.core.eventos import PriceGrid, WDO_GRID
+from fluxopro.analytics.candle_temporal import CandleTemporal, ConfigCandleTemporal
+from fluxopro.analytics.renko import ConfigRenko, Renko
+from fluxopro.core.eventos import AgressorSide, PriceGrid, WDO_GRID
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.base.painel_denso import PainelDenso
 from fluxopro.ui.paineis.bookmap import PainelBookmap
@@ -38,6 +40,16 @@ from fluxopro.ui.paineis.placar_visual import (
 )
 from fluxopro.ui.paineis.tape import PainelTape
 from fluxopro.ui.ponte import Instantaneo
+
+def _agressor_de_int(valor: int) -> AgressorSide:
+    """Mesma convenção já usada nesta classe: >0 comprador, <0 vendedor."""
+
+    if valor > 0:
+        return AgressorSide.BUY
+    if valor < 0:
+        return AgressorSide.SELL
+    return AgressorSide.UNKNOWN
+
 
 ALTURA_CABECALHO = 28
 ALTURA_LINHA = 24
@@ -1682,6 +1694,16 @@ class PainelNexoMercadoASG(_PainelASG):
         # sintetizado pela UI. Isso permite candles causais e um grafico que
         # ganha densidade no pregão sem reter dados indefinidamente.
         self._serie: deque[tuple[int, int, float, int]] = deque(maxlen=480)
+        # Renko (gráfico superior direito, "4R"): blocos por deslocamento de
+        # preço, nunca por tempo. Agregador puro, alimentado por chamada
+        # direta junto com `_serie` — nunca assina o barramento. Ver
+        # docstring de `fluxopro/analytics/renko.py` para os rótulos de
+        # confiança (CONFIRMADO/IMPRECISO/AUSENTE NA FONTE) por regra.
+        self._renko = Renko(grid, ConfigRenko(tamanho_tijolo_pontos=4.0))
+        # Candle temporal M15 (gráfico inferior direito): mesmo padrão de
+        # bucketing de `estado_mercado.py`, mas com retenção limitada — ver
+        # docstring de `fluxopro/analytics/candle_temporal.py`.
+        self._candles_m15 = CandleTemporal(ConfigCandleTemporal(timeframe_ns=15 * 60_000_000_000))
 
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         self._snapshot = snapshot
@@ -1693,6 +1715,7 @@ class PainelNexoMercadoASG(_PainelASG):
                 negocio.preco,
                 self._forca_atual(),
                 negocio.quantidade,
+                _agressor_de_int(negocio.agressor),
             )
         if not negocios and contexto is not None and contexto.ultimo_preco is not None:
             self._registrar_amostra(
@@ -1711,6 +1734,7 @@ class PainelNexoMercadoASG(_PainelASG):
                 int(negocio.price),
                 self._forca_atual(),
                 int(negocio.qty),
+                _agressor_de_int(negocio.agressor),
             )
         preco = retrato.ultimo_preco
         if not negocios and preco is not None and self._snapshot.timestamp_ns > 0:
@@ -1723,7 +1747,12 @@ class PainelNexoMercadoASG(_PainelASG):
         self.marcar_tudo_sujo()
 
     def _registrar_amostra(
-        self, timestamp_ns: int, preco: int, forca: float, quantidade: int = 0
+        self,
+        timestamp_ns: int,
+        preco: int,
+        forca: float,
+        quantidade: int = 0,
+        agressor: AgressorSide = AgressorSide.UNKNOWN,
     ) -> None:
         if self._serie and timestamp_ns < self._serie[-1][0]:
             return
@@ -1732,6 +1761,10 @@ class PainelNexoMercadoASG(_PainelASG):
             self._serie[-1] = ponto
         else:
             self._serie.append(ponto)
+        # Renko e candle M15 leem o MESMO preco/negocio que a serie visual —
+        # nunca um segundo feed, so um segundo agregador sobre o mesmo dado.
+        self._renko.registrar(timestamp_ns, preco)
+        self._candles_m15.registrar(timestamp_ns, preco, quantidade, agressor)
 
     def _forca_atual(self) -> float:
         linhas = self._snapshot.matriz.linhas
@@ -1793,6 +1826,11 @@ class PainelNexoMercadoASG(_PainelASG):
             leituras=self._linhas_contexto_nexo(),
             largura=self.width(),
             altura=self.height(),
+            tijolos_renko=self._renko.tijolos,
+            fase_renko=self._renko.fase,
+            alvos_renko=self._renko.alvos(),
+            candles_m15=self._candles_m15.candles_fechados
+            + ((self._candles_m15.candle_atual,) if self._candles_m15.candle_atual else ()),
         )
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:

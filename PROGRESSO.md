@@ -8,11 +8,13 @@ nível institucional (barra: Profit Pro da Nelogica), em Python, com:
 - aprendizado contínuo (estatística online sobre acerto dos sinais)
 - modo sinais por padrão; execução real atrás de interface desativada (usuário liga com credencial própria)
 
-> **Estado corrente — 26/08/2026.** `python -m pytest tests/ -q` → **1.602 passed**.
+> **Estado corrente — 26/08/2026.** `python -m pytest tests/ -q` → **1.622 passed**.
 > Fases 1, 2, 3 e 5 do plano de UI entregues e montadas numa janela só; `fluxopro/metodologia/`
 > ligado ao pipeline vivo; workspace `OPERADOR B3` redesenhado por Gauntlet Loop (builder+crítico
 > cego real, 13 partes) contra capturas de vídeo do produto real A.S.G — Algorithmic System
-> Generation. Detalhe do ciclo em `GAUNTLET_ASG.md` e `.gauntlet/2026-08-25-asg-real-b/`.
+> Generation, e depois estendido com Renko 4R + candle M15 real (`fluxopro/analytics/renko.py`,
+> `fluxopro/analytics/candle_temporal.py`). Detalhe do ciclo em `GAUNTLET_ASG.md` e
+> `.gauntlet/2026-08-25-asg-real-b/`.
 > **Nenhum byte de mercado real em disco** — todo teste e todo retrato usam simulador ou mock.
 >
 > *(Este é o único lugar do arquivo onde o número de testes é mantido. Número velho sob selo de
@@ -364,6 +366,63 @@ cheio custa ~4 ms. É o mesmo "25 ms" que a docstring da matriz cita, mesma
 causa — a rasterização dos glifos na primeira combinação fonte/tamanho.
 
 Passou despercebido porque o portão quase nunca chegava a afirmar o p95.
+
+## Onda 18 — Renko 4R e candle M15 de verdade (26/08)
+
+Pedido do usuário depois de ver o resultado do Gauntlet: o gráfico superior
+direito ("FORÇA") virar Renko de 4 pontos ("4R"), e o inferior direito
+virar candle de 15 minutos de verdade. Confirmei com ele antes de construir:
+"4R" é a lacuna já documentada em `pesquisa/ferramenta_componentes.md` §6.1
+("Renko A1/A2/A3 + cor interna" — marcada **Falta construir** desde a
+pesquisa original) e ele pediu a metodologia completa, não só a forma visual.
+
+**Dois módulos novos de analytics**, ambos com o mesmo cuidado de retenção
+já exigido no resto do projeto (nunca uma lista sem teto — ver
+`fluxopro/gravacao/gravador.py`) e alimentados por chamada direta, nunca por
+assinatura de barramento (painel de UI nunca assina o bus):
+
+- `fluxopro/analytics/renko.py` — tijolos por deslocamento de preço (não por
+  tempo), fase qualitativa (TENDENCIA/PERDENDO_FORCA/POSSIVEL_INVERSAO — a
+  "cor interna" da fonte) e alvos A1/A2/A3 de cada lado. Citação e rótulo de
+  confiança por regra no docstring do módulo, no mesmo padrão de
+  `fluxopro/metodologia/regras.py`: os alvos e a existência da cor interna
+  são CONFIRMADOS pela fonte; o tamanho do tijolo (4 pontos) e o limiar de
+  tendência são IMPRECISOS (parâmetro do operador, não da fonte); a fórmula
+  exata de amplitude que ancora os alvos é AUSENTE NA FONTE — aqui é um
+  proxy por alcance de janela recente, nunca apresentado como a fórmula do
+  autor.
+- `fluxopro/analytics/candle_temporal.py` — candle OHLCV por timeframe fixo
+  (15 min), mesma regra de bucketing de `estado_mercado.py` mas **sem**
+  assinar barramento e **com** retenção limitada — `EstadoMercado._candles_fechados`
+  (código já existente, não tocado) é uma `list` sem teto; achado registrado
+  aqui como dívida técnica externa a esta parte, não corrigido porque está
+  fora do escopo do pedido.
+
+**Um bug real de lógica, achado e corrigido por mutação antes de integrar**:
+a primeira versão do `Renko.registrar` só permitia reversão na direção
+oposta se `_direcao_pendente` já estivesse "liberada" pro lado contrário —
+o que na prática BLOQUEAVA a reversão para sempre depois do primeiro tijolo
+(subiu uma vez, nunca mais detectava queda). Prova por mutação: reintroduzi
+o gate manualmente, os mesmos 3 testes dedicados morreram exatamente como
+esperado (`test_reversao_exige_o_dobro_do_tamanho_do_tijolo` e as duas
+classificações de fase que dependiam de reversão real), revertido e os 19
+testes voltaram a passar.
+
+**Integração real**: `PainelNexoMercadoASG` instancia os dois agregadores
+junto de `_serie` (mesmo dado, dois agregadores paralelos) e os expõe via
+`EstadoNexo.tijolos_renko/fase_renko/alvos_renko/candles_m15`.
+`nexo/forca.py` virou o gráfico Renko (tijolos coloridos, fase, alvos
+tracejados, trilho de preço mantido); `nexo/candles.py` passou a ler
+`estado.candles_m15` em vez de reagrupar a série de ticks — o gráfico
+principal agora é OHLCV real de 15 minutos, não um pseudo-candle sintetizado
+por contagem de amostras.
+
+Verificado com a própria aplicação: alimentação sintética de 40 minutos
+simulados produziu exatamente 3 candles nos buckets 0/15/30 (bucketing por
+época absoluta, igual ao core); um passeio aleatório de 2.000 passos formou
+133 tijolos Renko com fase TENDENCIA corretamente detectada. Suíte inteira:
+**1.622 passed, 3 skipped** (era 1.602 antes desta onda — 20 testes novos,
+zero regressão).
 
 ## Onda 17 — Gauntlet Loop real contra o A.S.G de verdade (25-26/08)
 

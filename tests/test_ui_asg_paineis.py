@@ -12,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtWidgets import QApplication, QWidget  # noqa: E402
 
+from fluxopro.analytics.renko import FaseRenko  # noqa: E402
 from fluxopro.ui import tokens  # noqa: E402
 from fluxopro.ui.paineis.asg import (  # noqa: E402
     ConfiancaASG,
@@ -203,6 +204,38 @@ def test_nexo_gera_historico_causal_a_partir_de_cada_negocio_observado(qapp):
     ]
     imagem = _renderizar(painel, 1_280, 720)
     assert not imagem.isNull()
+
+
+def test_nexo_alimenta_renko_e_m15_dos_mesmos_negocios_da_serie(qapp):
+    """Renko ("4R") e candle M15 sao agregadores paralelos sobre os MESMOS
+    negocios que ja formam `_serie` — nunca um segundo feed, e nunca via
+    barramento (o painel so recebe snapshot)."""
+
+    dados, proc, matriz, decisao, evid = _snapshots()
+    ns_por_minuto = 60_000_000_000
+    negocios = tuple(
+        NegocioBrutoASG(T0 + indice * ns_por_minuto, 20_000 + (indice % 20), 5,
+                        1 if indice % 2 == 0 else -1)
+        for indice in range(1, 40)
+    )
+    contexto = ContextoBrutoASGSnapshot(T0, EstadoASG.AO_VIVO, negocios=negocios,
+                                         ultimo_preco=negocios[-1].preco)
+    painel = PainelNexoMercadoASG()
+    painel.aplicar(WorkspaceASGSnapshot(T0, dados, proc, matriz, decisao, evid,
+                                         contexto_bruto=contexto))
+    estado = painel._estado_nexo()
+
+    # M15: negocios espalhados por 39 minutos cruzam pelo menos duas
+    # fronteiras de 15 minutos -> pelo menos 2 candles fechados/atual.
+    assert len(estado.candles_m15) >= 2
+    for candle in estado.candles_m15:
+        assert candle.high >= candle.low
+        assert candle.high >= candle.open and candle.high >= candle.close
+        assert candle.low <= candle.open and candle.low <= candle.close
+
+    # Renko: preco oscila 0..19 ticks (tijolo de 4pts/0,5 = 8 ticks no WDO),
+    # entao pelo menos parte do movimento fecha tijolo.
+    assert isinstance(estado.fase_renko, FaseRenko)
 
 
 def test_modo_sem_cor_preserva_lado_em_texto_e_simbolo(qapp):
