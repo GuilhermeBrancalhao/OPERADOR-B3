@@ -10,7 +10,12 @@ __pycache__/
 # reconstruia o produto, e `git diff -- fluxopro/` ficava estruturalmente
 # cego a esses arquivos — as provas de "arvore limpa" das auditorias R1 e R2
 # passavam por cima deles sem enxergar nada.
-/dados/
+#
+# 26/08/2026: tape/book real (trades.csv, book_*.gz) agora SOBE via Git LFS
+# (ver .gitattributes) — publicado todo dia depois do fechamento do pregao.
+# So ficam de fora arquivos parciais/temporarios do dia em andamento.
+/dados/**/*.tmp
+/dados/**/*.lock
 
 # Andaimes do gauntlet: `design/_ab*/` sao copias efemeras montadas para cada
 # rodada de critica em A/B cego — a nossa saida e um recorte da barra, com

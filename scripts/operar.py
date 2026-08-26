@@ -99,7 +99,7 @@ def construir_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--fonte",
         choices=[f.value for f in FonteDados],
-        default=FonteDados.SIMULADOR.value,
+        default=FonteDados.MT5.value,
     )
 
     g_sim = p.add_argument_group("simulador")
