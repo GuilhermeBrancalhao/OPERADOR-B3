@@ -1700,10 +1700,12 @@ class PainelNexoMercadoASG(_PainelASG):
         # docstring de `fluxopro/analytics/renko.py` para os rótulos de
         # confiança (CONFIRMADO/IMPRECISO/AUSENTE NA FONTE) por regra.
         self._renko = Renko(grid, ConfigRenko(tamanho_tijolo_pontos=4.0))
-        # Candle temporal M15 (gráfico inferior direito): mesmo padrão de
+        # Candle temporal M5 (gráfico inferior direito): mesmo padrão de
         # bucketing de `estado_mercado.py`, mas com retenção limitada — ver
-        # docstring de `fluxopro/analytics/candle_temporal.py`.
-        self._candles_m15 = CandleTemporal(ConfigCandleTemporal(timeframe_ns=15 * 60_000_000_000))
+        # docstring de `fluxopro/analytics/candle_temporal.py`. O candle em
+        # formação aparece desde o PRIMEIRO negócio do dia — nao esperamos
+        # 5 minutos para o operador ver o pavio se formando.
+        self._candles_m15 = CandleTemporal(ConfigCandleTemporal(timeframe_ns=5 * 60_000_000_000))
 
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         self._snapshot = snapshot

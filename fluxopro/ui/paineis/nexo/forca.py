@@ -114,6 +114,11 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         painter.setBrush(Qt.BrushStyle.NoBrush)
         x += largura_tijolo
 
+    # "EVITAR COMPRAS"/"EVITAR VENDAS": regra de disciplina CONFIRMADA na
+    # fonte (ijsZl8EzeH8.txt) — a regiao do alvo do COMPRADOR (acima) e o
+    # pior preco para COMPRAR a favor do movimento, e a do VENDEDOR (abaixo)
+    # o pior para VENDER. So no A1 (o alvo mais proximo, onde a zona comeca)
+    # para nao empilhar o mesmo aviso tres vezes.
     alvos = estado.alvos_renko
     if alvos is not None:
         caneta_alvo = QPen(tema_asg.NEXO_AMARELO, 1, Qt.PenStyle.DashLine)
@@ -124,14 +129,16 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
                 painter.setPen(caneta_alvo)
                 painter.drawLine(area.left(), y, area.right(), y)
                 painter.setPen(tema_asg.NEXO_AMARELO)
-                painter.drawText(area.left() + 3, y - 2, f"A{indice}+")
+                rotulo = f"A{indice}+" + ("  EVITAR COMPRAS" if indice == 1 else "")
+                painter.drawText(area.left() + 3, y - 2, rotulo)
         for indice, preco_alvo in enumerate(alvos.negativos, start=1):
             y = y_de_preco(preco_alvo)
             if area.top() <= y <= area.bottom():
                 painter.setPen(caneta_alvo)
                 painter.drawLine(area.left(), y, area.right(), y)
                 painter.setPen(tema_asg.NEXO_CIANO)
-                painter.drawText(area.left() + 3, y + 9, f"A{indice}-")
+                rotulo = f"A{indice}-" + ("  EVITAR VENDAS" if indice == 1 else "")
+                painter.drawText(area.left() + 3, y + 9, rotulo)
 
     fase = estado.fase_renko if isinstance(estado.fase_renko, FaseRenko) else FaseRenko.INDEFINIDA
     cor_fase = _cor_fase(fase)

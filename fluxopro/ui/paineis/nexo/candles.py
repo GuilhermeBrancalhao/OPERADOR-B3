@@ -1,15 +1,21 @@
-"""Regiao GRAFICO DE CANDLES · M15 (x 0,63-0,98 · y 0,34-0,85).
+"""Regiao GRAFICO DE CANDLES · M5 (x 0,63-0,98 · y 0,34-0,85).
 
 Esqueleto extraido de ``PainelNexoMercadoASG._desenhar_candles_nexo``. E a
 maior area do quadro, como no material de referencia: a evidencia decisoria
 mora no grafico.
 
-Candles vem de ``estado.candles_m15`` — OHLCV real de 15 minutos, agregado
-por ``fluxopro/analytics/candle_temporal.py`` a partir dos MESMOS negocios
-que alimentam `estado.serie`. Nao ha OHLC externo, nao ha lookahead e nao ha
-liquidez sintetizada. Preco chega em ``int`` de ticks e vira pixel apenas
-aqui, na fronteira de desenho (``y_preco`` e ``formato.preco_completo``);
-nada volta a ser gravado no snapshot.
+Candles vem de ``estado.candles_m15`` — OHLCV real de 5 minutos (o nome do
+campo ficou de uma versao anterior; ver `fluxopro/ui/paineis/asg.py` onde o
+timeframe e configurado), agregado por `fluxopro/analytics/candle_temporal.py`
+a partir dos MESMOS negocios que alimentam `estado.serie`. Nao ha OHLC
+externo, nao ha lookahead e nao ha liquidez sintetizada. Preco chega em
+``int`` de ticks e vira pixel apenas aqui, na fronteira de desenho
+(``y_preco`` e ``formato.preco_completo``); nada volta a ser gravado no
+snapshot.
+
+O candle em formacao aparece desde o PRIMEIRO negocio da sessao — o operador
+tem que ver o pavio se formando ao vivo, nunca esperar o timeframe fechar
+para o grafico existir.
 
 Etiquetas de preco na borda esquerda, faixa tracejada e anotacao junto aos
 candles: os niveis consultivos (STOP/A1/A2/A3) sao ancorados na altura real
@@ -23,7 +29,7 @@ ordem.
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen, QPolygon
+from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen
 
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.paineis.nexo import EstadoNexo
@@ -72,11 +78,11 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         return
     candles = estado.candles_m15
     painter.fillRect(rect, tema_asg.NEXO_PAINEL)
-    if len(candles) < 2:
+    if len(candles) < 1:
         painter.setPen(tema_asg.NEXO_MUTED)
         painter.setFont(tokens.fonte_rotulo(8))
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter,
-                         "AGUARDANDO CANDLES M15")
+                         "AGUARDANDO PRIMEIRO NEGOCIO DA SESSAO")
         return
 
     precos = [c.high for c in candles] + [c.low for c in candles]
@@ -95,7 +101,7 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # Densidade das velas segue a largura REAL do plot (nao a do quadro
     # inteiro) — um plot estreito nao pode herdar a mesma contagem de velas
     # de um plot largo, senao cada vela vira uma lasca. Cada vela ja e um
-    # candle M15 fechado (ou o em formacao) — nao ha reagrupamento aqui.
+    # candle M5 fechado (ou o em formacao) — nao ha reagrupamento aqui.
     n_velas = min(VELAS_MAX, max(VELAS_MIN, area_plot.width() // 11))
     velas = list(candles[-n_velas:])
 
@@ -189,8 +195,6 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     max_volume = max(1, max(candle.volume for candle in velas))
     largura = max(3, area_plot.width() // max(1, len(velas) * 2))
     fechamentos: list[QPoint] = []
-    medias: list[QPoint] = []
-    historico: list[int] = []
     for indice, candle in enumerate(velas):
         abertura, fechamento = candle.open, candle.close
         maxima, minima = candle.high, candle.low
@@ -207,20 +211,6 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         painter.fillRect(QRect(x - largura // 2, area_volume.bottom() - altura_volume,
                                largura, altura_volume), cor)
         fechamentos.append(QPoint(x, y_fechamento))
-        historico.append(fechamento)
-        janela = historico[-min(6, len(historico)):]
-        medias.append(QPoint(x, y_preco(round(sum(janela) / len(janela)))))
-
-    if len(fechamentos) >= 2:
-        painter.setPen(QPen(tema_asg.NEXO_CIANO, 1))
-        painter.drawPolyline(QPolygon(fechamentos))
-        painter.setPen(QPen(tema_asg.NEXO_AMARELO, 1, Qt.PenStyle.DotLine))
-        painter.drawPolyline(QPolygon(medias))
-        painter.setFont(tokens.fonte_rotulo(7))
-        painter.setPen(tema_asg.NEXO_AMARELO)
-        painter.drawText(QRect(area_plot.left() + 5, area_plot.top() + 3, 110, 12),
-                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                         "M15 · MEDIA 6")
 
     # Anotacao junto ao ultimo negocio realmente observado — nao e um alvo
     # nem uma leitura preditiva, so identifica onde o ultimo preco recebido
@@ -305,4 +295,4 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     painter.drawText(rodape, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, inicio)
     painter.drawText(rodape, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, fim)
     painter.drawText(rodape, Qt.AlignmentFlag.AlignCenter,
-                     "VOLUME OBSERVADO · M15 CAUSAL")
+                     "VOLUME OBSERVADO · M5 CAUSAL")
