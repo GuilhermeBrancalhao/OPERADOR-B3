@@ -2402,13 +2402,17 @@ def _ranking_componentes_maker(maker: object, top_n: int = 3) -> str:
     if not componentes:
         return ""
     ordenados = sorted(componentes, key=lambda c: abs(getattr(c, "pontuacao", 0.0)), reverse=True)
-    partes = []
+    linhas = []
     for posicao, comp in enumerate(ordenados[:top_n], start=1):
-        nome = str(getattr(comp, "componente", "?"))[:3]
+        nome = str(getattr(comp, "componente", "?"))
         pontuacao = float(getattr(comp, "pontuacao", 0.0))
         giro = int(getattr(comp, "n_evidencias", 0))
-        partes.append(f"{posicao}o{nome}{pontuacao * 100:+.0f}%g{giro}")
-    return " ".join(partes)
+        linhas.append(f"{posicao}o {nome}  {pontuacao * 100:+.0f}%  giro {giro}")
+    # Uma linha por posicao — nao uma so string espremida — porque uma
+    # unica linha de ~5px era, na pratica, ilegivel (achado do operador
+    # olhando o app ao vivo: "onde esta os makers?" com o texto la, so que
+    # pequeno demais pra ler).
+    return "\n".join(linhas)
 
 
 def _linhas_da_matriz_asg(

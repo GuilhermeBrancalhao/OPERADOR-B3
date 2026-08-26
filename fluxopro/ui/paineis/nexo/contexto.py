@@ -319,11 +319,31 @@ def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor, ranking_m
     # pedido pelo operador) — nunca uma entidade nova, so o mesmo sinal
     # agregado quebrado por componente. So desenha quando ha componente
     # real disponivel (nunca fabrica ranking vazio).
+    #
+    # UMA LINHA POR POSICAO, fonte legivel — achado ao vivo pelo operador
+    # ("onde esta os makers?"): a versao anterior espremia as 3 posicoes
+    # numa unica linha a ~5px, tecnicamente presente mas ilegivel na pratica.
     if ranking_maker:
-        painter.setFont(tokens.fonte_rotulo(max(6, TAM_FONTE_ROTULO_PRISMA - 1)))
-        painter.setPen(tema_asg.NEXO_MUTED)
-        painter.drawText(QRect(x - 24, chao_y + 26, largura + prof_x + 64, 12),
-                         Qt.AlignmentFlag.AlignCenter, ranking_maker)
+        linhas_ranking = ranking_maker.split("\n")
+        altura_linha_ranking = 13
+        largura_bloco = max(largura + prof_x + 70, 150)
+        x_bloco = x - 30
+        y_bloco = chao_y + 24
+        # Nunca desenhar por cima da PROXIMA regiao: se a caixa nao tem
+        # altura para as 3 linhas (janela pequena, cubo baixo na regiao),
+        # corta as linhas de baixo em vez de invadir o vizinho — achado ao
+        # vivo pelo operador (a 3a linha ficava por cima da faixa de niveis).
+        linhas_que_cabem = max(0, (rect.bottom() - y_bloco) // altura_linha_ranking)
+        linhas_ranking = linhas_ranking[:linhas_que_cabem]
+        painter.setFont(tokens.fonte_numero(8, QFont.Weight.DemiBold))
+        for indice, linha in enumerate(linhas_ranking):
+            painter.setPen(tema_asg.NEXO_TEXTO if indice == 0 else tema_asg.NEXO_MUTED)
+            painter.drawText(
+                QRect(x_bloco, y_bloco + indice * altura_linha_ranking,
+                     largura_bloco, altura_linha_ranking),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                linha,
+            )
 
 
 def _tom_valor_leitura(cor: QColor) -> QColor:
