@@ -1,7 +1,7 @@
 # Especificação de captura e análise diária de mercado real
 
-Status: aprovada para a próxima implementação  
-Versão: 1.0  
+Status: aprovada para a próxima implementação
+Versão: 1.0
 Responsável pela execução: equipe do Operador B3
 
 ## 1. Objetivo
