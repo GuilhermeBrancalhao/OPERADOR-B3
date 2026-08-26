@@ -120,10 +120,32 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     painter.drawPolygon(QPolygon([QPoint(cx - raio + 6, cy + raio),
                                   QPoint(cx, cy + raio // 3),
                                   QPoint(cx + raio - 6, cy + raio)]))
+
+    # "Rosto" do OPERADOR IA — geometria propria (nunca a foto/render de
+    # terceiro que os prints de referencia mostram): visor fino ligando os
+    # dois olhos e brackets de canto tipo mira, no mesmo vocabulario do
+    # visor HUD central (nucleo.py) — nunca um rosto fotorrealista, so o
+    # mesmo eixo neon/glifo ja usado no resto da superficie NEXO.
     painter.setBrush(tema_asg.NEXO_FUNDO)
     painter.drawEllipse(QPoint(cx - raio // 3, cy - 6), 3, 3)
     painter.drawEllipse(QPoint(cx + raio // 3, cy - 6), 3, 3)
     painter.setBrush(Qt.BrushStyle.NoBrush)
+
+    caneta_visor = QPen(tema_asg.NEXO_IDENTIDADE_ANEL, 1)
+    painter.setPen(caneta_visor)
+    painter.drawLine(cx - raio // 2, cy - 6, cx - raio // 3 - 5, cy - 6)
+    painter.drawLine(cx + raio // 3 + 5, cy - 6, cx + raio // 2, cy - 6)
+
+    braco = max(5, raio // 4)
+    painter.setPen(QPen(tema_asg.NEXO_IDENTIDADE_ANEL, 1))
+    for px, py, dx, dy in (
+        (cx - raio, cy - raio - 4, 1, 1),
+        (cx + raio, cy - raio - 4, -1, 1),
+        (cx - raio, cy + raio + 4, 1, -1),
+        (cx + raio, cy + raio + 4, -1, -1),
+    ):
+        painter.drawLine(px, py, px + dx * braco, py)
+        painter.drawLine(px, py, px, py + dy * braco)
 
     # O triangulo acima carrega o vies SO em cor. Por contrato (nenhuma
     # leitura pode depender so do canal de cor) o rotulo abaixo repete a
@@ -140,11 +162,11 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
                          Qt.AlignmentFlag.AlignCenter, rotulo_vies)
 
     painter.setPen(tema_asg.NEXO_TEXTO)
-    painter.setFont(tokens.fonte_numero(max(13, min(24, rect.width() // 9)),
+    painter.setFont(tokens.fonte_numero(max(11, min(20, rect.width() // 11)),
                                         QFont.Weight.Bold))
     painter.drawText(QRect(rect.left(), rect.bottom() - 30, rect.width(), 18),
-                     Qt.AlignmentFlag.AlignCenter, "NEXO")
+                     Qt.AlignmentFlag.AlignCenter, "OPERADOR IA")
     painter.setFont(tokens.fonte_rotulo(7))
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(QRect(rect.left(), rect.bottom() - 13, rect.width(), 13),
-                     Qt.AlignmentFlag.AlignCenter, "FLOW INTELLIGENCE · PROXY PROPRIO")
+                     Qt.AlignmentFlag.AlignCenter, "LEITURA CONSULTIVA · PROXY PROPRIO")

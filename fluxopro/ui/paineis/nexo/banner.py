@@ -36,7 +36,7 @@ comentario junto de ``FATOR_PLACA_ESCURA`` abaixo.
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QBrush, QFont, QPainter, QPen, QPolygon
+from PySide6.QtGui import QBrush, QColor, QFont, QPainter, QPen, QPolygon
 
 from fluxopro.ui import tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
@@ -98,9 +98,28 @@ _FAIXA_POR_DIRECAO = {
 FATOR_PLACA_ESCURA = 480
 
 
+LIMIAR_RISCO_VOLATILIDADE_ALERTA = 0.7
+"""Mesmo IMPRECISO documentado em `asg.py::_risco_volatilidade` — o limiar
+de exibicao e outro numero sem fonte, so o corte visual escolhido aqui."""
+
+
 def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if rect.height() < 30 or rect.width() < 100:
         return
+
+    # Alerta de exaustao/volatilidade tem prioridade sobre a leitura normal
+    # de estado — nunca os dois ao mesmo tempo. Regra de disciplina: fluxo
+    # extremo e sustentado (>= 85% de dominancia macro) e o pior preco para
+    # ir CONTRA o movimento (mesmo principio do 4R — evitar operar contra a
+    # tendencia sem esperar enfraquecer/pullback). Volatilidade alta e um
+    # aviso a parte, sem lado — so "cuidado", nunca uma leitura direcional.
+    if estado.alerta_exaustao is not None:
+        _desenhar_alerta_exaustao(painter, rect, estado.alerta_exaustao)
+        return
+    if estado.risco_volatilidade >= LIMIAR_RISCO_VOLATILIDADE_ALERTA:
+        _desenhar_alerta_volatilidade(painter, rect, estado.risco_volatilidade)
+        return
+
     decisao = estado.snapshot.decisao
     cor = _asg._cor_nexo_direcao(decisao.direcao)
     faixa = _FAIXA_POR_DIRECAO.get(decisao.direcao, tema_asg.NEXO_CIANO_FAIXA)
@@ -191,3 +210,98 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
                            rect.width() - 2 * PAD_H, ALTURA_LINHA_RODAPE),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                      f"CONFIANCA · {decisao.confianca.value}  ·  LEITURA CONSULTIVA")
+
+
+def _desenhar_placa_alerta(
+    painter: QPainter, rect: QRect, cor, rotulo_chip: str, titulo: str, subtitulo: str
+) -> None:
+    """Geometria compartilhada dos dois alertas: cunha diagonal + chip
+    "ALERTA"/rotulo a esquerda, titulo grande + subtitulo a direita — mesmo
+    vocabulario de cunha/corte diagonal do banner normal, cores do proprio
+    tema (nunca um vermelho/verde literal novo).
+    """
+
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+    # `cor` pode ser um QColor ESTATICO compartilhado (`tema_asg.NEXO_VERDE`/
+    # `NEXO_ROSA`/`tokens.ALERT` sao alocados uma vez no import — ver o
+    # comentario grande em tema_asg.py acima de NEXO_VERDE). Mutar `cor`
+    # diretamente com `setAlpha` corromperia essa instancia global para todo
+    # consumidor futuro; `QColor(cor)` copia antes de mutar.
+    faixa = QColor(cor)
+    faixa.setAlpha(60)
+    placa = cor.darker(FATOR_PLACA_ESCURA)
+
+    largura_chip = min(90, max(60, rect.width() // 6))
+    caixa_chip = QRect(rect.left() + PAD_H, rect.top(), largura_chip, rect.height())
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(placa))
+    painter.drawRect(caixa_chip)
+    painter.setPen(QPen(cor, 2))
+    painter.drawLine(caixa_chip.right(), caixa_chip.top(), caixa_chip.right(), caixa_chip.bottom())
+    painter.setFont(tokens.fonte_ui(9, QFont.Weight.Bold))
+    painter.setPen(tema_asg.NEXO_TEXTO)
+    painter.drawText(caixa_chip, Qt.AlignmentFlag.AlignCenter, rotulo_chip)
+
+    caixa_texto = QRect(caixa_chip.right() + PAD_H * 2, rect.top(),
+                        rect.width() - largura_chip - PAD_H * 3, rect.height())
+    painter.setBrush(QBrush(faixa))
+    painter.setPen(QPen(cor, 1))
+    painter.drawRect(caixa_texto)
+    painter.restore()
+
+    # O titulo e uma FRASE (nao uma palavra curta como o banner normal
+    # COMPRA/VENDA/AGUARDAR), entao a fonte tem que caber na LARGURA, nao so
+    # numa fracao fixa da altura — um tamanho calibrado so por altura
+    # (como o banner normal faz) estourava a largura da placa e as letras
+    # ficavam empilhadas/ilegiveis (achado corrigindo esta mesma parte).
+    largura_disponivel = caixa_texto.width() - 2 * PAD_H
+    altura_max_titulo = round(caixa_texto.height() * 0.6)
+    tamanho_titulo = max(10, min(altura_max_titulo, 22))
+    fonte_titulo = tokens.fonte_numero(tamanho_titulo, QFont.Weight.Bold)
+    painter.setFont(fonte_titulo)
+    while tamanho_titulo > 8 and painter.fontMetrics().horizontalAdvance(titulo) > largura_disponivel:
+        tamanho_titulo -= 1
+        fonte_titulo = tokens.fonte_numero(tamanho_titulo, QFont.Weight.Bold)
+        painter.setFont(fonte_titulo)
+    painter.setPen(tema_asg.NEXO_TEXTO)
+    painter.drawText(QRect(caixa_texto.left() + PAD_H, caixa_texto.top(),
+                          largura_disponivel, round(caixa_texto.height() * 0.65)),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, titulo)
+    painter.setFont(tokens.fonte_rotulo(7))
+    painter.setPen(cor)
+    painter.drawText(QRect(caixa_texto.left() + PAD_H, caixa_texto.bottom() - ALTURA_LINHA_RODAPE,
+                          caixa_texto.width() - 2 * PAD_H, ALTURA_LINHA_RODAPE),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, subtitulo)
+
+
+def _desenhar_alerta_exaustao(painter: QPainter, rect: QRect, alerta: tuple[str, float]) -> None:
+    """Fluxo extremo e sustentado num sentido — pior preco pra ir contra ele.
+
+    Mesma regra de disciplina do 4R (`fluxopro/analytics/renko.py`): nao
+    e ordem, e aviso pra esperar o fluxo enfraquecer ou um pullback antes
+    de considerar o lado oposto.
+    """
+
+    direcao_extrema, magnitude = alerta
+    if direcao_extrema == "COMPRA":
+        cor = _asg._cor_nexo_direcao(_asg.DirecaoASG.COMPRA)
+        titulo = "CUIDADO COM VENDAS AGORA"
+        subtitulo = f"SUPORTE MAXIMO · HORIZONTE {magnitude * 100:+.0f}%"
+    else:
+        cor = _asg._cor_nexo_direcao(_asg.DirecaoASG.VENDA)
+        titulo = "CUIDADO COM COMPRAS AGORA"
+        subtitulo = f"RESISTENCIA MAXIMA · HORIZONTE {magnitude * 100:+.0f}%"
+    _desenhar_placa_alerta(painter, rect, cor, "ALERTA", titulo, subtitulo)
+
+
+def _desenhar_alerta_volatilidade(painter: QPainter, rect: QRect, risco: float) -> None:
+    """Risco de volatilidade alto — aviso sem lado (nao e leitura direcional,
+    ver `asg.py::_risco_volatilidade` para o rotulo IMPRECISO/proxy)."""
+
+    _desenhar_placa_alerta(
+        painter, rect, tokens.ALERT, "ALERTA",
+        "RISCO DE VOLATILIDADE",
+        f"DESVIO {risco * 100:.0f}% DA JANELA RECENTE · PROXY",
+    )

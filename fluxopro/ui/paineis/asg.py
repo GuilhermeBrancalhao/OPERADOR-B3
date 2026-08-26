@@ -1792,6 +1792,56 @@ class PainelNexoMercadoASG(_PainelASG):
             pesos = [linha.forca for linha in linhas]
         return sum(pesos) / max(1, len(pesos))
 
+    JANELA_RISCO_VOLATILIDADE = 20
+    """IMPRECISO — nao ha formula de "risco de volatilidade" em nenhuma
+    fonte deste projeto (pesquisa/*.md). Janela de amostras recentes usada
+    para o desvio-padrao dos precos, rotulada como proxy, nunca como a
+    metodologia do autor."""
+
+    LIMIAR_DOMINANCIA_EXAUSTAO = 0.85
+
+    def _risco_volatilidade(self) -> float:
+        """Proxy de risco de volatilidade: desvio-padrao dos ultimos precos
+        observados, normalizado pelo tick do simbolo, clampado em [0, 1].
+
+        IMPRECISO/INFERIDO — nenhuma fonte deste projeto revela uma formula
+        de "risco de volatilidade"; isto e um desvio-padrao classico sobre
+        os MESMOS precos reais de `_serie` (nenhum dado novo), nunca
+        apresentado como calculo do autor da metodologia.
+        """
+
+        amostras = list(self._serie)[-self.JANELA_RISCO_VOLATILIDADE:]
+        if len(amostras) < 3:
+            return 0.0
+        precos = [item[1] for item in amostras]
+        media = sum(precos) / len(precos)
+        variancia = sum((p - media) ** 2 for p in precos) / len(precos)
+        desvio_ticks = variancia ** 0.5
+        # 6 ticks de desvio-padrao ~= risco maximo (1.0) — piso arbitrario
+        # de normalizacao, documentado como tal, nunca um limiar da fonte.
+        return max(0.0, min(1.0, desvio_ticks / 6.0))
+
+    def _alerta_exaustao(self) -> tuple[str, float] | None:
+        """Estado de exaustao direcional: fluxo extremo e sustentado num
+        sentido, onde entrar CONTRA o movimento e o pior preco (mesma regra
+        de disciplina do 4R — ver `fluxopro/analytics/renko.py`). Nunca uma
+        ordem, so um aviso para nao operar contratendencia sem esperar
+        enfraquecer/pullback.
+
+        Le a leitura MACRO (`HORIZONTE`, ja calculada em
+        `_linhas_contexto_nexo`) — nenhum dado novo, so um limiar sobre o
+        que ja existe. Retorna (direcao_do_extremo, magnitude) ou None.
+        """
+
+        for apelido, linha in self._linhas_contexto_nexo():
+            if apelido != "HORIZONTE":
+                continue
+            if linha.forca >= self.LIMIAR_DOMINANCIA_EXAUSTAO:
+                return ("COMPRA", linha.forca)
+            if linha.forca <= -self.LIMIAR_DOMINANCIA_EXAUSTAO:
+                return ("VENDA", linha.forca)
+        return None
+
     def _linha_maker(self) -> LinhaMatrizASG | None:
         for linha in self._snapshot.matriz.linhas:
             if linha.componente == "MAKERPROXY":
@@ -1885,6 +1935,8 @@ class PainelNexoMercadoASG(_PainelASG):
             vap_poc=self._vap.poc,
             vap_val=self._vap.val(),
             vap_vah=self._vap.vah(),
+            risco_volatilidade=self._risco_volatilidade(),
+            alerta_exaustao=self._alerta_exaustao(),
         )
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:

@@ -102,6 +102,8 @@ class EstadoNexo:
     vap_poc: int | None = None
     vap_val: int | None = None
     vap_vah: int | None = None
+    risco_volatilidade: float = 0.0
+    alerta_exaustao: tuple[str, float] | None = None
 
 
 def retangulos(quadro: QRect) -> dict[str, QRect]:

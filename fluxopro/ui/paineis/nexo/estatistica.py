@@ -47,6 +47,28 @@ _MAPA_CONFIANCA = {
 }
 
 
+JANELA_SUAVIZACAO_FORCA = 5
+"""Media movel causal (so olha pra tras) sobre a forca bruta de cada
+amostra. Pedido do operador: a tira de barras crua alternava sinal a cada
+negocio (a forca por-trade e genuinamente ruidosa) e nao dava pra ler
+tendencia nenhuma nisso — cada barra so descrevia UM negocio, nao "quanto
+de forca o mercado tem agora". Suavizar nao fabrica dado novo: a media e
+sobre os MESMOS valores reais de `estado.serie`, nunca lookahead (a janela
+so inclui amostras ja observadas ate aquele ponto)."""
+
+
+def _suavizar_forca(
+    amostras: tuple[tuple[int, int, float, int], ...], janela: int = JANELA_SUAVIZACAO_FORCA
+) -> tuple[float, ...]:
+    valores = [item[2] for item in amostras]
+    suavizados = []
+    for indice in range(len(valores)):
+        inicio = max(0, indice - janela + 1)
+        recorte = valores[inicio : indice + 1]
+        suavizados.append(sum(recorte) / len(recorte))
+    return tuple(suavizados)
+
+
 def _cor_forca(forca: float):
     """Mapeia o sinal da forca observada para o eixo de cor do NEXO.
 
@@ -187,6 +209,10 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
                      "FORCA OBSERVADA")
 
     amostras = serie[-24:]
+    # Suavizado sobre a serie INTEIRA (nunca so a janela visivel), pra a
+    # primeira barra visivel nao comecar sem historico — so entao recorta
+    # as ultimas 24. Mesmo criterio causal do resto do projeto.
+    forcas_suavizadas = _suavizar_forca(serie)[-len(amostras):]
     faixa_grafico = QRect(rect.left(), rect.top() + ALTURA_ROTULO_BARRAS, rect.width(),
                           max(10, rect.height() - ALTURA_ROTULO_BARRAS - ALTURA_LEGENDA_BARRAS))
     area = faixa_grafico.adjusted(3, 1, -3, -1)
@@ -197,7 +223,7 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
     metade = max(4, area.height() // 2 - 2)
 
     x = area.left()
-    for _, _, forca, _ in amostras:
+    for forca in forcas_suavizadas:
         cor = _cor_forca(forca)
         altura = max(2, round(min(1.0, abs(forca)) * metade))
         if forca >= 0:
