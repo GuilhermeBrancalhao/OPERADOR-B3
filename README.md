@@ -1,5 +1,9 @@
 # FluxoPro
 
+Para o contrato de captura, armazenamento seguro, análise diária e publicação
+controlada de dados reais, consulte
+[ESPECIFICACAO_DADOS_REAIS.md](ESPECIFICACAO_DADOS_REAIS.md).
+
 Terminal de leitura e interpretação de fluxo do mercado futuro brasileiro (WDO/WIN), em Python.
 Lê o tape e o livro, deriva estado de microestrutura, e emite **sinais** segundo uma metodologia
 extraída de fonte pública com citação e rótulo de confiança.
