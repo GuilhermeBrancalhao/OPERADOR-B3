@@ -132,7 +132,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     _aneis_leitura(painter, centro, raio, score, direcao, cor)
 
-    _prisma(painter, rect, score, cor)
+    ranking_maker = maker.detalhe if maker is not None else ""
+    _prisma(painter, rect, score, cor, ranking_maker)
 
     ultimo = estado.serie[-1][1] if estado.serie else None
     if ultimo is not None:
@@ -238,7 +239,7 @@ def _aneis_leitura(painter: QPainter, centro: QPoint, raio: int, score: float,
                      rotulo_direcao)
 
 
-def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor) -> None:
+def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor, ranking_maker: str = "") -> None:
     """Volume isometrico da pressao observada — forma, nao logotipo.
 
     Caixa extrudada FECHADA, tres faces da MESMA cor de direcao: topo
@@ -313,6 +314,16 @@ def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor) -> None:
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(QRect(x - 18, topo_y + prof_y - 15, largura + prof_x + 52, 14),
                      Qt.AlignmentFlag.AlignCenter, "MAKER PROXY")
+
+    # Ranking dos componentes do MakerProxy por magnitude ("Maker 1o/2o/3o"
+    # pedido pelo operador) — nunca uma entidade nova, so o mesmo sinal
+    # agregado quebrado por componente. So desenha quando ha componente
+    # real disponivel (nunca fabrica ranking vazio).
+    if ranking_maker:
+        painter.setFont(tokens.fonte_rotulo(max(6, TAM_FONTE_ROTULO_PRISMA - 1)))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(QRect(x - 24, chao_y + 26, largura + prof_x + 64, 12),
+                         Qt.AlignmentFlag.AlignCenter, ranking_maker)
 
 
 def _tom_valor_leitura(cor: QColor) -> QColor:

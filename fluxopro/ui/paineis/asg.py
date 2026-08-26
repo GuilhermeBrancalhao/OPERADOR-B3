@@ -2331,6 +2331,34 @@ def _forca_limitada(valor: float) -> float:
     return max(-1.0, min(1.0, valor))
 
 
+def _ranking_componentes_maker(maker: object, top_n: int = 3) -> str:
+    """Os N componentes do MakerProxy de maior magnitude, "1o/2o/3o".
+
+    Pedido do operador: um "Maker 1o/2o/3o" no estilo ranking. A fonte do
+    metodo (BbnGYiwygFQ.txt) descreve o Maker como UM sinal agregado, nao um
+    ranking de tres entidades — inventar um mecanismo de ranking novo seria
+    fabricar dado. Isto e o que existe de verdade e e honesto sobre esse
+    pedido: `MakerProxySnapshot.componentes` ja quebra o mesmo sinal agregado
+    em ABSORCAO/REPOSICAO/DIVERGENCIA/CLIPS/AGRESSAO (fluxopro/asg/
+    maker_proxy.py, jamais por nome de corretora); aqui so ordenamos essa
+    quebra por |pontuacao| e mostramos os `top_n`. "Giro" = numero de
+    evidencias que sustentam aquele componente, nao um giro de contratos —
+    rotulado como tal para nao alegar um dado que a fonte nao calcula.
+    """
+
+    componentes = tuple(getattr(maker, "componentes", ()) or ())
+    if not componentes:
+        return ""
+    ordenados = sorted(componentes, key=lambda c: abs(getattr(c, "pontuacao", 0.0)), reverse=True)
+    partes = []
+    for posicao, comp in enumerate(ordenados[:top_n], start=1):
+        nome = str(getattr(comp, "componente", "?"))[:3]
+        pontuacao = float(getattr(comp, "pontuacao", 0.0))
+        giro = int(getattr(comp, "n_evidencias", 0))
+        partes.append(f"{posicao}o{nome}{pontuacao * 100:+.0f}%g{giro}")
+    return " ".join(partes)
+
+
 def _linhas_da_matriz_asg(
     leitura: object, maker: object, estado: EstadoASG
 ) -> tuple[LinhaMatrizASG, ...]:
@@ -2401,7 +2429,10 @@ def _linhas_da_matriz_asg(
             confianca=_confianca_numerica(maker_conf),
             procedencia=_procedencia_do_maker(getattr(maker, "procedencia", "")),
             evidencias=len(tuple(getattr(maker, "evidence", ()))),
-            detalhe=f"PERSIST {int(getattr(maker, 'persistence_ns', 0)) / 1e9:.1f}s",
+            detalhe=(
+                _ranking_componentes_maker(maker)
+                or f"PERSIST {int(getattr(maker, 'persistence_ns', 0)) / 1e9:.1f}s"
+            ),
         ),
         LinhaMatrizASG(
             componente="VELOCIMETRO",
