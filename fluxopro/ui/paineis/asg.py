@@ -1742,6 +1742,17 @@ class PainelNexoMercadoASG(_PainelASG):
         # formação aparece desde o PRIMEIRO negócio do dia — nao esperamos
         # 5 minutos para o operador ver o pavio se formando.
         self._candles_m15 = CandleTemporal(ConfigCandleTemporal(timeframe_ns=5 * 60_000_000_000))
+        # 15 minutos (pedido do operador, 27/08/2026: "de a opcao de time
+        # de 5M e 15M editavel"). Alimentado em PARALELO ao de 5 minutos,
+        # sempre — nunca reconstruido na troca de timeframe, o que perderia
+        # o dia ate ali (`self._serie` guarda preco/forca, nao agressor por
+        # negocio, entao nao daria pra refazer o volume por lado depois).
+        self._candles_15m = CandleTemporal(ConfigCandleTemporal(timeframe_ns=15 * 60_000_000_000))
+        self._timeframe_candles_min = 5
+        self._candles_offset = 0
+        self._arrasto_candles_ativo = False
+        self._arrasto_candles_x0 = 0
+        self._arrasto_candles_offset0 = 0
         # Suavizacao do score do MakerProxy (gauge EQUILIBRIO, PRESENCA e a
         # barra 56/44 de "pressao" em pressao.py — os 3 leem o MESMO numero).
         # Mesmo padrao ja usado em estatistica.py para a forca bruta por
@@ -1859,6 +1870,7 @@ class PainelNexoMercadoASG(_PainelASG):
         # nunca um segundo feed, so um segundo agregador sobre o mesmo dado.
         self._renko.registrar(timestamp_ns, preco)
         self._candles_m15.registrar(timestamp_ns, preco, quantidade, agressor)
+        self._candles_15m.registrar(timestamp_ns, preco, quantidade, agressor)
         if quantidade > 0:
             self._vap.registrar_trade(
                 Trade(timestamp_ns=timestamp_ns, symbol="", price=preco,
@@ -1997,6 +2009,79 @@ class PainelNexoMercadoASG(_PainelASG):
         saida.sort(key=lambda item: item[0])
         return tuple(saida)
 
+    def _agregador_candles_atual(self) -> CandleTemporal:
+        return self._candles_15m if self._timeframe_candles_min == 15 else self._candles_m15
+
+    def _retangulo_candles(self) -> QRect | None:
+        """Mesmo calculo de `desenhar()` para a regiao "candles" — reaproveitado
+        pelos handlers de mouse pra saber onde o clique/arrasto caiu, sem
+        duplicar a logica de `nexo.retangulos`."""
+
+        largura, altura = self.width(), self.height()
+        if largura < 420 or altura < 180:
+            return None
+        quadro = QRect(0, 0, largura, max(1, altura - nexo.ALTURA_RESSALVA))
+        return nexo.retangulos(quadro).get("candles")
+
+    def mousePressEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+        caixa = self._retangulo_candles()
+        if caixa is None or not caixa.contains(pos):
+            super().mousePressEvent(evento)
+            return
+        modulo_candles = nexo.modulo("candles")
+        barra_controles = QRect(caixa.left(), caixa.top() + 14, caixa.width(),
+                                modulo_candles.ALTURA_BARRA_CONTROLES)
+        controles = modulo_candles.retangulos_controles(barra_controles)
+        if controles["timeframe"].contains(pos):
+            self._timeframe_candles_min = 15 if self._timeframe_candles_min == 5 else 5
+            self._candles_offset = 0
+            self.marcar_tudo_sujo()
+            evento.accept()
+            return
+        if self._candles_offset > 0 and controles["agora"].contains(pos):
+            self._candles_offset = 0
+            self.marcar_tudo_sujo()
+            evento.accept()
+            return
+        self._arrasto_candles_ativo = True
+        self._arrasto_candles_x0 = pos.x()
+        self._arrasto_candles_offset0 = self._candles_offset
+        evento.accept()
+
+    def mouseMoveEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        if not self._arrasto_candles_ativo:
+            super().mouseMoveEvent(evento)
+            return
+        pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+        caixa = self._retangulo_candles()
+        modulo_candles = nexo.modulo("candles")
+        largura_plot = max(1, (caixa.width() if caixa is not None else 400)
+                          - modulo_candles.LARGURA_EIXO - modulo_candles.LARGURA_ROTULO_NIVEL)
+        n_velas_estimado = min(modulo_candles.VELAS_MAX,
+                               max(modulo_candles.VELAS_MIN, largura_plot // 11))
+        passo_px = max(4, largura_plot // max(1, n_velas_estimado))
+        dx = pos.x() - self._arrasto_candles_x0
+        # Arrastar pra DIREITA revela velas mais ANTIGAS (convencao usual de
+        # grafico: empurrar o grafico com o dedo/mouse pra direita "puxa" o
+        # passado pra dentro da tela) — por isso o sinal positivo aqui.
+        delta_velas = round(dx / passo_px)
+        candles = self._agregador_candles_atual()
+        total = len(candles.candles_fechados) + (1 if candles.candle_atual else 0)
+        offset_maximo = max(0, total - modulo_candles.VELAS_MIN)
+        novo_offset = max(0, min(offset_maximo, self._arrasto_candles_offset0 + delta_velas))
+        if novo_offset != self._candles_offset:
+            self._candles_offset = novo_offset
+            self.marcar_tudo_sujo()
+        evento.accept()
+
+    def mouseReleaseEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        if self._arrasto_candles_ativo:
+            self._arrasto_candles_ativo = False
+            evento.accept()
+            return
+        super().mouseReleaseEvent(evento)
+
     def _estado_nexo(self) -> nexo.EstadoNexo:
         """Congela o quadro em um valor imutavel antes de qualquer pintura.
 
@@ -2017,8 +2102,11 @@ class PainelNexoMercadoASG(_PainelASG):
             fase_renko=self._renko.fase,
             alvos_renko=self._renko.alvos(),
             renko_tamanho_ticks=self._renko.tamanho_tijolo_ticks,
-            candles_m15=self._candles_m15.candles_fechados
-            + ((self._candles_m15.candle_atual,) if self._candles_m15.candle_atual else ()),
+            candles_m15=self._agregador_candles_atual().candles_fechados
+            + ((self._agregador_candles_atual().candle_atual,)
+               if self._agregador_candles_atual().candle_atual else ()),
+            candles_timeframe_min=self._timeframe_candles_min,
+            candles_offset=self._candles_offset,
             vap_niveis=self._congelar_vap(),
             vap_poc=self._vap.poc,
             vap_val=self._vap.val(),

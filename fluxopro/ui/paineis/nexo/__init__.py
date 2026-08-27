@@ -116,6 +116,19 @@ class EstadoNexo:
     sinal_ultra.py. `None` so quando o painel que constroi EstadoNexo nao o
     calcula (compatibilidade com pontos de montagem antigos/testes)."""
 
+    candles_timeframe_min: int = 5
+    """5 ou 15 — qual agregador de candle esta selecionado (pedido do
+    operador, 27/08/2026: "de a opcao de time de 5M e 15M editavel"). O
+    painel mantem os DOIS `CandleTemporal` sempre alimentados (ver asg.py);
+    isto so diz qual dos dois `candles_m15` representa neste quadro."""
+
+    candles_offset: int = 0
+    """Quantos candles mais recentes ficam FORA da janela visivel — 0 e o
+    presente (ao vivo). Cresce quando o operador arrasta o grafico pra
+    tras. `nexo/candles.py` fatia `candles_m15` por isto antes de recortar
+    as ultimas N velas visiveis; nunca descarta o candle em si, so a
+    janela de exibicao."""
+
 
 def retangulos(quadro: QRect) -> dict[str, QRect]:
     """Traduz o mapa de fracoes em retangulos inteiros dentro de ``quadro``.

@@ -40,6 +40,38 @@ LARGURA_EIXO = 58
 LARGURA_ROTULO_NIVEL = 64
 LINHAS_GRADE = 6
 
+ALTURA_BARRA_CONTROLES = 16
+LARGURA_CHIP_TIMEFRAME = 62
+LARGURA_CHIP_AGORA = 54
+
+
+def retangulos_controles(rect: QRect) -> dict[str, QRect]:
+    """Retangulos dos dois controles clicaveis do topo — chip "5M/15M" (troca
+    de timeframe) e chip "AGORA" (volta ao presente, so quando arrastado).
+
+    Funcao PURA e reaproveitada tanto por `desenhar` (pra pintar) quanto por
+    quem trata o clique do mouse (`PainelNexoMercadoASG` em asg.py, ja que
+    nenhuma regiao do NEXO e um QWidget proprio) — os dois lados usam
+    exatamente a mesma conta, entao clique e desenho nunca divergem.
+    """
+
+    y = rect.top() + 1
+    chip_timeframe = QRect(rect.left() + LARGURA_ROTULO_NIVEL + 4, y,
+                           LARGURA_CHIP_TIMEFRAME, ALTURA_BARRA_CONTROLES)
+    chip_agora = QRect(rect.right() - LARGURA_CHIP_AGORA - 4, y,
+                       LARGURA_CHIP_AGORA, ALTURA_BARRA_CONTROLES)
+    return {"timeframe": chip_timeframe, "agora": chip_agora}
+
+
+def _desenhar_chip(painter: QPainter, caixa: QRect, texto: str, cor, *, preenchido: bool) -> None:
+    painter.setPen(Qt.PenStyle.NoPen if preenchido else QPen(cor, 1))
+    painter.setBrush(cor if preenchido else Qt.BrushStyle.NoBrush)
+    painter.drawRoundedRect(caixa, 3, 3)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(tema_asg.NEXO_FUNDO if preenchido else cor)
+    painter.drawText(caixa, Qt.AlignmentFlag.AlignCenter, texto)
+
 
 def _pilula_preco(
     painter: QPainter,
@@ -76,14 +108,23 @@ def _pilula_preco(
 def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if rect.height() < 60 or rect.width() < 120:
         return
-    candles = estado.candles_m15
+    candles_completos = estado.candles_m15
     painter.fillRect(rect, tema_asg.NEXO_PAINEL)
-    if len(candles) < 1:
+    if len(candles_completos) < 1:
         painter.setPen(tema_asg.NEXO_MUTED)
         painter.setFont(tokens.fonte_rotulo(8))
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter,
                          "AGUARDANDO PRIMEIRO NEGOCIO DA SESSAO")
         return
+
+    # Arrastar o grafico (pedido do operador, 27/08/2026): `candles_offset`
+    # e quantos candles mais recentes ficam fora da janela — 0 e o presente.
+    # Fatiar aqui, ANTES de calcular a escala de preco, para o eixo Y
+    # tambem refletir a janela historica visivel, nunca o dia inteiro
+    # comprimido atras dela.
+    fim = max(1, len(candles_completos) - max(0, estado.candles_offset))
+    candles = candles_completos[:fim]
+    arrastado = estado.candles_offset > 0
 
     precos = [c.high for c in candles] + [c.low for c in candles]
     minimo, maximo = min(precos), max(precos)
@@ -92,9 +133,10 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     maximo += margem
     escala = max(1, maximo - minimo)
 
-    area_plot = QRect(rect.left() + LARGURA_ROTULO_NIVEL, rect.top() + 14,
+    area_plot = QRect(rect.left() + LARGURA_ROTULO_NIVEL,
+                      rect.top() + 14 + ALTURA_BARRA_CONTROLES,
                       max(80, rect.width() - LARGURA_EIXO - LARGURA_ROTULO_NIVEL),
-                      max(60, rect.height() - 46))
+                      max(60, rect.height() - 46 - ALTURA_BARRA_CONTROLES))
     area_volume = QRect(area_plot.left(), area_plot.bottom() + 4, area_plot.width(),
                         max(12, rect.bottom() - area_plot.bottom() - 18))
 
@@ -104,6 +146,15 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # candle M5 fechado (ou o em formacao) — nao ha reagrupamento aqui.
     n_velas = min(VELAS_MAX, max(VELAS_MIN, area_plot.width() // 11))
     velas = list(candles[-n_velas:])
+
+    controles = retangulos_controles(QRect(rect.left(), rect.top() + 14,
+                                           rect.width(), ALTURA_BARRA_CONTROLES))
+    rotulo_tf = f"{estado.candles_timeframe_min}M"
+    _desenhar_chip(painter, controles["timeframe"], f"⇄ {rotulo_tf}",
+                  tema_asg.NEXO_CIANO, preenchido=False)
+    if arrastado:
+        _desenhar_chip(painter, controles["agora"], "› AGORA",
+                      tema_asg.NEXO_AMARELO, preenchido=True)
 
     painter.fillRect(area_plot, tema_asg.NEXO_PAINEL_ALTO)
 
@@ -217,7 +268,11 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # ficou no grafico (mesmo dado do rodape "OHLC CAUSAL").
     if fechamentos:
         ultimo_ponto = fechamentos[-1]
-        texto_tag = "ULTIMO NEGOCIO OBSERVADO"
+        # Arrastado, este NAO e o ultimo negocio do pregao — e so o ultimo
+        # candle dentro da janela historica que o operador escolheu ver.
+        # Chamar de "ultimo negocio observado" enquanto arrastado alegaria
+        # atualidade que a tela nao tem.
+        texto_tag = "FECHAMENTO DESTA VELA" if arrastado else "ULTIMO NEGOCIO OBSERVADO"
         painter.setFont(tokens.fonte_rotulo(6))
         metrica_tag = painter.fontMetrics()
         largura_tag = metrica_tag.horizontalAdvance(texto_tag) + 10
@@ -295,4 +350,4 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     painter.drawText(rodape, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, inicio)
     painter.drawText(rodape, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, fim)
     painter.drawText(rodape, Qt.AlignmentFlag.AlignCenter,
-                     "VOLUME OBSERVADO · M5 CAUSAL")
+                     f"VOLUME OBSERVADO · {rotulo_tf} CAUSAL")
