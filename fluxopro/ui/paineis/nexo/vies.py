@@ -16,8 +16,16 @@ Duas responsabilidades convivem aqui e a parte 10 e quem as separa:
 
 from __future__ import annotations
 
-from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen, QPolygon
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QLinearGradient,
+    QPainter,
+    QPen,
+    QPolygon,
+    QRadialGradient,
+)
 
 from fluxopro.ui import tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
@@ -109,13 +117,46 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     cy = rect.top() + max(38, (rect.height() - 34) // 2)
     raio = max(RAIO_MIN, min(RAIO_MAX, rect.width() // 3))
 
+    # Profundidade 3D (pedido do operador: "deixe moderno, com profundidade,
+    # 3D" — o disco antigo era um gradiente linear achatado, sem leitura de
+    # volume nenhuma). Tres camadas, geometria propria, nenhum asset externo:
+    # 1. sombra suave projetada abaixo do disco (nunca preta chapada — a
+    #    mesma cor do anel de identidade, translucida);
+    # 2. o disco em si com gradiente RADIAL deslocado do centro (um "sol"
+    #    fora de eixo, como qualquer esfera renderizada de verdade — um
+    #    gradiente centrado no meio le como um botao chapado, nunca como
+    #    volume);
+    # 3. um brilho especular pequeno e desfocado (elipse translucida) no
+    #    canto onde a luz "bate", reforcando a leitura esferica.
+    sombra = QColor(tema_asg.NEXO_IDENTIDADE_ANEL)
+    sombra.setAlpha(50)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(sombra)
+    painter.drawEllipse(QPointF(cx, cy + raio * 0.55), raio * 0.85, raio * 0.28)
+
     painter.setPen(QPen(tema_asg.NEXO_IDENTIDADE_ANEL, 1))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawEllipse(QPoint(cx, cy), raio + 12, raio + 12)
-    gradiente = QLinearGradient(cx - raio, cy - raio, cx + raio, cy + raio)
-    gradiente.setColorAt(0.0, tema_asg.NEXO_PAINEL_ALTO)
-    gradiente.setColorAt(1.0, tema_asg.NEXO_IDENTIDADE_NUCLEO)
-    painter.setBrush(gradiente)
+
+    esfera = QRadialGradient(QPointF(cx - raio * 0.35, cy - raio * 0.45), raio * 1.6)
+    esfera.setColorAt(0.0, tema_asg.NEXO_PAINEL_ALTO.lighter(160))
+    esfera.setColorAt(0.55, tema_asg.NEXO_PAINEL_ALTO)
+    esfera.setColorAt(1.0, tema_asg.NEXO_IDENTIDADE_NUCLEO)
+    painter.setBrush(esfera)
+    painter.setPen(Qt.PenStyle.NoPen)
     painter.drawEllipse(QPoint(cx, cy - 5), raio, raio + 8)
+
+    brilho = QRadialGradient(QPointF(cx - raio * 0.4, cy - raio * 0.55), raio * 0.5)
+    cor_brilho = QColor(255, 255, 255)
+    cor_brilho.setAlpha(70)
+    cor_brilho_fim = QColor(255, 255, 255)
+    cor_brilho_fim.setAlpha(0)
+    brilho.setColorAt(0.0, cor_brilho)
+    brilho.setColorAt(1.0, cor_brilho_fim)
+    painter.setBrush(brilho)
+    painter.drawEllipse(QPointF(cx - raio * 0.4, cy - raio * 0.55), raio * 0.5, raio * 0.35)
+
+    painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(cor)
     painter.drawPolygon(QPolygon([QPoint(cx - raio + 6, cy + raio),
                                   QPoint(cx, cy + raio // 3),

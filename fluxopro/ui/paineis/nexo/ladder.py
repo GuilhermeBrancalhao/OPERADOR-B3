@@ -35,7 +35,7 @@ feed. Preco em `int` de ticks; a barra e so a fronteira de desenho.
 from __future__ import annotations
 
 from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QFont, QPainter
+from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
 
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.paineis.nexo import EstadoNexo
@@ -113,18 +113,40 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
         if volume_total > 0 and cor_barra is not None and largura_barra > 2:
             comprimento = max(2, int(largura_barra * volume_total / maior_volume))
-            painter.fillRect(
-                QRect(x_barra, y + 1, comprimento, max(2, altura - 2)), cor_barra
-            )
+            caixa_barra = QRect(x_barra, y + 1, comprimento, max(2, altura - 2))
+            # Barra em gradiente (nunca fillRect chapado): pedido do
+            # operador ("visual mais moderno... 3D"). Um degrade horizontal
+            # sutil, mais claro na base do preco e esmaecendo na ponta —
+            # a mesma leitura de "vidro com profundidade" ja usada no visor
+            # central (nucleo.py) e no disco do OPERADOR IA (vies.py), nunca
+            # uma cor nova inventada para esta regiao.
+            gradiente_barra = QLinearGradient(caixa_barra.left(), 0, caixa_barra.right(), 0)
+            cor_base = QColor(cor_barra)
+            cor_ponta = QColor(cor_barra)
+            cor_ponta.setAlpha(max(20, cor_ponta.alpha() // 2))
+            gradiente_barra.setColorAt(0.0, cor_base.lighter(115))
+            gradiente_barra.setColorAt(1.0, cor_ponta)
+            painter.fillRect(caixa_barra, gradiente_barra)
             if destacado:
+                painter.setPen(QPen(cor, 1))
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+                painter.drawRect(caixa_barra)
                 painter.setFont(fonte_qtd)
-                painter.setPen(cor)
                 painter.drawText(
                     QRect(x_barra + 2, y, largura_barra - 4, altura),
                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                     formato.abreviar(volume_total, com_sinal=False),
                 )
                 painter.setFont(fonte_preco)
+
+        # POC (preco de maior volume da sessao — "travamento de preco" no
+        # pedido do operador): a UNICA marca nesta faixa lateral que nao
+        # depende do recorte de `ticks_conhecidos` — sinaliza mesmo quando o
+        # POC ja saiu da janela visivel de precos, com uma seta lateral em
+        # vez de tentar desenhar uma linha fora da regiao.
+        if tick == estado.vap_poc:
+            painter.setPen(QPen(tema_asg.NEXO_AMARELO, 2))
+            painter.drawLine(rect.left(), y + altura // 2, rect.left() + 3, y + altura // 2)
 
         if tick == ultimo:
             y_destaque = y
@@ -152,11 +174,17 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     if reservar_rotulo:
         painter.setFont(tokens.fonte_rotulo(6))
-        painter.setPen(tema_asg.NEXO_MUTED)
+        rotulo = "VAP"
+        if estado.vap_poc is not None:
+            preco_poc = formato.formatar_preco(estado.grid, estado.vap_poc)
+            painter.setPen(tema_asg.NEXO_AMARELO)
+            rotulo = f"VAP · POC {preco_poc[0]}{preco_poc[1]}"
+        else:
+            painter.setPen(tema_asg.NEXO_MUTED)
         painter.drawText(
             QRect(rect.left(), rect.bottom() - ALTURA_ROTULO, rect.width(), ALTURA_ROTULO),
             Qt.AlignmentFlag.AlignCenter,
-            "VAP",
+            rotulo,
         )
 
 
