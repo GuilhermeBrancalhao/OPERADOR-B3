@@ -24,8 +24,8 @@ regra das demais regioes do NEXO.
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QFont, QPainter, QPen
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtGui import QFont, QPainter, QPen, QPolygon
 
 from fluxopro.ui import tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
@@ -175,6 +175,31 @@ def _desenhar_placar(painter: QPainter, caixa: QRect, rotulo: str, contagem: int
                      f"{contagem} DE {total} LEITURAS")
 
 
+# Silhueta de raio/relampago (pedido do operador, 27/08/2026: "deve ser
+# representados por raios, verde quando e positivo e vermelho para
+# negativos" — substitui a barra retangular lisa). Pontos em coordenadas
+# UNITARIAS (0..1 em x e y), sentido "caindo" de cima pra baixo (y=0 topo,
+# y=1 base) — a forma natural de um relampago aponta pra baixo. Barras
+# NEGATIVAS (que ja crescem do eixo pra baixo neste grafico) usam a forma
+# direto; POSITIVAS espelham verticalmente, porque aqui "positivo" cresce
+# pra cima como qualquer outra barra do produto — o raio come continua
+# apontando "para fora" do eixo em vez de de cabeca para baixo.
+_PONTOS_RAIO_UNITARIOS = (
+    (0.55, 0.00), (0.15, 0.55), (0.42, 0.55),
+    (0.05, 1.00), (0.62, 0.42), (0.35, 0.42),
+)
+
+
+def _poligono_raio(caixa: QRect, invertido: bool) -> QPolygon:
+    largura = max(1, caixa.width())
+    altura = max(1, caixa.height())
+    pontos = []
+    for ux, uy in _PONTOS_RAIO_UNITARIOS:
+        y = (1.0 - uy) if invertido else uy
+        pontos.append(QPoint(caixa.left() + round(ux * largura), caixa.top() + round(y * altura)))
+    return QPolygon(pontos)
+
+
 def _desenhar_barras(painter: QPainter, rect: QRect,
                      serie: tuple[tuple[int, int, float, int], ...]) -> None:
     """Tira de barras da forca observada, direto de ``estado.serie``.
@@ -222,16 +247,21 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
     meio_y = area.center().y()
     metade = max(4, area.height() // 2 - 2)
 
+    painter.setPen(Qt.PenStyle.NoPen)
     x = area.left()
     for forca in forcas_suavizadas:
         cor = _cor_forca(forca)
-        altura = max(2, round(min(1.0, abs(forca)) * metade))
+        altura = max(4, round(min(1.0, abs(forca)) * metade))
         if forca >= 0:
-            barra = QRect(x, meio_y - altura, largura_barra, altura)
+            caixa_raio = QRect(x, meio_y - altura, largura_barra, altura)
+            invertido = True
         else:
-            barra = QRect(x, meio_y, largura_barra, altura)
-        painter.fillRect(barra, cor)
+            caixa_raio = QRect(x, meio_y, largura_barra, altura)
+            invertido = False
+        painter.setBrush(cor)
+        painter.drawPolygon(_poligono_raio(caixa_raio, invertido))
         x += largura_barra + vao
+    painter.setBrush(Qt.BrushStyle.NoBrush)
 
     caneta_eixo = QPen(tema_asg.NEXO_MUTED)
     caneta_eixo.setWidth(2)

@@ -149,9 +149,16 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
                      "4R")
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.setFont(tokens.fonte_rotulo(8))
+    # Achado do operador (27/08/2026): isto ficava cravado em "4 PTS" mesmo
+    # depois do tijolo virar dinamico (Fase 1, ConfigRenko.tijolo_dinamico) —
+    # rotulo mentiroso. Calcula o tamanho REAL a partir de
+    # `estado.renko_tamanho_ticks` (populado a cada quadro em asg.py a
+    # partir de `Renko.tamanho_tijolo_ticks`), nunca um numero fixo aqui.
+    pontos_tijolo = estado.renko_tamanho_ticks * estado.grid.tick_size
+    rotulo_tamanho = f"RENKO · {pontos_tijolo:.1f} PTS".replace(".", ",")
     painter.drawText(area.adjusted(5, 2, -5, -2),
                      Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop,
-                     "RENKO · 4 PTS")
+                     rotulo_tamanho)
     painter.setFont(tokens.fonte_rotulo(7))
     painter.setPen(cor_fase)
     painter.drawText(area.adjusted(5, 2, -5, -2),

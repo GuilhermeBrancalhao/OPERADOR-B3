@@ -2016,6 +2016,7 @@ class PainelNexoMercadoASG(_PainelASG):
             tijolos_renko=self._renko.tijolos,
             fase_renko=self._renko.fase,
             alvos_renko=self._renko.alvos(),
+            renko_tamanho_ticks=self._renko.tamanho_tijolo_ticks,
             candles_m15=self._candles_m15.candles_fechados
             + ((self._candles_m15.candle_atual,) if self._candles_m15.candle_atual else ()),
             vap_niveis=self._congelar_vap(),

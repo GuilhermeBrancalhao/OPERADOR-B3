@@ -97,6 +97,12 @@ class EstadoNexo:
     tijolos_renko: tuple[object, ...] = ()
     fase_renko: object = None
     alvos_renko: object | None = None
+    renko_tamanho_ticks: int = 0
+    """Tamanho ATUAL do tijolo Renko em ticks (dinamico desde a Fase 1 — ver
+    `fluxopro.analytics.renko.Renko.tamanho_tijolo_ticks`). Achado do
+    operador (27/08/2026): o rotulo "RENKO · 4 PTS" ficou cravado em
+    forca.py mesmo depois do tijolo deixar de ser fixo — este campo existe
+    para o rotulo mostrar o tamanho de verdade."""
     candles_m15: tuple[object, ...] = ()
     vap_niveis: tuple[tuple[int, int, int, int, bool], ...] = ()
     vap_poc: int | None = None
