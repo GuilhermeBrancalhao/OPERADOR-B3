@@ -19,3 +19,14 @@ PySide6>=6.9
 # precisa para rodar. Ele entra na fase 2, com o grafico de delta acumulado
 # e o heatmap (`ImageItem`, 195 fps medidos em §2).
 # pyqtgraph>=0.13
+
+# Sintese de voz (26/08/2026, pedido do operador): narra o Sinal Ultra em
+# portugues, 100% offline via SAPI5 do Windows (nenhum audio/texto sai pra
+# servico externo). OPCIONAL: fluxopro/audio/voz.py degrada sozinho para um
+# locutor nulo se pyttsx3 ou o driver SAPI5 nao estiverem disponiveis (outro
+# SO, maquina sem voz instalada) — nunca derruba o painel por causa disso.
+pyttsx3>=2.99
+# pypiwin32 e comtypes sao dependencias do driver SAPI5 do pyttsx3 no
+# Windows; pypiwin32 e so um instalador de conveniencia do pywin32 (ja
+# listado implicitamente por PySide6/outras libs deste ambiente) — nao
+# precisa entrar aqui separado.

@@ -11,6 +11,7 @@ no proprio quadro e nao oferece sinal, callback ou API de envio de ordem.
 
 from __future__ import annotations
 
+import os
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace as dataclass_replace
@@ -28,6 +29,7 @@ from fluxopro.asg.sinal_ultra import (
     EntradaSinalUltra,
     MotorSinalUltra,
 )
+from fluxopro.audio.voz import ConfigVoz, LocutorASG, texto_para_transicao_ultra
 from fluxopro.analytics.volume_profile import VolumeProfile
 from fluxopro.core.eventos import AgressorSide, PriceGrid, Trade, WDO_GRID
 from fluxopro.ui import formato, tema_asg, tokens
@@ -69,6 +71,12 @@ def _agressor_de_int(valor: int) -> AgressorSide:
         return AgressorSide.SELL
     return AgressorSide.UNKNOWN
 
+
+# Voz do Sinal Ultra (fluxopro/audio/voz.py) — NUNCA liga sozinha. Montar um
+# painel (inclusive em teste) nao pode ter como efeito colateral abrir uma
+# thread de audio e falar alto; o operador liga explicitamente definindo
+# FLUXOPRO_VOZ=1 no ambiente antes de abrir o painel.
+_VOZ_ATIVA_POR_PADRAO = os.environ.get("FLUXOPRO_VOZ", "").strip().lower() in {"1", "true", "sim"}
 
 ALTURA_CABECALHO = 28
 ALTURA_LINHA = 24
@@ -1749,6 +1757,9 @@ class PainelNexoMercadoASG(_PainelASG):
         # de ordem, so como snapshot lido pela regiao nucleo.py.
         self._sinal_ultra = MotorSinalUltra(ConfigSinalUltra())
         self._ultimo_sinal_ultra = None
+        self._direcao_ultra_anunciada = DirecaoUltra.NENHUMA
+        # Ver docstring de `_VOZ_ATIVA_POR_PADRAO` — desligado por padrao.
+        self._locutor = LocutorASG(ConfigVoz(ativo=_VOZ_ATIVA_POR_PADRAO))
 
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         self._snapshot = snapshot
@@ -1803,6 +1814,11 @@ class PainelNexoMercadoASG(_PainelASG):
                 confianca_maker_alta=confianca_alta,
             )
         )
+        nova_direcao = self._ultimo_sinal_ultra.direcao
+        if nova_direcao is not self._direcao_ultra_anunciada:
+            texto = texto_para_transicao_ultra(self._direcao_ultra_anunciada, nova_direcao)
+            self._locutor.falar(texto)
+            self._direcao_ultra_anunciada = nova_direcao
 
     def aplicar_mercado(self, retrato: Instantaneo) -> None:
         negocios = tuple(retrato.novos_trades)
