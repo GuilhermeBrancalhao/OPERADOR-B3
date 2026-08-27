@@ -21,7 +21,13 @@ from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter
 from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
 
 from fluxopro.analytics.candle_temporal import CandleTemporal, ConfigCandleTemporal
-from fluxopro.analytics.renko import ConfigRenko, Renko
+from fluxopro.analytics.renko import ConfigRenko, FaseRenko, Renko
+from fluxopro.asg.sinal_ultra import (
+    ConfigSinalUltra,
+    DirecaoUltra,
+    EntradaSinalUltra,
+    MotorSinalUltra,
+)
 from fluxopro.analytics.volume_profile import VolumeProfile
 from fluxopro.core.eventos import AgressorSide, PriceGrid, Trade, WDO_GRID
 from fluxopro.ui import formato, tema_asg, tokens
@@ -41,6 +47,18 @@ from fluxopro.ui.paineis.placar_visual import (
 )
 from fluxopro.ui.paineis.tape import PainelTape
 from fluxopro.ui.ponte import Instantaneo
+
+def _direcao_ultra_de(direcao: "DirecaoASG") -> DirecaoUltra:
+    """Ponte entre o vocabulario de 4 estados da UI (DirecaoASG) e o de 3
+    estados do motor de Sinal Ultra (DirecaoUltra) — AGUARDAR e NEUTRA viram
+    igualmente NENHUMA la, porque nenhum dos dois e uma direcao confirmada."""
+
+    if direcao is DirecaoASG.COMPRA:
+        return DirecaoUltra.COMPRA
+    if direcao is DirecaoASG.VENDA:
+        return DirecaoUltra.VENDA
+    return DirecaoUltra.NENHUMA
+
 
 def _agressor_de_int(valor: int) -> AgressorSide:
     """Mesma convenção já usada nesta classe: >0 comprador, <0 vendedor."""
@@ -1725,6 +1743,12 @@ class PainelNexoMercadoASG(_PainelASG):
         # negocio porque MakerProxySnapshot.pontuacao nao tem media movel
         # nenhuma. Janela 5, mesma constante de estatistica.JANELA_SUAVIZACAO_FORCA.
         self._historico_forca_maker: deque[float] = deque(maxlen=5)
+        # Sinal Ultra (fluxopro/asg/sinal_ultra.py) — filtro adicional
+        # construido do zero por este projeto (a fonte original nunca
+        # definiu essa regra). So consultivo: nunca aparece aqui como envio
+        # de ordem, so como snapshot lido pela regiao nucleo.py.
+        self._sinal_ultra = MotorSinalUltra(ConfigSinalUltra())
+        self._ultimo_sinal_ultra = None
 
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         self._snapshot = snapshot
@@ -1750,7 +1774,35 @@ class PainelNexoMercadoASG(_PainelASG):
                 self._forca_atual(),
                 0,
             )
+        self._atualizar_sinal_ultra(snapshot.timestamp_ns)
         self.marcar_tudo_sujo()
+
+    def _atualizar_sinal_ultra(self, timestamp_ns: int) -> None:
+        """Alimenta o `MotorSinalUltra` com o retrato JA calculado deste
+        quadro (decisao confirmada + Renko + MakerProxy suavizado) — nunca
+        lookahead, so o que a UI ja tem em maos neste instante."""
+
+        if timestamp_ns <= 0:
+            return
+        direcao_decisao = _direcao_ultra_de(self._snapshot.decisao.direcao)
+        tijolos = self._renko.tijolos
+        direcao_renko = DirecaoUltra.NENHUMA
+        if tijolos:
+            ultimo = tijolos[-1].direcao
+            direcao_renko = DirecaoUltra.COMPRA if ultimo > 0 else DirecaoUltra.VENDA
+        linha_maker = self._linha_maker()
+        forca_maker = 0.0 if linha_maker is None else linha_maker.forca
+        confianca_alta = linha_maker is not None and linha_maker.confianca is ConfiancaASG.ALTA
+        self._ultimo_sinal_ultra = self._sinal_ultra.atualizar(
+            EntradaSinalUltra(
+                timestamp_ns=timestamp_ns,
+                direcao_decisao_confirmada=direcao_decisao,
+                fase_renko=self._renko.fase,
+                direcao_renko=direcao_renko,
+                forca_maker=forca_maker,
+                confianca_maker_alta=confianca_alta,
+            )
+        )
 
     def aplicar_mercado(self, retrato: Instantaneo) -> None:
         negocios = tuple(retrato.novos_trades)
@@ -1956,6 +2008,7 @@ class PainelNexoMercadoASG(_PainelASG):
             vap_vah=self._vap.vah(),
             risco_volatilidade=self._risco_volatilidade(),
             alerta_exaustao=self._alerta_exaustao(),
+            sinal_ultra=self._ultimo_sinal_ultra,
         )
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:

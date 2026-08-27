@@ -104,6 +104,11 @@ class EstadoNexo:
     vap_vah: int | None = None
     risco_volatilidade: float = 0.0
     alerta_exaustao: tuple[str, float] | None = None
+    sinal_ultra: object | None = None
+    """``SinalUltraSnapshot`` (fluxopro.asg.sinal_ultra) do quadro, ou None.
+    Filtro adicional, construido do zero por este projeto — ver docstring de
+    sinal_ultra.py. `None` so quando o painel que constroi EstadoNexo nao o
+    calcula (compatibilidade com pontos de montagem antigos/testes)."""
 
 
 def retangulos(quadro: QRect) -> dict[str, QRect]:

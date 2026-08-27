@@ -26,8 +26,9 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QFont, QPainter, QPen, QPolygon
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygon
 
+from fluxopro.asg.sinal_ultra import DirecaoUltra
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
 from fluxopro.ui.paineis.nexo import EstadoNexo
@@ -97,6 +98,18 @@ _FAIXA_POR_DIRECAO = {
     _asg.DirecaoASG.NEUTRA: tema_asg.NEXO_CIANO_FAIXA,
 }
 
+# Selo do Sinal Ultra (fluxopro/asg/sinal_ultra.py — filtro adicional,
+# construido do zero por este projeto, ver docstring do modulo). Achado do
+# operador sobre o visor antigo: "nunca aparece nada" — antes deste selo o
+# visor nao tinha NENHUM estado visual distinto para quando o Ultra confirma
+# confluencia; agora um anel pulsante e um rotulo proprio marcam esse
+# instante, sem reciclar a cor de COMPRA/VENDA (para nao confundir "decisao
+# principal confirmada" com "confluencia Ultra confirmada" — sao leituras
+# diferentes, mesmo quando concordam).
+PERIODO_PULSO_ULTRA_NS = 1_200_000_000  # 1,2s por ciclo — visivel, nao estroboscopico
+ALPHA_PULSO_ULTRA_MIN = 90
+ALPHA_PULSO_ULTRA_MAX = 235
+
 
 def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if rect.width() < 90 or rect.height() < 90:
@@ -118,14 +131,23 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     _desenhar_carimbo_tempo(painter, moldura, estado.snapshot.timestamp_ns)
     _desenhar_glifo(painter, moldura, direcao, cor)
 
+    direcao_ultra = getattr(estado.sinal_ultra, "direcao", None)
+    ultra_ativo = direcao_ultra is not None and direcao_ultra is not DirecaoUltra.NENHUMA
+    if ultra_ativo:
+        _desenhar_selo_ultra(painter, moldura, direcao_ultra, estado.snapshot.timestamp_ns)
+
     painter.setFont(tokens.fonte_ui(8, QFont.Weight.DemiBold))
     painter.setPen(cor)
     painter.drawText(QRect(rect.left(), moldura.bottom() + 2, rect.width(), 15),
                      Qt.AlignmentFlag.AlignCenter, decisao.titulo.upper())
     painter.setFont(tokens.fonte_rotulo(8))
-    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.setPen(tema_asg.NEXO_AMARELO if ultra_ativo else tema_asg.NEXO_MUTED)
+    rotulo_consultivo = (
+        f"⚡ ULTRA {direcao_ultra.value.upper()} · FILTRO ADICIONAL"
+        if ultra_ativo else "SINAL CONSULTIVO"
+    )
     painter.drawText(QRect(rect.left(), moldura.bottom() + 16, rect.width(), 14),
-                     Qt.AlignmentFlag.AlignCenter, "SINAL CONSULTIVO")
+                     Qt.AlignmentFlag.AlignCenter, rotulo_consultivo)
 
     regime = next((linha for linha in estado.snapshot.matriz.linhas
                    if linha.componente == "REGIME"), None)
@@ -216,6 +238,35 @@ def _brackets_canto(painter: QPainter, rect: QRect, cor) -> None:
     ):
         painter.drawLine(x, y, x + dx * braco, y)
         painter.drawLine(x, y, x, y + dy * braco)
+
+
+def _desenhar_selo_ultra(painter: QPainter, moldura: QRect,
+                          direcao_ultra: DirecaoUltra, timestamp_ns: int) -> None:
+    """Anel pulsante em torno do visor quando o Sinal Ultra esta ativo.
+
+    A pulsacao usa `timestamp_ns` (o mesmo relogio do quadro, nunca um
+    relogio de UI separado) — o anel respira em fase com o feed, nao com o
+    framerate de repintura da janela. Onda cosseno (nunca linear/dente de
+    serra) para a transicao de alpha nunca "cortar" abruptamente nos extremos
+    do ciclo — o mesmo defeito de mudanca abrupta que motivou suavizar o
+    gauge EQUILIBRIO (ver `fluxopro/ui/paineis/asg.py`), aqui evitado de
+    saida em vez de corrigido depois.
+    """
+
+    fase = (timestamp_ns % PERIODO_PULSO_ULTRA_NS) / PERIODO_PULSO_ULTRA_NS
+    onda = (1 - math.cos(2 * math.pi * fase)) / 2.0
+    alpha = round(ALPHA_PULSO_ULTRA_MIN + (ALPHA_PULSO_ULTRA_MAX - ALPHA_PULSO_ULTRA_MIN) * onda)
+
+    # Redesenha a MESMA silhueta da moldura (nunca expandida para fora dela —
+    # as regioes do NEXO encostam borda a borda sem vao, ver docstring do
+    # pacote; expandir o anel para fora sangraria na regiao vizinha), so que
+    # por cima, com o traco mais grosso e a cor pulsante — um brilho que
+    # "respira" sobre o proprio contorno em vez de um anel novo ao redor.
+    cor_anel = QColor(tema_asg.NEXO_AMARELO)
+    cor_anel.setAlpha(alpha)
+    painter.setPen(QPen(cor_anel, TRACO_GLIFO + 2))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawPolygon(_silhueta_visor(moldura.adjusted(1, 1, -1, -1)))
 
 
 def _desenhar_carimbo_tempo(painter: QPainter, moldura: QRect, timestamp_ns: int) -> None:
