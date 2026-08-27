@@ -29,9 +29,10 @@ recalculado do proprio token, nao.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QFontDatabase
 
 # --------------------------------------------------------------------------
 # Superficies
@@ -237,6 +238,40 @@ FAMILIAS_UI = ("Inter", "Segoe UI", "Arial")
 
 _cache_fontes: dict[tuple[str, int, int], QFont] = {}
 
+_FONTES_CUSTOM_CARREGADAS = False
+
+
+def _garantir_fontes_customizadas() -> None:
+    """Carrega Inter e JetBrains Mono DO PROPRIO APP (`assets/fonts/`),
+    nunca dependendo de instalacao no SO.
+
+    Achado do operador (27/08/2026): a maquina de teste nao tinha nenhuma
+    das quatro fontes de `FAMILIAS_NUMERO`/`FAMILIAS_UI` alem das ultimas
+    (Consolas/Segoe UI, fallback do sistema) — o produto rodava com a
+    tipografia ERRADA sem avisar ninguem. Registrar fonte no registro do
+    Windows por usuario provou ser fragil (o DirectWrite do Qt so enxerga
+    apos logoff/logon); `QFontDatabase.addApplicationFont` resolve isso
+    incondicionalmente, em QUALQUER maquina, sem tocar no SO — o mesmo
+    arquivo que o app le pra desenhar e o arquivo que ele usa de fonte.
+
+    Idempotente (a flag existe pra nao reler os arquivos a cada QFont
+    criada — `fonte_numero`/`fonte_ui`/`fonte_rotulo` já cacheiam a QFont
+    em si, mas cada uma delas chama isto antes de checar o cache).
+    """
+
+    global _FONTES_CUSTOM_CARREGADAS
+    if _FONTES_CUSTOM_CARREGADAS:
+        return
+    _FONTES_CUSTOM_CARREGADAS = True
+    pasta_fontes = os.path.join(os.path.dirname(__file__), "assets", "fonts")
+    for subpasta in ("inter", "jetbrains-mono"):
+        caminho = os.path.join(pasta_fontes, subpasta)
+        if not os.path.isdir(caminho):
+            continue
+        for nome_arquivo in sorted(os.listdir(caminho)):
+            if nome_arquivo.lower().endswith(".ttf"):
+                QFontDatabase.addApplicationFont(os.path.join(caminho, nome_arquivo))
+
 
 def fonte_numero(tamanho_px: int, peso: int = QFont.Weight.Normal) -> QFont:
     """`QFont` monoespacada, memoizada.
@@ -244,6 +279,7 @@ def fonte_numero(tamanho_px: int, peso: int = QFont.Weight.Normal) -> QFont:
     A memoizacao existe pelo mesmo motivo dos `QColor` pre-alocados: trocar
     de fonte no painter e barato, CONSTRUIR uma fonte por celula nao e.
     """
+    _garantir_fontes_customizadas()
     chave = ("num", tamanho_px, int(peso))
     fonte = _cache_fontes.get(chave)
     if fonte is None:
@@ -261,6 +297,7 @@ def fonte_numero(tamanho_px: int, peso: int = QFont.Weight.Normal) -> QFont:
 
 
 def fonte_ui(tamanho_px: int, peso: int = QFont.Weight.Normal) -> QFont:
+    _garantir_fontes_customizadas()
     chave = ("ui", tamanho_px, int(peso))
     fonte = _cache_fontes.get(chave)
     if fonte is None:
@@ -274,6 +311,7 @@ def fonte_ui(tamanho_px: int, peso: int = QFont.Weight.Normal) -> QFont:
 
 def fonte_rotulo(tamanho_px: int = 10) -> QFont:
     """Cabecalho de coluna: caixa alta, `letter-spacing: .04em` (§3.3)."""
+    _garantir_fontes_customizadas()
     chave = ("rotulo", tamanho_px, 0)
     fonte = _cache_fontes.get(chave)
     if fonte is None:
