@@ -20,12 +20,41 @@ Duas leituras vivem lado a lado, as duas so consultivas:
   trilhos, mais o rotulo do ativo corrente e a amplitude observada da serie,
   ambos com unidade explicita.
 
-O par percentual e um **proxy de pressao declarado**, derivado da mesma linha
-MAKERPROXY do snapshot; nao e execucao, nao e posicao e nao ha botao. O
-rotulo do ativo vem da grade de precos (``EstadoNexo.grid``) — a unica pista
-de instrumento que atravessa a fronteira ate esta regiao — e a amplitude vem
-inteiramente da serie de precos ja congelada no snapshot (nunca inventada
-quando a serie ainda nao tem dois pontos).
+O par percentual e um **proxy de pressao declarado**; nao e execucao, nao e
+posicao e nao ha botao. O rotulo do ativo vem da grade de precos
+(``EstadoNexo.grid``) — a unica pista de instrumento que atravessa a
+fronteira ate esta regiao — e a amplitude vem inteiramente da serie de
+precos ja congelada no snapshot (nunca inventada quando a serie ainda nao
+tem dois pontos).
+
+Achado do operador (27/08/2026, MUDANCAS E IMPLEMENTACOES.docx): "revise a
+logica dos players... na vdd esse indicador tem intuito de mostrar a
+posicao em percentual baseado em estatistica de quanto aquele maior player
+que esta mandando no mercado esta propenso a positivo ou negativo". Ate
+26/08/2026 este numero era LITERALMENTE `50 + MakerProxy.forca*50` — o
+MESMO score do gauge EQUILIBRIO (nucleo/contexto.py) e do ladrilho
+PRESENCA, so reescalado de [-100%,+100%] pra [0,100]. Nao havia calculo de
+"player dominante" nenhum por tras — era o mesmo numero em tres lugares
+fingindo ser tres leituras.
+
+IMPRECISO — nao ha, em nenhuma fonte deste projeto (pesquisa/*.md), uma
+formula de "player dominante" pra reproduzir; nao existe dado de
+identidade de contraparte no feed (a B3 nao publica isso pro tape
+publico). O que muda aqui e uma composicao HONESTA de duas leituras
+JA EXISTENTES e INDEPENDENTES entre si — nunca fingida como identificacao
+de player real:
+
+  pressao = PESO_MAKER_PRESSAO * MakerProxy.forca
+          + PESO_RITMO_PRESSAO * Velocimetro.forca (linha "RITMO")
+
+MakerProxy (absorcao/reposicao/divergencia/clips/agressao) capta
+COMPOSICAO do livro; Velocimetro capta MAGNITUDE/MANUTENCAO do movimento
+de preco — duas fontes que podem divergir (ex.: livro absorvendo compra
+mas preco ainda caindo), o que o numero antigo (so Maker) nunca conseguia
+expressar. Pesos (0,70/0,30) sao defaults de engenharia deste projeto,
+nao da ASG — dao mais peso ao MakerProxy por ele ja ser, em si, um
+agregado de 5 componentes (ver `fluxopro/asg/sinal_ultra.py` pro mesmo
+padrao de composicao declarada).
 """
 
 from __future__ import annotations
@@ -39,6 +68,12 @@ from fluxopro.core.eventos import WDO_GRID, WIN_GRID
 from fluxopro.ui import tema_asg, tokens
 from fluxopro.ui.paineis.asg import ConfiancaASG
 from fluxopro.ui.paineis.nexo import EstadoNexo
+
+PESO_MAKER_PRESSAO = 0.70
+PESO_RITMO_PRESSAO = 0.30
+"""IMPRECISO — proxy de engenharia deste projeto (ver docstring do modulo).
+Somam 1.0 de proposito: `pressao` fica na mesma escala [-1, 1] de cada
+componente sem precisar renormalizar."""
 
 MARGEM_INTERNA = 8
 GAP_COLUNAS = 14
@@ -102,6 +137,27 @@ def _texto_amplitude(estado: EstadoNexo) -> str:
     diferenca_ticks = max(precos) - min(precos)
     pontos = estado.grid.to_price(diferenca_ticks)
     return f"{_formatar_pontos(pontos, estado.grid.decimals)} PTS"
+
+
+def _forca_ritmo(estado: EstadoNexo) -> float:
+    """Forca da leitura RITMO (Velocimetro) — `0.0` se ainda indisponivel.
+
+    `estado.leituras` e a MESMA tupla (nome, LinhaMatrizASG) que alimenta
+    os 4 ladrilhos do Placar Estatistico (estatistica.py) — nenhum dado
+    novo e lido aqui, so uma leitura que ja atravessa a fronteira.
+    """
+
+    for nome, linha in estado.leituras:
+        if nome == "RITMO":
+            return max(-1.0, min(1.0, float(getattr(linha, "forca", 0.0))))
+    return 0.0
+
+
+def pressao_composta(maker_forca: float, ritmo_forca: float) -> float:
+    """`score` em [-1, 1] — ver docstring do modulo pra formula e pesos."""
+
+    bruta = PESO_MAKER_PRESSAO * maker_forca + PESO_RITMO_PRESSAO * ritmo_forca
+    return max(-1.0, min(1.0, bruta))
 
 
 def _desenhar_trilho_pressao(
@@ -182,7 +238,9 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if rect.height() < 24 or rect.width() < 140:
         return
     maker = estado.maker
-    score = maker.forca if maker is not None else 0.0
+    forca_maker = maker.forca if maker is not None else 0.0
+    forca_ritmo = _forca_ritmo(estado)
+    score = pressao_composta(forca_maker, forca_ritmo)
     compra = int(max(0.0, min(100.0, 50.0 + score * 50.0)))
     venda = 100 - compra
     confianca = getattr(maker, "confianca", None) if maker is not None else None
@@ -233,7 +291,10 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     rodape = QRect(coluna_pressao.left(), rect.bottom() - ALTURA_RODAPE, coluna_pressao.width(), ALTURA_RODAPE)
     painter.setFont(tokens.fonte_rotulo(7))
     painter.setPen(tema_asg.NEXO_MUTED)
-    painter.drawText(rodape, Qt.AlignmentFlag.AlignCenter, "PROXY DE PRESSAO · NAO E EXECUCAO")
+    painter.drawText(
+        rodape, Qt.AlignmentFlag.AlignCenter,
+        f"MAKER {PESO_MAKER_PRESSAO*100:.0f}% + RITMO {PESO_RITMO_PRESSAO*100:.0f}% · PROXY · NAO E EXECUCAO",
+    )
 
     # --- bloco do instrumento ----------------------------------------------
     banda_superior = QRect(

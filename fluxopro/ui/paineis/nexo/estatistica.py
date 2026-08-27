@@ -46,6 +46,43 @@ _MAPA_CONFIANCA = {
     _asg.ConfiancaASG.INDISPONIVEL: tema_asg.CONFIANCA_INDISPONIVEL,
 }
 
+# Achado do operador (27/08/2026): "por que mudancas tao abruptas sempre,
+# precisa ser algo mais tecnico". Ate 26/08/2026 o placar contava 1-a-1
+# quantas das 4 leituras (HORIZONTE/PULSO/PRESENCA/RITMO) cruzavam
+# direcao=COMPRA/VENDA — uma leitura de confianca BAIXA valia exatamente o
+# mesmo que uma de confianca ALTA, e cada cruzamento de zero saltava a
+# contagem inteira em 1 (0->1->2->3->4), nunca gradual.
+#
+# IMPRECISO — pesos de engenharia deste projeto, sem formula de fonte pra
+# "quanto uma leitura de baixa confianca deve contar menos". O que muda:
+# a contagem 1-a-1 continua existindo (e a legenda "N DE M LEITURAS"
+# continua o denominador honesto, nunca removido), mas o NUMERO GRANDE em
+# cada caixa passa a ser um placar PONDERADO por confianca — continuo, nao
+# discreto — em vez do inteiro 0-4.
+_PESO_CONFIANCA_PLACAR = {
+    _asg.ConfiancaASG.ALTA: 1.0,
+    _asg.ConfiancaASG.MEDIA: 0.6,
+    _asg.ConfiancaASG.BAIXA: 0.3,
+    _asg.ConfiancaASG.INDISPONIVEL: 0.0,
+}
+
+
+def placar_ponderado(leituras: tuple[tuple[str, object], ...]) -> float:
+    """Score em [-1, 1]: media das `forca` das leituras, ponderada pela
+    confianca de cada uma. `0.0` quando nenhuma leitura tem confianca > 0
+    (nunca divide por zero, nunca inventa direcao de leitura indisponivel).
+    """
+
+    pesos = [
+        (float(getattr(linha, "forca", 0.0)), _PESO_CONFIANCA_PLACAR.get(linha.confianca, 0.0))
+        for _, linha in leituras
+    ]
+    soma_pesos = sum(peso for _, peso in pesos)
+    if soma_pesos <= 0:
+        return 0.0
+    bruto = sum(forca * peso for forca, peso in pesos) / soma_pesos
+    return max(-1.0, min(1.0, bruto))
+
 
 JANELA_SUAVIZACAO_FORCA = 5
 """Media movel causal (so olha pra tras) sobre a forca bruta de cada
@@ -139,18 +176,26 @@ def _desenhar_contagem(painter: QPainter, rect: QRect,
 
     n_compra = sum(1 for _, linha in leituras if linha.direcao is _asg.DirecaoASG.COMPRA)
     n_venda = sum(1 for _, linha in leituras if linha.direcao is _asg.DirecaoASG.VENDA)
+    score = placar_ponderado(leituras)
+    peso_compra = max(0.0, score)
+    peso_venda = max(0.0, -score)
     largura = max(40, (rect.width() - VAO_LADRILHO) // 2)
     caixa_compra = QRect(rect.left(), rect.top(), largura, rect.height())
     caixa_venda = QRect(caixa_compra.right() + VAO_LADRILHO, rect.top(),
                         max(40, rect.width() - largura - VAO_LADRILHO), rect.height())
-    _desenhar_placar(painter, caixa_compra, "COMPRA", n_compra, total,
+    _desenhar_placar(painter, caixa_compra, "COMPRA", peso_compra, n_compra, total,
                      _asg._cor_nexo_direcao(_asg.DirecaoASG.COMPRA))
-    _desenhar_placar(painter, caixa_venda, "VENDA", n_venda, total,
+    _desenhar_placar(painter, caixa_venda, "VENDA", peso_venda, n_venda, total,
                      _asg._cor_nexo_direcao(_asg.DirecaoASG.VENDA))
 
 
-def _desenhar_placar(painter: QPainter, caixa: QRect, rotulo: str, contagem: int,
-                     total: int, cor) -> None:
+def _desenhar_placar(painter: QPainter, caixa: QRect, rotulo: str, peso: float,
+                     contagem: int, total: int, cor) -> None:
+    """`peso` (0-1, ja isolado por lado — ver `placar_ponderado`) e o NUMERO
+    GRANDE agora; `contagem`/`total` continuam so na legenda de baixo, como
+    o denominador honesto de sempre — nunca removidos, so deixaram de ser
+    o numero principal."""
+
     painter.fillRect(caixa, tema_asg.NEXO_PAINEL_ALTO)
     caneta = QPen(cor)
     caneta.setWidth(2)
@@ -166,13 +211,13 @@ def _desenhar_placar(painter: QPainter, caixa: QRect, rotulo: str, contagem: int
                                         QFont.Weight.Bold))
     painter.setPen(cor)
     painter.drawText(caixa.adjusted(6, 12, -6, -14), Qt.AlignmentFlag.AlignCenter,
-                     str(contagem))
+                     f"{round(peso * 100)}%")
 
     painter.setFont(tokens.fonte_rotulo(6))
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(caixa.adjusted(6, 0, -6, -3),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
-                     f"{contagem} DE {total} LEITURAS")
+                     f"{contagem} DE {total} LEITURAS · PONDERADO")
 
 
 # Silhueta de raio/relampago (pedido do operador, 27/08/2026: "deve ser
