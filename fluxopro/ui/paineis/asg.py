@@ -1716,9 +1716,23 @@ class PainelNexoMercadoASG(_PainelASG):
         # formação aparece desde o PRIMEIRO negócio do dia — nao esperamos
         # 5 minutos para o operador ver o pavio se formando.
         self._candles_m15 = CandleTemporal(ConfigCandleTemporal(timeframe_ns=5 * 60_000_000_000))
+        # Suavizacao do score do MakerProxy (gauge EQUILIBRIO, PRESENCA e a
+        # barra 56/44 de "pressao" em pressao.py — os 3 leem o MESMO numero).
+        # Mesmo padrao ja usado em estatistica.py para a forca bruta por
+        # trade (achado do operador la: "alternava sinal a cada negocio,
+        # nao dava pra ler tendencia") — aqui o defeito era o mesmo, so que
+        # nunca corrigido: o gauge girava de -100% pra +100% em um unico
+        # negocio porque MakerProxySnapshot.pontuacao nao tem media movel
+        # nenhuma. Janela 5, mesma constante de estatistica.JANELA_SUAVIZACAO_FORCA.
+        self._historico_forca_maker: deque[float] = deque(maxlen=5)
 
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         self._snapshot = snapshot
+        linha_maker_bruta = next(
+            (l for l in snapshot.matriz.linhas if l.componente == "MAKERPROXY"), None
+        )
+        if linha_maker_bruta is not None:
+            self._historico_forca_maker.append(linha_maker_bruta.forca)
         contexto = snapshot.contexto_bruto
         negocios = () if contexto is None else tuple(contexto.negocios)
         for negocio in sorted(negocios, key=lambda item: item.timestamp_ns):
@@ -1842,10 +1856,15 @@ class PainelNexoMercadoASG(_PainelASG):
                 return ("VENDA", linha.forca)
         return None
 
+    def _forca_maker_suavizada(self, bruta: float) -> float:
+        if not self._historico_forca_maker:
+            return bruta
+        return sum(self._historico_forca_maker) / len(self._historico_forca_maker)
+
     def _linha_maker(self) -> LinhaMatrizASG | None:
         for linha in self._snapshot.matriz.linhas:
             if linha.componente == "MAKERPROXY":
-                return linha
+                return dataclass_replace(linha, forca=self._forca_maker_suavizada(linha.forca))
         return None
 
     def total_itens(self) -> int:
@@ -2015,8 +2034,11 @@ class PainelNexoMercadoASG(_PainelASG):
         saida = []
         for linha in self._snapshot.matriz.linhas:
             apelido = apelidos.get(linha.componente)
-            if apelido is not None:
-                saida.append((apelido, linha))
+            if apelido is None:
+                continue
+            if linha.componente == "MAKERPROXY":
+                linha = dataclass_replace(linha, forca=self._forca_maker_suavizada(linha.forca))
+            saida.append((apelido, linha))
         return tuple(saida[:4])
 
     def _caixa_nexo(self, painter: QPainter, rect: QRect, titulo: str) -> QRect:
@@ -2467,6 +2489,21 @@ def _ranking_componentes_maker(maker: object, top_n: int = 3) -> str:
     return "\n".join(linhas)
 
 
+# IMPRECISO — nao ha, em nenhuma fonte deste projeto (pesquisa/*.md), uma
+# escala declarada para "quanto de delta de agressao e MUITO" em HORIZONTE
+# (desde a abertura) ou PULSO (janela de 15s, ConfigMacroMicro.janela_micro_ns).
+# Antes, a formula `numero / max(abs(numero), 1)` colapsava para sign(numero)
+# sempre que |numero| >= 1 — HORIZONTE/PULSO so podiam mostrar -100%/0%/+100%,
+# nunca um grau intermediario (achado do operador: "esta sem sentido").
+# Aqui cada metrica e normalizada contra a PROPRIA referencia de magnitude
+# (nunca contra a magnitude uma da outra — macro_micro.py proibe comparar
+# escalas), dando gradacao continua sem fingir que o numero de referencia
+# vem do metodo original. Ajuste estes dois valores se a referencia se
+# mostrar alta/baixa demais na pratica.
+REFERENCIA_MAGNITUDE_HORIZONTE_CONTRATOS = 8000.0
+REFERENCIA_MAGNITUDE_PULSO_CONTRATOS = 80.0
+
+
 def _linhas_da_matriz_asg(
     leitura: object, maker: object, estado: EstadoASG
 ) -> tuple[LinhaMatrizASG, ...]:
@@ -2481,13 +2518,13 @@ def _linhas_da_matriz_asg(
     regime = _campo(leitura, "regime", {})
     velocimetro = _campo(leitura, "velocimetro", {})
 
-    def contexto(nome: str, valor: object) -> LinhaMatrizASG:
+    def contexto(nome: str, valor: object, referencia: float) -> LinhaMatrizASG:
         numero = int(valor) if isinstance(valor, int) and not isinstance(valor, bool) else None
         return LinhaMatrizASG(
             componente=nome,
             direcao=_direcao_numero(numero),
             valor="SEM DADOS" if numero is None else f"{numero:+d}",
-            forca=0.0 if numero is None else _forca_limitada(numero / max(abs(numero), 1)),
+            forca=0.0 if numero is None else _forca_limitada(numero / referencia),
             confianca=(ConfiancaASG.INDISPONIVEL if numero is None else ConfiancaASG.MEDIA),
             procedencia=(ProcedenciaASG.INDISPONIVEL if numero is None else ProcedenciaASG.DERIVADO),
             detalhe="ESCALA PROPRIA · NAO COMPARAR MAGNITUDES",
@@ -2504,8 +2541,8 @@ def _linhas_da_matriz_asg(
     maker_conf = float(getattr(maker, "confianca", getattr(maker, "confidence", 0.0)))
 
     linhas = [
-        contexto("MACRO", valor_macro),
-        contexto("MICRO", valor_micro),
+        contexto("MACRO", valor_macro, REFERENCIA_MAGNITUDE_HORIZONTE_CONTRATOS),
+        contexto("MICRO", valor_micro, REFERENCIA_MAGNITUDE_PULSO_CONTRATOS),
         LinhaMatrizASG(
             componente="LINHA AZUL",
             direcao=_direcao_textual(lado_linha),

@@ -91,7 +91,38 @@ class AlvosRenko:
 @dataclass(frozen=True, slots=True)
 class ConfigRenko:
     tamanho_tijolo_pontos: float = 4.0
-    """IMPRECISO — não vem da fonte, é o parâmetro pedido pelo operador."""
+    """IMPRECISO — não vem da fonte, é o parâmetro pedido pelo operador.
+    Com `tijolo_dinamico=True` (padrão) isto vira só o tamanho inicial, antes
+    da primeira recalibragem — ver `tijolo_dinamico`."""
+
+    tijolo_dinamico: bool = True
+    """26/08/2026, achado do operador: tijolo fixo em 4 pontos ficava
+    "totalmente distorcido" — desproporcional ao candle abaixo, porque o
+    candle se auto-ajusta à amplitude do dia (`nexo/candles.py`) e o Renko
+    não. Com True, o tamanho do tijolo é recalibrado periodicamente (ver
+    `recalibrar_a_cada_tijolos`) como uma fração da amplitude recente
+    observada — nunca comparado ao candle diretamente, só à própria
+    volatilidade recente do papel. Com False, mantém o comportamento antigo
+    (tamanho fixo o pregão inteiro)."""
+
+    fracao_da_amplitude_recente: float = 0.12
+    """IMPRECISO — proxy de engenharia, não há número da fonte para "quanto
+    da amplitude recente vira um tijolo". Fração do range (máx-mín) dos
+    últimos `janela_amplitude_precos` preços observados."""
+
+    tijolo_minimo_pontos: float = 2.0
+    tijolo_maximo_pontos: float = 20.0
+    """Clamps para o tijolo dinâmico não colapsar a ruído de tick nem inflar
+    a um bloco único cobrindo o dia inteiro."""
+
+    janela_amplitude_precos: int = 240
+    """Quantos preços brutos recentes (não tijolos, negócios crus) entram no
+    cálculo de amplitude usado pela recalibragem dinâmica."""
+
+    recalibrar_a_cada_tijolos: int = 5
+    """Recalibra o tamanho do tijolo a cada N tijolos FECHADOS, nunca a cada
+    negócio — mudar o tamanho no meio de uma sequência quebraria a leitura
+    visual da fase (`FaseRenko`) no meio do movimento."""
 
     tijolos_para_tendencia: int = 3
     """IMPRECISO — limiar de tijolos seguidos na mesma direção para FaseRenko.TENDENCIA."""
@@ -123,10 +154,35 @@ class Renko:
         self._tijolos: deque[TijoloRenko] = deque(maxlen=self._config.maxlen_tijolos)
         self._ancora: int | None = None  # fechamento do último tijolo fechado
         self._ultimo_timestamp_ns = 0
+        self._precos_recentes: deque[int] = deque(
+            maxlen=max(2, self._config.janela_amplitude_precos)
+        )
+        self._tijolos_desde_recalibragem = 0
 
     @property
     def tamanho_tijolo_ticks(self) -> int:
         return self._tamanho_ticks
+
+    def _recalibrar_tamanho(self) -> None:
+        """Ajusta `_tamanho_ticks` a partir da amplitude recente observada.
+
+        Nunca roda no meio de uma sequência de tijolos abertos — só é chamada
+        depois que um tijolo fecha, e só a cada `recalibrar_a_cada_tijolos`
+        fechamentos (ver docstring de `ConfigRenko.recalibrar_a_cada_tijolos`).
+        """
+
+        if not self._config.tijolo_dinamico or len(self._precos_recentes) < 2:
+            return
+        amplitude_ticks = max(self._precos_recentes) - min(self._precos_recentes)
+        if amplitude_ticks <= 0:
+            return
+        amplitude_pontos = amplitude_ticks * self._grid.tick_size
+        tijolo_pontos = amplitude_pontos * self._config.fracao_da_amplitude_recente
+        tijolo_pontos = max(
+            self._config.tijolo_minimo_pontos,
+            min(self._config.tijolo_maximo_pontos, tijolo_pontos),
+        )
+        self._tamanho_ticks = max(1, round(tijolo_pontos / self._grid.tick_size))
 
     def registrar(self, timestamp_ns: int, preco: int) -> None:
         """Alimenta um novo preço observado. Preço em ticks inteiros."""
@@ -134,9 +190,11 @@ class Renko:
         if timestamp_ns < self._ultimo_timestamp_ns:
             return
         self._ultimo_timestamp_ns = timestamp_ns
+        self._precos_recentes.append(preco)
 
         if self._ancora is None:
             self._ancora = preco
+            self._recalibrar_tamanho()
             return
 
         tam = self._tamanho_ticks
@@ -148,15 +206,26 @@ class Renko:
                     TijoloRenko(timestamp_ns, self._ancora, novo_fechamento, +1)
                 )
                 self._ancora = novo_fechamento
-                continue
-            if deslocamento <= -tam:
+                self._tijolos_desde_recalibragem += 1
+            elif deslocamento <= -tam:
                 novo_fechamento = self._ancora - tam
                 self._tijolos.append(
                     TijoloRenko(timestamp_ns, self._ancora, novo_fechamento, -1)
                 )
                 self._ancora = novo_fechamento
-                continue
-            break
+                self._tijolos_desde_recalibragem += 1
+            else:
+                break
+            if self._tijolos_desde_recalibragem >= self._config.recalibrar_a_cada_tijolos:
+                self._tijolos_desde_recalibragem = 0
+                tam_anterior = tam
+                self._recalibrar_tamanho()
+                tam = self._tamanho_ticks
+                if tam != tam_anterior:
+                    # tamanho mudou no fechamento do ultimo tijolo — o loop
+                    # continua com o NOVO tamanho para o deslocamento restante,
+                    # nunca reabre ou redimensiona tijolos ja fechados.
+                    continue
 
     @property
     def tijolos(self) -> tuple[TijoloRenko, ...]:
