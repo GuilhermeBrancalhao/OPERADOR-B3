@@ -11,7 +11,9 @@ no proprio quadro e nao oferece sinal, callback ou API de envio de ordem.
 
 from __future__ import annotations
 
+import math
 import os
+import statistics
 from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace as dataclass_replace
@@ -1685,6 +1687,276 @@ class PainelContextoBrutoASG(_PainelASG):
         painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, texto)
 
 
+# ---------------------------------------------------------------------------
+# Volante do termometro de agressao (gauge EQUILIBRIO / PRESENCA / barra de
+# pressao — os tres leem o MESMO numero, ver `_linha_com_forca`).
+# ---------------------------------------------------------------------------
+
+# TAXA_MAX_VOLANTE_POR_SEGUNDO — teto de contragiro, em unidades de score
+# por SEGUNDO (a escala inteira vale 2,0: de -1 a +1).
+# Rotulo: IMPRECISO (proxy calibrado por medicao propria; a fonte descreve
+# periodos e medias dos Medidores de Agressao, nunca uma taxa de giro).
+# De onde veio: serie real medida em 28/08/2026 no replay WDOU26 de 12:00
+# (190 snapshots, `.gauntlet_docx/rodadas/p8_serie_antes.csv`). A media
+# movel de 5 amostras que estava aqui limita o passo por AMOSTRA, nao por
+# tempo: como o intervalo entre snapshots medido vai de 0,28 s a 28 s
+# (mediana 2,28 s), em rajada ela ainda girava a 0,80 score/s — a escala
+# inteira em 2,5 s, tipicamente UM quadro. Com 0,20/s a travessia completa
+# leva no minimo 10 s, ou seja >= 4 snapshots na cadencia mediana medida:
+# o operador ve o giro acontecer em vez de ver o resultado dele.
+TAXA_MAX_VOLANTE_POR_SEGUNDO = 0.20
+
+# TEMPO_ACOMODACAO_VOLANTE_S — constante de tempo da perseguicao ao alvo.
+# E o que faz o ponteiro DESACELERAR ao chegar (velocidade proporcional a
+# distancia que falta), em vez de bater no alvo em velocidade de cruzeiro.
+# Rotulo: IMPRECISO. Escolhido como ~1 intervalo tipico entre snapshots
+# (mediana medida 2,28 s), para que o ponteiro acomode dentro do proprio
+# ritmo de chegada de dado e nao entre em regime de perseguicao infinita.
+TEMPO_ACOMODACAO_VOLANTE_S = 1.5
+
+# TEMPO_INERCIA_VOLANTE_S — constante de tempo da ACELERACAO: a velocidade
+# do ponteiro tambem nao muda de uma vez. E a massa do volante; sem ela a
+# rampa liga e desliga em degrau e o movimento volta a parecer digital.
+# Rotulo: IMPRECISO. Metade da acomodacao — amortecido, sem ultrapassagem.
+TEMPO_INERCIA_VOLANTE_S = 0.8
+
+# DT_MAX_VOLANTE_S — teto do passo de integracao. Buraco de dado nao vira
+# teleporte: o maior intervalo medido na serie real foi 28 s, que a 0,20/s
+# permitiria atravessar a escala inteira em UM quadro. Com este teto o
+# passo visual maximo por snapshot e 0,20 x 1,5 = 0,30 de score — da mesma
+# ordem do maior passo que a MM5 produzia (0,276 medido), so que agora e um
+# TETO, nao um acidente da cadencia. Rotulo: IMPRECISO.
+DT_MAX_VOLANTE_S = 1.5
+
+# JANELA_PERIODO_VOLANTE_S — o "periodo" contra o qual uma agressao e
+# julgada grande. Rotulo: CONFIRMADO — `bar/medidores_agressao_text.txt`
+# descreve os Medidores de Agressao com "Periodos Adicionais (Media)" de
+# "15 e 30 minutos"; 15 min e o menor periodo nomeado pela fonte.
+JANELA_PERIODO_VOLANTE_S = 15 * 60
+
+# Z_EXTREMO_VOLANTE — quantas vezes a agressao TIPICA do periodo (rms em
+# torno do zero) valem "agressao muito grande em relacao ao periodo", ou
+# seja, o fundo de escala do mostrador.
+# Rotulo: IMPRECISO, com precedente interno: `fluxopro/aprendizado/padroes.py`
+# ja normaliza por dispersao do historico em vez de por limiar cravado.
+# 2x a tipica: o fundo de escala deixa de ser "o cru encostou em 1,0" e
+# passa a exigir o dobro do que aquele periodo vinha entregando.
+Z_EXTREMO_VOLANTE = 2.0
+
+# AMOSTRAS_MINIMAS_PERIODO — abaixo disso nao ha distribuicao, so ruido, e
+# o alvo e o proprio score cru (ainda passando pelo volante). Custo
+# declarado: os primeiros ~20 snapshots (~45 s na cadencia medida) rodam em
+# escala ABSOLUTA, nao relativa ao periodo. Rotulo: IMPRECISO.
+AMOSTRAS_MINIMAS_PERIODO = 20
+
+# LIMIAR_SAIDA_EQUILIBRIO / LIMIAR_RETORNO_EQUILIBRIO — a zona morta do
+# termometro, com histerese (gatilho Schmitt). Sem ela o mostrador troca de
+# COR e de rotulo COMPRA/VENDA em cima de qualquer epsilon: `_direcao_de_score`
+# vira o lado a partir de 1e-9. Medido em 28/08 na serie real de 190
+# snapshots (120 s de tape): o cru cruza o zero 27 vezes, a MM5 14 e o
+# volante SEM zona morta 25 — ou seja, uma troca de cor a cada ~5 s, que e
+# exatamente a queixa do operador ("muda de negativo para positivo muito
+# rapido"). Limitar a VELOCIDADE nao resolve frequencia de cruzamento; so a
+# zona morta resolve.
+# Rotulo: IMPRECISO, mas derivado, nao cravado. Como o fundo de escala vale
+# `Z_EXTREMO_VOLANTE` x a agressao tipica do periodo, 0,25 de escala = meia
+# agressao tipica: abaixo disso o periodo nao distingue lado nenhum e o
+# mostrador declara EQUILIBRIO. O retorno a 0,15 (60% da saida) e a folga
+# que impede tremer na propria borda.
+LIMIAR_SAIDA_EQUILIBRIO = 0.25
+LIMIAR_RETORNO_EQUILIBRIO = 0.15
+
+# DESVIO_MINIMO_PERIODO — piso do desvio-padrao, para que um periodo
+# quase constante nao gere z gigante por divisao por quase-zero.
+# Rotulo: AUSENTE_NA_FONTE (guarda numerica, nao regra de mercado).
+DESVIO_MINIMO_PERIODO = 0.05
+
+
+class VolanteGauge:
+    """Termometro de agressao com INERCIA e escala relativa ao periodo.
+
+    Existe por causa de dois pedidos distintos do operador sobre o gauge
+    EQUILIBRIO, que a media movel de 5 amostras anterior nao atendia:
+
+    1. "na teoria teria que ser igual um contragiro de carro que acelera e
+       desacelera gradualmente". Media movel nao e isso: ela ATRASA o mesmo
+       salto e limita o passo por AMOSTRA, nao por tempo. Medido na serie
+       real de 28/08 (`.gauntlet_docx/rodadas/p8_serie_antes.csv`), a MM5
+       ainda girava a 0,80 de score por segundo em rajada. Aqui o ponteiro
+       tem posicao E velocidade: a velocidade persegue a distancia que
+       falta (desacelera ao chegar), ela propria muda com constante de
+       tempo (acelera gradual) e e limitada por um teto em score/SEGUNDO
+       (o contragiro). Cadencia de dado irregular deixa de virar salto.
+
+    2. "essas mudancas drasticas de extremos deve ser mostrado so quando
+       existe agressoes muito grandes em relacao ao periodo, constantemente".
+       Isso e estatistica, nao limiar cravado. O fundo de escala deixa de
+       ser "o score cru bateu em 1,0" e passa a ser "a agressao vale
+       `Z_EXTREMO_VOLANTE` x a agressao TIPICA do periodo" — a tipica medida
+       como rms das leituras dos ultimos `JANELA_PERIODO_VOLANTE_S`
+       segundos, que e o menor periodo nomeado pela fonte.
+
+       A dispersao e medida EM TORNO DO ZERO, nao em torno da media do
+       periodo, e isso e uma decisao com evidencia: o zero deste mostrador
+       tem significado fisico (EQUILIBRIO). Centrar na media do periodo faz
+       o ponteiro trocar de lado quando a agressao apenas VOLTA para a media
+       sem trocar de lado — medido em 28/08 na serie real, a versao centrada
+       na media cruzava o zero 26 vezes em 190 snapshots, PIOR que as 14 da
+       media movel que ela deveria melhorar.
+
+    3. "constantemente" e servido por duas coisas juntas: a rampa da camada
+       1 (a 0,20/s, sair do zero e chegar ao fundo de escala custa >= 5 s de
+       alvo sustentado — um pico isolado nao chega la) e a zona morta com
+       histerese (`LIMIAR_SAIDA_EQUILIBRIO`), sem a qual o mostrador troca
+       de cor em cima de qualquer epsilon.
+
+    O alvo combina absoluto e relativo pelo MENOR modulo — extremo exige ser
+    grande em absoluto E grande para o periodo — e o SINAL vem sempre da
+    agressao crua.
+
+    CUSTO, declarado porque suavizar nao pode virar mentira. Os numeros
+    abaixo sao de 4.361 snapshots / 5.043 s de tape real WDOU26
+    (`.gauntlet_docx/rodadas/p8_cauda.py`), NAO da janela de 120 s da
+    primeira medicao: naquela janela a cauda parecia ~28 s e isso era
+    otimista por 8x. Cauda so se mede em janela larga, e ela tem DOIS
+    REGIMES que nao podem ser declarados como um numero so:
+
+    - virada FORTE — o cru troca de lado e chega a ficar grande para o
+      periodo (pico 0,25 a 1,00): n=108, atraso mediano 0,7 s, p90 4,5 s,
+      MAXIMO 25,8 s.
+    - virada FRACA — o cru troca de lado mas nunca fica grande para o
+      periodo (pico 0,04 a 0,25), e a zona morta portanto NAO deixa a tela
+      seguir: n=35, mediana 3,9 s, p90 41,4 s, MAXIMO 225,8 s.
+
+    Ou seja: o mostrador acompanha depressa o que e agressao de verdade, e
+    demora minutos para acompanhar o que nao e — que e exatamente o filtro
+    pedido, mas so vale como custo declarado se o numero grande estiver
+    escrito. Nas duas classes, ZERO viradas sustentadas foram perdidas
+    (n=143). A media movel anterior virava junto (mediana 0 s) — e virava
+    junto tambem nas viradas que nao se sustentaram.
+
+    Um mal-entendido que a medicao desfez: esses 225 s NAO sao "mostrador
+    congelado no zero". O estado de ficar preso no EQUILIBRIO tendo
+    agressao de um lado so foi medido a parte (`segundos_represado`) e dura
+    no maximo 22,2 s na mesma janela. E esse estado, nao a cauda, que
+    `nexo/contexto.py` carimba na tela.
+    - o texto pequeno da leitura declara `SUAV` (ver `_linha_com_forca`)
+      para nao ser confundido com o score do instante.
+    - um periodo em que o score fica CRAVADO no mesmo valor (inclusive
+      cravado em +1,0, como na fixture sintetica de livro de
+      `capturar_sessao.py`) tem agressao tipica igual ao proprio valor, e o
+      mostrador estaciona em exatamente 1/`Z_EXTREMO_VOLANTE` da escala
+      (0,50). Isso e deliberado: pressao constante nao e agressao "muito
+      grande em relacao ao periodo", mas tambem nao e equilibrio. Quem quer
+      o score do instante le o tape, nao o termometro.
+
+    Estado puro em Python (sem Qt), para ser testavel sem tela. Nao e
+    idempotente: `avancar` integra o tempo e SO pode ser chamado quando
+    chega snapshot novo — nunca no caminho de pintura.
+    """
+
+    def __init__(self) -> None:
+        self.valor = 0.0
+        self.velocidade = 0.0
+        self._ts_ns = 0
+        self._lado = 0
+        # Instante em que o ponteiro passou a ficar PRESO na zona morta
+        # tendo agressao do outro lado do zero para mostrar. Zero = solto.
+        self._represado_ns = 0
+        self._periodo: deque[tuple[int, float]] = deque()
+
+    @property
+    def andou(self) -> bool:
+        """Ja recebeu snapshot com relogio? Antes disso nao ha leitura
+        propria e quem le deve mostrar o score cru."""
+
+        return self._ts_ns > 0
+
+    def alvo(self, bruta: float) -> float:
+        """Onde o ponteiro QUER chegar — ja na escala relativa ao periodo."""
+
+        valores = [v for _, v in self._periodo]
+        if len(valores) < AMOSTRAS_MINIMAS_PERIODO:
+            return max(-1.0, min(1.0, bruta))
+        # Dispersao medida EM TORNO DO ZERO (rms), nao em torno da media do
+        # periodo — ver a docstring da classe: o zero deste mostrador e o
+        # EQUILIBRIO, e recentrar na media do periodo faz o ponteiro trocar
+        # de lado sem a agressao ter trocado de lado. Medido em 28/08 na
+        # serie real: a versao centrada na media produzia 26 trocas de sinal
+        # em 190 snapshots contra 14 da MM5 que ela deveria melhorar.
+        tipica = max(DESVIO_MINIMO_PERIODO,
+                     math.sqrt(statistics.fmean(v * v for v in valores)))
+        relativo = abs(bruta) / (Z_EXTREMO_VOLANTE * tipica)
+        return math.copysign(min(1.0, abs(bruta), relativo), bruta)
+
+    def segundos_represado(self, agora_ns: int) -> float:
+        """Ha quantos segundos o ponteiro esta preso no EQUILIBRIO com
+        agressao de um lado so para mostrar. `0.0` quando esta solto.
+
+        Existe para o custo do volante poder ir A TELA, e nao so a
+        docstring — ver `nexo/contexto.py`. Enquanto isso vale zero, a
+        leitura de EQUILIBRIO e simplesmente a leitura; quando passa de
+        dezenas de segundos, o operador esta olhando um zero que significa
+        "ha fluxo, mas fraco para o periodo", e isso e outra coisa.
+        """
+
+        if self._represado_ns <= 0 or agora_ns <= self._represado_ns:
+            return 0.0
+        return (agora_ns - self._represado_ns) / 1_000_000_000
+
+    def _alvo_com_equilibrio(self, bruta: float, timestamp_ns: int) -> float:
+        """`alvo` passado pela zona morta com histerese.
+
+        O lado so e ADOTADO quando o alvo passa de `LIMIAR_SAIDA_EQUILIBRIO`,
+        e so e largado quando cai abaixo de `LIMIAR_RETORNO_EQUILIBRIO` — ou
+        quando o alvo aparece do outro lado, caso em que o mostrador volta
+        para o EQUILIBRIO e tem de reconquistar o limiar de saida do lado
+        novo. E por isso que uma troca de sinal na tela exige agressao
+        sustentada dos dois lados da virada, e nao um instante.
+        """
+
+        alvo = self.alvo(bruta)
+        lado = 0 if alvo == 0.0 else (1 if alvo > 0 else -1)
+        if self._lado == 0:
+            if abs(alvo) >= LIMIAR_SAIDA_EQUILIBRIO:
+                self._lado = lado
+        elif lado != self._lado or abs(alvo) < LIMIAR_RETORNO_EQUILIBRIO:
+            self._lado = 0
+        if self._lado == 0 and lado != 0:
+            # Ha agressao, e ela nao e forte o bastante para o periodo. E o
+            # regime de cauda longa: a tela mostra EQUILIBRIO enquanto o cru
+            # ja trocou de lado. Marcar desde quando, para poder DIZER.
+            if self._represado_ns == 0:
+                self._represado_ns = timestamp_ns
+        else:
+            self._represado_ns = 0
+        return alvo if self._lado != 0 else 0.0
+
+    def avancar(self, bruta: float, timestamp_ns: int) -> float:
+        self._periodo.append((timestamp_ns, bruta))
+        corte = timestamp_ns - JANELA_PERIODO_VOLANTE_S * 1_000_000_000
+        while self._periodo and self._periodo[0][0] < corte:
+            self._periodo.popleft()
+
+        if self._ts_ns <= 0 or timestamp_ns <= self._ts_ns:
+            # Primeiro snapshot (ou relogio que nao andou): sem dt nao ha
+            # taxa, e sem taxa o ponteiro nao se move. Comeca no zero.
+            self._ts_ns = max(self._ts_ns, timestamp_ns)
+            return self.valor
+
+        dt = min(DT_MAX_VOLANTE_S, (timestamp_ns - self._ts_ns) / 1_000_000_000)
+        self._ts_ns = timestamp_ns
+
+        velocidade_alvo = ((self._alvo_com_equilibrio(bruta, timestamp_ns) - self.valor)
+                           / TEMPO_ACOMODACAO_VOLANTE_S)
+        peso = min(1.0, dt / TEMPO_INERCIA_VOLANTE_S)
+        self.velocidade += (velocidade_alvo - self.velocidade) * peso
+        self.velocidade = max(-TAXA_MAX_VOLANTE_POR_SEGUNDO,
+                              min(TAXA_MAX_VOLANTE_POR_SEGUNDO, self.velocidade))
+        self.valor = max(-1.0, min(1.0, self.valor + self.velocidade * dt))
+        return self.valor
+
+
 class PainelNexoMercadoASG(_PainelASG):
     """Superfície primária própria: pulso, pressão, sinal e mapa de preço.
 
@@ -1783,15 +2055,13 @@ class PainelNexoMercadoASG(_PainelASG):
         self._arrasto_escala_x0 = 0
         self._arrasto_escala_y0 = 0
         self._arrasto_escala_base = 0.0
-        # Suavizacao do score do MakerProxy (gauge EQUILIBRIO, PRESENCA e a
-        # barra 56/44 de "pressao" em pressao.py — os 3 leem o MESMO numero).
-        # Mesmo padrao ja usado em estatistica.py para a forca bruta por
-        # trade (achado do operador la: "alternava sinal a cada negocio,
-        # nao dava pra ler tendencia") — aqui o defeito era o mesmo, so que
-        # nunca corrigido: o gauge girava de -100% pra +100% em um unico
-        # negocio porque MakerProxySnapshot.pontuacao nao tem media movel
-        # nenhuma. Janela 5, mesma constante de estatistica.JANELA_SUAVIZACAO_FORCA.
-        self._historico_forca_maker: deque[float] = deque(maxlen=5)
+        # Termometro de agressao do MakerProxy (gauge EQUILIBRIO, PRESENCA e
+        # a barra 56/44 de "pressao" em pressao.py — os 3 leem o MESMO
+        # numero). Ate 28/08/2026 aqui havia uma media movel de 5 amostras;
+        # ela foi MEDIDA na serie real e reprovada (ver `VolanteGauge`):
+        # limitava o passo por amostra, nao por tempo, e nao tinha nocao
+        # nenhuma do que e "grande em relacao ao periodo".
+        self._volante_maker = VolanteGauge()
         # Sinal Ultra (fluxopro/asg/sinal_ultra.py) — filtro adicional
         # construido do zero por este projeto (a fonte original nunca
         # definiu essa regra). So consultivo: nunca aparece aqui como envio
@@ -1807,8 +2077,10 @@ class PainelNexoMercadoASG(_PainelASG):
         linha_maker_bruta = next(
             (l for l in snapshot.matriz.linhas if l.componente == "MAKERPROXY"), None
         )
-        if linha_maker_bruta is not None:
-            self._historico_forca_maker.append(linha_maker_bruta.forca)
+        if linha_maker_bruta is not None and snapshot.timestamp_ns > 0:
+            # O volante INTEGRA o tempo: so pode andar quando chega snapshot
+            # novo. O caminho de pintura (`_forca_maker_suavizada`) so LE.
+            self._volante_maker.avancar(linha_maker_bruta.forca, snapshot.timestamp_ns)
         contexto = snapshot.contexto_bruto
         negocios = () if contexto is None else tuple(contexto.negocios)
         for negocio in sorted(negocios, key=lambda item: item.timestamp_ns):
@@ -2003,9 +2275,16 @@ class PainelNexoMercadoASG(_PainelASG):
         return _linha_com_forca(linha, self._forca_maker_suavizada(linha.forca))
 
     def _forca_maker_suavizada(self, bruta: float) -> float:
-        if not self._historico_forca_maker:
+        """LEITURA pura do volante — nunca avanca o tempo.
+
+        Pintar o mesmo quadro duas vezes tem de dar o mesmo numero; quem
+        integra e `aplicar`, uma vez por snapshot. Enquanto o volante nunca
+        andou (nenhum snapshot com timestamp), a leitura e o proprio cru.
+        """
+
+        if not self._volante_maker.andou:
             return bruta
-        return sum(self._historico_forca_maker) / len(self._historico_forca_maker)
+        return self._volante_maker.valor
 
     def _linha_maker(self) -> LinhaMatrizASG | None:
         for linha in self._snapshot.matriz.linhas:
@@ -2412,6 +2691,8 @@ class PainelNexoMercadoASG(_PainelASG):
             grid=self.grid,
             paleta=self.paleta,
             maker=self._linha_maker(),
+            represado_s=self._volante_maker.segundos_represado(
+                self._snapshot.timestamp_ns),
             leituras=self._linhas_contexto_nexo(),
             regime=self._linha_regime(),
             largura=self.width(),
@@ -3002,8 +3283,13 @@ def _linha_com_forca(linha: LinhaMatrizASG, forca: float) -> LinhaMatrizASG:
     renasceu. Aqui ele e fechado na origem: qualquer recalculo de forca
     tem de passar por esta funcao, que devolve a linha inteira coerente.
 
-    `valor` passa a declarar `MM5` quando o numero e suavizado, para que o
-    texto pequeno nao seja confundido com o score cru do instante.
+    `valor` passa a declarar `SUAV` quando o numero e suavizado, para que o
+    texto pequeno nao seja confundido com o score cru do instante. O sufixo
+    era `MM5` ate 28/08/2026, quando a media movel de 5 amostras foi
+    substituida pelo `VolanteGauge` (inercia em tempo + escala relativa ao
+    periodo); o rotulo deixou de nomear a janela justamente porque nomear o
+    mecanismo no rosto do numero foi o que deixou a tela mentindo sobre a
+    formula quando a formula mudou.
     """
 
     forca = _sem_zero_negativo(forca)
@@ -3011,7 +3297,7 @@ def _linha_com_forca(linha: LinhaMatrizASG, forca: float) -> LinhaMatrizASG:
         linha,
         forca=forca,
         direcao=_direcao_de_score(forca),
-        valor=f"{forca * 100:+.0f}% MM5",
+        valor=f"{forca * 100:+.0f}% SUAV",
     )
 
 

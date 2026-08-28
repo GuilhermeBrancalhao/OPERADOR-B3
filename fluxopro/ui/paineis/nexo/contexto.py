@@ -5,6 +5,10 @@ Esqueleto extraido da metade superior de
 leitura dominante, prisma de pressao e as quatro leituras derivadas. Sem
 moldura de cartao — a cena sangra no fundo do quadro.
 
+O numero dominante e o termometro de agressao ja passado pelo volante —
+ver `asg.VolanteGauge` para a formula, os rotulos das constantes e o custo
+medido. Esta regiao nao calcula nada: ela e funcao pura de `estado`.
+
 Prisma e arcos sao forma, nao asset: a direcao viaja em cor **e** em texto,
 para sobreviver ao modo sem cor. Nada aqui e clicavel.
 
@@ -33,6 +37,42 @@ from PySide6.QtGui import (
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
 from fluxopro.ui.paineis.nexo import EstadoNexo
+
+# O numero grande desta cena NAO e o score do instante: e a posicao do
+# volante (`asg.VolanteGauge`), que tem inercia em tempo e escala relativa
+# ao periodo. O custo disso e atraso — e atraso escondido e mentira, entao
+# o rotulo da regiao carrega o aviso. E o mesmo aviso que o texto pequeno
+# da leitura ja da com o sufixo `SUAV` (`asg._linha_com_forca`): uma so
+# verdade, dita nos dois tamanhos de fonte.
+ROTULO_REGIAO = "CONTEXTO · SUAVIZADO"
+
+# SEGUNDOS_PARA_AVISAR_REPRESAMENTO — o atraso do volante tem DOIS regimes,
+# e so um deles cabe num rotulo fixo (medido em 28/08/2026 sobre 4.361
+# snapshots / 5.043 s de tape real, `.gauntlet_docx/rodadas/p8_cauda.py`):
+#
+#   - virada FORTE (o cru vence a zona morta): mediana 0,7 s, p90 4,5 s,
+#     maximo 25,8 s. Esse custo o operador absorve sem precisar de aviso.
+#   - virada FRACA (o cru troca de lado mas nunca fica grande para o
+#     periodo): mediana 3,9 s, p90 41,4 s, maximo 225,8 s. Aqui o
+#     mostrador fica em EQUILIBRIO por MINUTOS enquanto o cru ja esta do
+#     outro lado — e um zero que nao quer dizer "nao ha fluxo", quer dizer
+#     "ha fluxo, fraco para o periodo". Sao coisas diferentes na tela.
+#
+# ATENCAO ao que a medicao DESMENTIU aqui, porque a intuicao errava: os
+# 225 s de cauda NAO sao "mostrador congelado no zero por 4 minutos". Nesse
+# regime o ponteiro esta parado no LADO ANTERIOR, ou passeando perto do
+# zero — o estado "preso no EQUILIBRIO com agressao de um lado so" foi
+# medido separado (`VolanteGauge.segundos_represado`) e dura, na mesma
+# janela de 5.043 s, mediana 3,6 s, p90 9,1 s e MAXIMO 22,2 s em 154
+# episodios. Um limiar de 30 s ou de 1 minuto nunca acenderia: seria
+# elemento de tela declarado e inexistente, que e a mesma familia de
+# defeito que este aviso existe para nao cometer.
+#
+# 15 s: acima do p90 dos proprios episodios de represamento (9,1 s) e ~3x
+# o p90 do regime FORTE (4,5 s). Medido nesta janela, acende em 5 dos 154
+# episodios e em 0,5% dos quadros — raro o bastante para significar algo
+# quando aparece. Rotulo: IMPRECISO, derivado da medicao acima.
+SEGUNDOS_PARA_AVISAR_REPRESAMENTO = 15.0
 
 FRACAO_CENTRO_X = 0.40
 FRACAO_CENTRO_Y = 0.40
@@ -128,7 +168,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     painter.setFont(tokens.fonte_rotulo(TAM_FONTE_ROTULO_REGIAO))
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(rect.adjusted(4, 4, -4, 0),
-                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, "CONTEXTO")
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                     rotulo_regiao(getattr(estado, "represado_s", 0.0)))
 
     _aneis_leitura(painter, centro, raio, score, direcao, cor)
 
@@ -152,6 +193,21 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
                              rect.top() + int(rect.height() * 0.34),
                              largura_leituras,
                              min(120, rect.height() // 3)), estado)
+
+
+def rotulo_regiao(represado_s: float) -> str:
+    """Rotulo da regiao, com o aviso de represamento quando ele existe.
+
+    Funcao separada e publica de proposito: e o unico texto desta cena que
+    depende de um numero, entao ele tem de ser verificavel por teste sem
+    abrir um QPainter.
+    """
+
+    if represado_s < SEGUNDOS_PARA_AVISAR_REPRESAMENTO:
+        return ROTULO_REGIAO
+    minutos, segundos = divmod(int(represado_s), 60)
+    tempo = f"{minutos}M{segundos:02d}S" if minutos else f"{segundos}S"
+    return f"{ROTULO_REGIAO} · AGRESSAO FRACA HA {tempo}"
 
 
 def _com_alpha(cor: QColor, alpha: int) -> QColor:

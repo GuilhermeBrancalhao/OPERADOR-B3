@@ -162,6 +162,16 @@ class EstadoNexo:
     leituras: tuple[tuple[str, object], ...]
     largura: int
     altura: int
+    represado_s: float = 0.0
+    """Ha quantos segundos o termometro de agressao esta preso no EQUILIBRIO
+    por a agressao ser fraca demais para o periodo (`asg.VolanteGauge`).
+
+    `0.0` quando nao esta preso. Existe para que o CUSTO do volante — a
+    cauda de atraso, que em virada fraca e medida em minutos — apareca na
+    tela e nao so na docstring; ver `nexo/contexto.py`. Default zero para
+    nao quebrar quem constroi `EstadoNexo` sem ele.
+    """
+
     tijolos_renko: tuple[object, ...] = ()
     fase_renko: object = None
     alvos_renko: object | None = None

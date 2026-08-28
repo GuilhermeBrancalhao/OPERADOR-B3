@@ -247,25 +247,43 @@ def test_todos_os_quatro_consumidores_leem_o_mesmo_sinal():
         )
 
 
-def test_suavizacao_do_maker_nao_desencontra_sinal_de_grandeza():
-    """A media movel pode discordar do score cru — mas entao TODAS as portas
-    da leitura passam a mostrar a media, nunca uma cada."""
-    from collections import deque
+def _painel_com_volante(valor):
+    """Painel falso cujo volante ja acomodou em `valor`.
+
+    O volante e estado puro (posicao + velocidade + periodo), entao para o
+    teste basta posicionar o ponteiro e declarar que ele ja andou — nao ha
+    Qt nem snapshot envolvidos.
+    """
+
     from fluxopro.ui.paineis import asg
 
+    volante = asg.VolanteGauge()
+    volante.valor = valor
+    volante._ts_ns = 1
+
     class _Falso:
-        _historico_forca_maker = deque([0.9, 0.8, 0.7, 0.75, 0.5], maxlen=5)
+        _volante_maker = volante
         _forca_maker_suavizada = asg.PainelNexoMercadoASG._forca_maker_suavizada
         _linha_maker_coerente = asg.PainelNexoMercadoASG._linha_maker_coerente
+
+    return _Falso()
+
+
+def test_suavizacao_do_maker_nao_desencontra_sinal_de_grandeza():
+    """O numero suavizado pode discordar do score cru — mas entao TODAS as
+    portas da leitura passam a mostrar o suavizado, nunca uma cada."""
+    from fluxopro.ui.paineis import asg
+
+    _Falso = lambda: _painel_com_volante(0.73)  # noqa: E731
 
     crua = _linha("PRESENCA", -0.33, ConfiancaASG.ALTA, DirecaoASG.VENDA)[1]
     saida = _Falso()._linha_maker_coerente(crua)
     assert saida.forca > 0
     assert saida.direcao is DirecaoASG.COMPRA, (
-        "com a media movel positiva, a direcao NAO pode continuar VENDA do cru"
+        "com o volante positivo, a direcao NAO pode continuar VENDA do cru"
     )
     assert asg.leitura_e_coerente(saida)
-    assert "MM5" in saida.valor, "o texto tem de declarar que e media movel"
+    assert "SUAV" in saida.valor, "o texto tem de declarar que nao e o cru"
 
 
 def test_leitura_e_coerente_reprova_sinais_opostos():
@@ -289,7 +307,7 @@ def test_nenhuma_porta_imprime_menos_zero():
 
     No retrato de 28/08 o mesmo zero negativo saia por tres portas ao mesmo
     tempo — mostrador EQUILIBRIO (`-0%`), ladrilho PRESENCA (`-0%`) e texto
-    pequeno (`-0% MM5`) — todas ja pintadas de NEUTRA, so com o sinal errado.
+    pequeno (`-0% SUAV`) — todas ja pintadas de NEUTRA, so com o sinal errado.
     Este teste varre a linha inteira, nao um componente.
     """
 
@@ -499,25 +517,17 @@ def test_o_invariante_REPROVA_o_bug_historico_do_makerproxy():
 
 
 def test_suavizacao_contra_cru_nos_dois_sentidos():
-    """Maker cru negativo com media positiva, e o inverso."""
-    from collections import deque
+    """Maker cru negativo com ponteiro positivo, e o inverso."""
     from fluxopro.ui.paineis import asg
 
-    def _painel(historico):
-        class _Falso:
-            _historico_forca_maker = deque(historico, maxlen=5)
-            _forca_maker_suavizada = asg.PainelNexoMercadoASG._forca_maker_suavizada
-            _linha_maker_coerente = asg.PainelNexoMercadoASG._linha_maker_coerente
-        return _Falso()
-
     casos = (
-        (-0.33, [0.9, 0.8, 0.7, 0.75, 0.5], DirecaoASG.COMPRA),
-        (0.42, [-0.9, -0.8, -0.7, -0.75, -0.5], DirecaoASG.VENDA),
+        (-0.33, 0.73, DirecaoASG.COMPRA),
+        (0.42, -0.73, DirecaoASG.VENDA),
     )
-    for cru, historico, esperada in casos:
+    for cru, ponteiro, esperada in casos:
         linha_crua = next(l for l in _matriz(maker=cru) if l.componente == "MAKERPROXY")
-        saida = _painel(historico)._linha_maker_coerente(linha_crua)
-        assert saida.direcao is esperada, f"cru {cru} com media {historico[0]}"
+        saida = _painel_com_volante(ponteiro)._linha_maker_coerente(linha_crua)
+        assert saida.direcao is esperada, f"cru {cru} com ponteiro {ponteiro}"
         assert asg.leitura_e_coerente(saida)
         assert saida.valor.startswith("+") == (esperada is DirecaoASG.COMPRA)
 
@@ -541,7 +551,6 @@ def test_forca_zero_com_direcao_declarada_e_incoerente():
 def test_o_portao_vale_para_as_QUATRO_leituras_que_vao_a_tela():
     """Ate a rodada 3 o gate existia em UM ponto so (o REGIME) e
     HORIZONTE/PULSO/PRESENCA/RITMO desenhavam sem passar por ele."""
-    from collections import deque
     from dataclasses import replace as _replace
     from fluxopro.ui.paineis import asg
 
@@ -552,8 +561,12 @@ def test_o_portao_vale_para_as_QUATRO_leituras_que_vao_a_tela():
             linhas[indice] = _replace(linha, direcao=DirecaoASG.VENDA
                                       if linha.forca > 0 else DirecaoASG.COMPRA)
 
+    _volante = asg.VolanteGauge()
+    _volante.valor = 0.7
+    _volante._ts_ns = 1
+
     class _Falso:
-        _historico_forca_maker = deque([0.7], maxlen=5)
+        _volante_maker = _volante
         _forca_maker_suavizada = asg.PainelNexoMercadoASG._forca_maker_suavizada
         _linha_maker_coerente = asg.PainelNexoMercadoASG._linha_maker_coerente
         _linhas_contexto_nexo = asg.PainelNexoMercadoASG._linhas_contexto_nexo
@@ -570,3 +583,204 @@ def test_o_portao_vale_para_as_QUATRO_leituras_que_vao_a_tela():
         assert asg.leitura_e_coerente(linha), (
             f"{nome} chegou a tela com forca {linha.forca} e direcao {linha.direcao}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Volante do termometro de agressao (P8) — o pedido do operador era "igual um
+# contragiro de carro que acelera e desacelera gradualmente", e extremos "so
+# quando existe agressoes muito grandes em relacao ao periodo, constantemente".
+# Cada teste abaixo prende UMA dessas propriedades. Todos rodam sem Qt: o
+# volante e estado puro.
+# ---------------------------------------------------------------------------
+
+
+def _serie_no_volante(pares):
+    """`pares` = [(segundos, score cru)] -> leitura do mostrador."""
+    from fluxopro.ui.paineis import asg
+
+    volante = asg.VolanteGauge()
+    return [volante.avancar(cru, round(s * 1_000_000_000)) for s, cru in pares]
+
+
+def test_volante_respeita_o_teto_de_taxa_mesmo_em_rajada():
+    """O defeito que a media movel de 5 amostras NAO cobria.
+
+    MM5 limita o passo por AMOSTRA; se cinco snapshots chegam em 200 ms
+    (medido: o menor intervalo real entre snapshots foi 0,28 s), o mostrador
+    ainda atravessa 0,4 de escala em 0,2 s. O volante limita por SEGUNDO.
+    """
+    from fluxopro.ui.paineis import asg
+
+    passo = 0.05  # 50 ms entre snapshots: rajada
+    pares = [(i * passo, 1.0) for i in range(1, 200)]
+    saida = _serie_no_volante(pares)
+    for anterior, atual in zip(saida, saida[1:]):
+        taxa = abs(atual - anterior) / passo
+        assert taxa <= asg.TAXA_MAX_VOLANTE_POR_SEGUNDO + 1e-9, (
+            f"ponteiro girou a {taxa:.3f}/s, acima do teto de contragiro"
+        )
+
+
+def test_volante_leva_no_minimo_a_travessia_declarada_de_ponta_a_ponta():
+    """Do zero ao fundo de escala nao pode acontecer em um quadro."""
+    from fluxopro.ui.paineis import asg
+
+    # Periodo calmo primeiro (senao o proprio +1,0 vira a "agressao tipica"
+    # do periodo e nunca e fundo de escala — ver o teste do periodo abaixo).
+    # Ruido de sinal alternado: a zona morta prende o ponteiro no zero, que
+    # e de onde a travessia tem de partir para o teste medir a travessia.
+    calmo = [(i * 0.25, 0.02 if i % 2 else -0.02) for i in range(1, 200)]
+    pares = calmo + [(50.0 + i * 0.25, 1.0) for i in range(1, 400)]
+    saida = _serie_no_volante(pares)
+    # A rampa comeca no ULTIMO snapshot calmo: e dele que sai o dt do
+    # primeiro passo em direcao ao novo alvo.
+    inicio = pares[len(calmo) - 1][0]
+    tempo_ate_90 = next(pares[i][0] for i, v in enumerate(saida) if v >= 0.9) - inicio
+    minimo = 0.9 / asg.TAXA_MAX_VOLANTE_POR_SEGUNDO
+    assert tempo_ate_90 >= minimo, (
+        f"chegou a 90% da escala em {tempo_ate_90:.1f}s de agressao "
+        f"sustentada; o teto de taxa "
+        f"exige pelo menos {minimo:.1f}s de agressao sustentada"
+    )
+
+
+def test_volante_desacelera_ao_chegar_no_alvo():
+    """'acelera E DESACELERA gradualmente': perto do alvo o passo encolhe.
+
+    Um limitador de taxa puro chega em velocidade de cruzeiro e para em
+    degrau; este nao.
+    """
+    pares = [(i * 0.25, 1.0) for i in range(1, 400)]
+    saida = _serie_no_volante(pares)
+    passos = [abs(b - a) for a, b in zip(saida, saida[1:])]
+    maior = max(passos)
+    indice = passos.index(maior)
+    finais = passos[-8:]
+    assert max(finais) < maior / 2, (
+        "o ponteiro chegou ao alvo sem desacelerar (passo final ~ passo de "
+        f"cruzeiro {maior:.4f} do indice {indice})"
+    )
+
+
+def test_volante_nao_troca_de_lado_em_cima_de_epsilon():
+    """A zona morta com histerese: sem ela `_direcao_de_score` vira a COR do
+    mostrador a partir de 1e-9, e o termometro pisca."""
+    pares = []
+    for i in range(1, 300):
+        pares.append((i * 0.5, 0.04 if i % 2 else -0.04))
+    saida = _serie_no_volante(pares)
+    assert all(v == 0.0 for v in saida), (
+        "ruido em torno do zero tirou o mostrador do EQUILIBRIO"
+    )
+
+
+def test_volante_exige_agressao_grande_PARA_O_PERIODO_para_o_fundo_de_escala():
+    """Mesmo score cru, dois periodos diferentes, leituras diferentes.
+
+    Em um periodo que ja vinha entregando +1,0 o tempo todo, um +1,0 nao e
+    extremo nenhum — e o que o operador escreveu com todas as letras.
+    """
+    from fluxopro.ui.paineis import asg
+
+    calmo = asg.VolanteGauge()
+    agitado = asg.VolanteGauge()
+    t = 0
+    for _ in range(60):
+        t += 1_000_000_000
+        calmo.avancar(0.1, t)
+        agitado.avancar(1.0, t)
+    # Agora o MESMO pico de +1,0, sustentado, nos dois.
+    for _ in range(60):
+        t += 1_000_000_000
+        calmo.avancar(1.0, t)
+        agitado.avancar(1.0, t)
+    assert calmo.valor > agitado.valor, (
+        f"periodo calmo leu {calmo.valor:.2f} e periodo ja saturado leu "
+        f"{agitado.valor:.2f}; o mesmo +1,0 tem de valer MAIS onde e raro"
+    )
+    assert agitado.valor <= 1.0 / asg.Z_EXTREMO_VOLANTE + 1e-6, (
+        "pressao cravada o periodo inteiro nao pode ler como extremo"
+    )
+
+
+def test_volante_nao_avanca_no_caminho_de_pintura():
+    """`_forca_maker_suavizada` e LEITURA. Pintar o mesmo quadro duas vezes
+    tem de dar o mesmo numero — quem integra o tempo e `aplicar`."""
+    from fluxopro.ui.paineis import asg
+
+    painel = _painel_com_volante(0.42)
+    primeira = painel._forca_maker_suavizada(-0.9)
+    segunda = painel._forca_maker_suavizada(-0.9)
+    assert primeira == segunda == 0.42
+
+
+def test_volante_sem_snapshot_ainda_mostra_o_cru():
+    """Antes do primeiro timestamp nao ha leitura propria — e ai o painel
+    nao pode inventar zero no lugar do dado."""
+    from fluxopro.ui.paineis import asg
+
+    class _Falso:
+        _volante_maker = asg.VolanteGauge()
+        _forca_maker_suavizada = asg.PainelNexoMercadoASG._forca_maker_suavizada
+
+    assert _Falso()._forca_maker_suavizada(-0.73) == -0.73
+
+
+def test_represamento_conta_so_enquanto_o_ponteiro_esta_preso_no_equilibrio():
+    """`segundos_represado` mede UM estado especifico: mostrador em
+    EQUILIBRIO tendo agressao de um lado so para mostrar.
+
+    Existe para o custo do volante ir a tela. Se ele contasse tambem o
+    tempo em que o ponteiro esta parado no lado ANTERIOR, o aviso da tela
+    estaria medindo outra coisa que nao a que ele diz medir.
+    """
+    from fluxopro.ui.paineis import asg
+
+    volante = asg.VolanteGauge()
+    t = 0
+    # 60 s de fluxo fraco de um lado so: alvo existe, mas nao vence a zona
+    # morta contra o proprio periodo.
+    for _ in range(60):
+        t += 1_000_000_000
+        volante.avancar(0.10 if t % 2_000_000_000 else 0.08, t)
+    assert volante.valor == 0.0, "o ponteiro devia estar preso no EQUILIBRIO"
+    assert volante.segundos_represado(t) > 0.0, (
+        "ha agressao de um lado so e o mostrador esta em zero: isso e "
+        "represamento e tem de ser contado"
+    )
+    # Agressao forte: solta o ponteiro e zera o contador.
+    for _ in range(40):
+        t += 1_000_000_000
+        volante.avancar(1.0, t)
+    assert volante.valor > 0.0
+    assert volante.segundos_represado(t) == 0.0, (
+        "com o ponteiro solto nao ha represamento a declarar"
+    )
+
+
+def test_represamento_nao_conta_antes_de_haver_agressao():
+    """Mercado parado nao e represamento — e mercado parado."""
+    from fluxopro.ui.paineis import asg
+
+    volante = asg.VolanteGauge()
+    t = 0
+    for _ in range(60):
+        t += 1_000_000_000
+        volante.avancar(0.0, t)
+    assert volante.segundos_represado(t) == 0.0
+
+
+def test_rotulo_da_regiao_so_avisa_acima_do_limiar_medido():
+    """O aviso na tela e o custo declarado; ele nao pode aparecer no
+    comportamento NORMAL do mostrador (p90 de 4,5 s no regime forte)."""
+    from fluxopro.ui.paineis.nexo import contexto
+
+    limiar = contexto.SEGUNDOS_PARA_AVISAR_REPRESAMENTO
+    assert contexto.rotulo_regiao(0.0) == contexto.ROTULO_REGIAO
+    assert contexto.rotulo_regiao(limiar - 0.1) == contexto.ROTULO_REGIAO
+    aviso = contexto.rotulo_regiao(limiar + 0.5)
+    assert aviso.startswith(contexto.ROTULO_REGIAO)
+    assert "AGRESSAO FRACA" in aviso
+    assert contexto.rotulo_regiao(226.0).endswith("3M46S"), (
+        "o tempo represado tem de ser legivel como tempo, nao como float"
+    )

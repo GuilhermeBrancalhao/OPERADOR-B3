@@ -10,7 +10,9 @@ Estrutura (rodada 1 desta regiao):
   ``leituras`` atuais apontam naquela direcao, com a legenda declarando o
   denominador (``N DE M LEITURAS``) para que a contagem nunca apareca sem a
   procedencia de onde saiu;
-* uma tira de barras a direita da contagem, construida a partir de
+* uma tira de RAIOS a direita da contagem (28/08/2026: uma marca por
+  LEITURA distinta, com teto de variacao medido da propria serie — ver
+  `leituras_distintas` e `TETO_EM_SIGMAS`), construida a partir de
   ``estado.serie`` (a mesma serie de forca ja congelada no snapshot — nenhum
   dado novo e inferido aqui). Sem amostra, a tira declara o estado
   indisponivel em vez de desenhar barras falsas;
@@ -142,18 +144,21 @@ entre 4."""
 
 
 JANELA_SUAVIZACAO_FORCA = 5
-"""Media movel causal (so olha pra tras) sobre a forca bruta de cada
-amostra. Pedido do operador: a tira de barras crua alternava sinal a cada
-negocio (a forca por-trade e genuinamente ruidosa) e nao dava pra ler
-tendencia nenhuma nisso — cada barra so descrevia UM negocio, nao "quanto
-de forca o mercado tem agora". Suavizar nao fabrica dado novo: a media e
-sobre os MESMOS valores reais de `estado.serie`, nunca lookahead (a janela
-so inclui amostras ja observadas ate aquele ponto)."""
+"""Janela da media movel causal do MakerProxy (`asg.py`, gauge EQUILIBRIO /
+PRESENCA / barra de pressao). **Nao governa mais a FORCA OBSERVADA desta
+regiao** — ver `TETO_EM_SIGMAS` e a medicao que a desqualificou aqui.
+
+IMPRECISO — 5 nunca teve justificativa escrita. Mantida porque `asg.py`
+declara usar a mesma janela; quem for mexer no MakerProxy que a meca la."""
 
 
 def _suavizar_forca(
     amostras: tuple[tuple[int, int, float, int], ...], janela: int = JANELA_SUAVIZACAO_FORCA
 ) -> tuple[float, ...]:
+    """Media movel causal — MANTIDA so como termo de comparacao da evidencia
+    desta rodada (`.gauntlet_docx/rodadas/p9_serie.csv`). Nao e mais o
+    caminho de desenho: ver `suavizar_por_taxa`."""
+
     valores = [item[2] for item in amostras]
     suavizados = []
     for indice in range(len(valores)):
@@ -161,6 +166,256 @@ def _suavizar_forca(
         recorte = valores[inicio : indice + 1]
         suavizados.append(sum(recorte) / len(recorte))
     return tuple(suavizados)
+
+
+def leituras_distintas(
+    amostras: tuple[tuple[int, int, float, int], ...]
+) -> tuple[tuple[int, float], ...]:
+    """Colapsa repeticoes CONSECUTIVAS da forca em uma leitura so.
+
+    Devolve ``(timestamp_ns da primeira amostra da leitura, forca)`` — o
+    carimbo de tempo vem junto de proposito: sem ele a tira nao consegue
+    declarar PERIODO nenhum, que foi a lacuna apontada na rodada 1 (ver
+    `teto_por_segundo` e a legenda de `_desenhar_barras`).
+
+    CONFIRMADO por medicao (28/08/2026, replay real de 2026-08-28 12:00,
+    4.703 negocios / 6.594 amostras — `.gauntlet_docx/rodadas/p9_serie.csv`):
+    a coluna de forca de `estado.serie` **nao e forca por negocio**, ao
+    contrario do que a documentacao afirmava. `asg._registrar_amostra` recebe
+    `self._forca_atual()`, que e um escalar do SNAPSHOT, carimbado identico em
+    todos os negocios daquele snapshot. Medido: 6.594 amostras carregam apenas
+    **204 valores distintos**; o patamar de valor repetido tem 32,3 amostras de
+    media, 55 no p90 e 123 no maximo.
+
+    Consequencia direta na tela, e este era o defeito real desta regiao: a
+    janela visivel e de 24 amostras, e 24 < 32 — ou seja, **o normal era a tira
+    inteira ser 24 raios identicos**. Conferido na propria evidencia: as
+    ultimas 24 amostras da corrida valiam todas 0,656. A tira dizia mostrar
+    "sequencia" e mostrava um nivel unico, 24 vezes.
+
+    Colapsar nao descarta informacao de forca: a i-esima repeticao e o mesmo
+    numero do mesmo snapshot, nao uma segunda observacao. O que a tira passa a
+    mostrar e uma leitura por MUDANCA observada — e a legenda diz isso.
+    """
+
+    if not amostras:
+        return ()
+    saida = [(int(amostras[0][0]), float(amostras[0][2]))]
+    for carimbo, _preco, forca, _qtd in amostras[1:]:
+        if float(forca) != saida[-1][1]:
+            saida.append((int(carimbo), float(forca)))
+    return tuple(saida)
+
+
+NS_POR_SEGUNDO = 1_000_000_000
+
+
+def periodo_coberto_s(leituras: tuple[tuple[int, float], ...]) -> float:
+    """Quantos SEGUNDOS de tape as `leituras` cobrem, do carimbo da primeira
+    ao da ultima. `0.0` com menos de duas leituras ou carimbo nao monotono.
+
+    Existe porque a tira precisa DECLARAR o periodo: uma leitura nao tem
+    duracao fixa (medido: mediana 0,84 s, p90 2,33 s, maximo 5,94 s), entao a
+    mesma tira de 24 raios cobre de ~12 s a ~48 s conforme o tape acelera ou
+    esfria. Sem esse numero impresso, "constantemente" nao e verificavel.
+    """
+
+    if len(leituras) < 2:
+        return 0.0
+    duracao = leituras[-1][0] - leituras[0][0]
+    return max(0.0, duracao / NS_POR_SEGUNDO)
+
+
+TETO_EM_SIGMAS = 1.0
+"""Quantos desvios-padrao de variacao a leitura da tela pode andar por
+DURACAO TIPICA de leitura — convertido para "por segundo" em
+`teto_por_segundo`, que e a forma que a tela usa e imprime.
+
+Esta e a "estatistica em que podemos nos basear" que o operador pediu: nao
+um numero escolhido a gosto, e sim a mesma linguagem de z-score de
+`fluxopro/aprendizado/padroes.py`, que ja mede "grande em relacao ao
+periodo" contra media e desvio-padrao do proprio historico. Aqui o
+historico e a serie do quadro e a grandeza medida e a VARIACAO entre
+leituras consecutivas.
+
+Com 1σ, um salto de z σ leva ~⌈z⌉ leituras de duracao tipica para aparecer
+inteiro: z=1 passa direto (sem atraso nenhum), z=3 leva 3. E exatamente o
+pedido — "mudancas drasticas de extremos so quando existe agressoes muito
+grandes em relacao ao periodo constantemente": pico isolado e cortado e
+recua na leitura seguinte; empurrao que se SUSTENTA chega ao extremo, porque
+ganha mais 1σ a cada duracao tipica.
+
+**Escopo da medicao — corrigido na rodada 2, era imprecisao de declaracao.**
+O codigo NUNCA ve a corrida inteira: `asg._serie` e uma `deque(maxlen=480)`,
+entao o σ de cada quadro sai de, no maximo, 480 amostras (22 a ~70 leituras
+distintas, conforme a cadencia). Ha portanto DOIS escopos, e eles nao dao o
+mesmo numero:
+
+* **corrida inteira** (204 leituras): σ = 0,1898. E o escopo da tabela
+  comparativa abaixo — serve para comparar as FORMULAS entre si sobre a mesma
+  serie, e so para isso;
+* **janela que o codigo enxerga** (deque de 480): σ **nao e uma constante** —
+  medido quadro a quadro no mesmo run, mediana 0,1761, minimo 0,0423, maximo
+  0,3243. Uma sonda independente, em outro run, mediu 0,1334 na mediana. Os
+  tres numeros sao compativeis: σ e remedido a cada quadro de proposito, e e
+  por isso que ele **sai impresso na legenda** em vez de ficar so aqui.
+
+A rodada 1 desta regiao declarava "σ = 0,1898" como se fosse o que o teto vale
+em tela; era o σ da corrida inteira. Numero de docstring que nao bate com o
+que o codigo ve e o mesmo defeito de declaracao que esta bancada ja reprovou.
+
+Em unidade de tela (teto POR SEGUNDO, que e o que a legenda mostra), medido
+quadro a quadro no mesmo run: mediana **8,7%/s**, faixa de 1,8%/s a 17,0%/s;
+280 amostras de arranque sem teto nenhum, com `SEM TETO (AMOSTRA CURTA)`
+escrito na legenda durante todas elas. O periodo coberto pelos 24 raios
+visiveis: mediana 31,2 s, maximo 60,0 s — a razao de ele ser declarado.
+
+Comparacao contra a media movel de 5 que estava aqui, amostra a amostra,
+sobre a MESMA serie (corrida inteira):
+
+| | maior passo | erro medio vs cru | atraso (correlacao cruzada) |
+|---|---|---|---|
+| cru | 0,6008 | — | — |
+| MM5 | 0,1989 | 0,1325 | 0 amostras (r=0,902) |
+| teto 1σ | **0,1898** (garantido) | **0,0422** | 0 amostras (r=0,973) |
+
+A MM5 perde nos dois eixos: distorce 3,1x mais e nem assim garante passo
+menor — ela nao tem teto nenhum, so dilui. O teto tem garantia dura e ainda
+fica 3x mais perto do valor cru, porque so age quando o salto e grande de
+verdade.
+
+**Custo, e ele esta na tela:** medido por critico independente no replay de
+28/08 — 6,4% das amostras com cor divergente do valor cru, 1,0% com cor
+oposta, em 8 episodios, mediana 1,51 s e maximo 4,28 s de atraso. Enquanto a
+leitura persegue o alvo, a regiao desenha um tracinho pontilhado na altura do
+valor CRU sobre o raio e carimba `LIMITADO` na legenda — o operador ve que a
+leitura esta atras de um numero maior, em vez de o painel esconder a virada.
+
+IMPRECISO quanto ao valor 1,0 (poderia ser 0,5 ou 2,0); CONFIRMADO quanto a
+origem do teto, que e medido da propria serie a cada quadro e nao esta
+cravado em lugar nenhum."""
+
+MIN_VARIACOES_PARA_TETO = 8
+"""Abaixo disto nao ha teto: a leitura crua passa inteira.
+
+IMPRECISO — engenharia. `padroes.py` aceita z-score com n>=2, o que aqui
+daria um σ que muda de valor a cada amostra nova e limitaria por um numero
+sem significado. Com poucas variacoes observadas preferimos NAO limitar a
+limitar por um sigma inventado: degradar declarando, nunca fabricar.
+Medido: no arranque isso vale por ~130 amostras, e a legenda diz
+`SEM TETO (AMOSTRA CURTA)` durante todo esse tempo."""
+
+
+def teto_de_variacao(leituras: tuple[tuple[int, float], ...]) -> float:
+    """Desvio-padrao populacional das VARIACOES entre leituras consecutivas.
+
+    `0.0` = amostra insuficiente. Nunca chuta um sigma. E a materia-prima de
+    `teto_por_segundo`, que e o teto que a tela usa de fato.
+    """
+
+    if len(leituras) < MIN_VARIACOES_PARA_TETO + 1:
+        return 0.0
+    valores = [valor for _, valor in leituras]
+    variacoes = [b - a for a, b in zip(valores, valores[1:])]
+    media = sum(variacoes) / len(variacoes)
+    variancia = sum((v - media) ** 2 for v in variacoes) / len(variacoes)
+    return variancia ** 0.5
+
+
+def _duracao_mediana_s(leituras: tuple[tuple[int, float], ...]) -> float:
+    if len(leituras) < 2:
+        return 0.0
+    duracoes = sorted(
+        (b[0] - a[0]) / NS_POR_SEGUNDO for a, b in zip(leituras, leituras[1:])
+    )
+    meio = len(duracoes) // 2
+    if len(duracoes) % 2:
+        return duracoes[meio]
+    return (duracoes[meio - 1] + duracoes[meio]) / 2
+
+
+def teto_por_segundo(leituras: tuple[tuple[int, float], ...]) -> float:
+    """Teto de variacao **por SEGUNDO de tape** — a unidade que a rodada 2
+    corrigiu. `0.0` = sem teto (amostra curta), e o valor cru passa inteiro.
+
+        teto/s = σ(variacoes entre leituras) · TETO_EM_SIGMAS / duracao
+                 MEDIANA de uma leitura
+
+    Por que em segundos, e nao por leitura (lacuna julgada na rodada 1): uma
+    leitura nao tem duracao fixa. Medido no replay real de 28/08 (326 leituras
+    distintas): duracao mediana 0,84 s, p90 2,33 s, maxima 5,94 s — ou seja, a
+    MESMA tira de 24 raios cobre de 12,4 s a 47,8 s (mediana 25,9 s) conforme
+    o tape acelera ou esfria. Com o teto ancorado em leitura, ele era uma trava
+    elastica no tempo: os mesmos 0,13 valiam para 0,84 s ou para 5,9 s. E o
+    pedido do operador tem a palavra `periodo` dentro dele — "agressoes muito
+    grandes em relacao ao **periodo** constantemente". Sem escala de tempo
+    fixa, "constantemente" nao e verificavel.
+
+    Agora a permissao de cada leitura e `teto/s × Δt daquela leitura`: quem
+    demorou mais anda proporcionalmente mais, porque mais tempo passou de
+    verdade. A leitura de duracao TIPICA continua ganhando exatamente 1σ, que
+    e o comportamento verificado e aprovado na rodada 1 — a mudanca corrige a
+    elasticidade nas pontas, nao o miolo.
+
+    Invariante que a tela passa a garantir, e que e verificavel com relogio na
+    mao: **nenhum trecho anda mais que `teto/s` por segundo** (antes: "1σ por
+    leitura de duracao indefinida", que nao se podia conferir).
+
+    Base estatistica: mesma linguagem de z-score de
+    `fluxopro/aprendizado/padroes.py` ("grande em relacao ao periodo" medido
+    contra media e desvio-padrao do proprio historico). Nada cravado: σ e a
+    duracao mediana sao remedidos a cada quadro, e o teto sai IMPRESSO na
+    legenda (`TETO 16%/s`), junto do periodo que a tira cobre (`· 26 s`).
+
+    Mediana como normalizador (e nao media) e escolha de engenharia —
+    IMPRECISO: a distribuicao de duracao tem cauda longa (0,84 s de mediana
+    contra 5,94 s de maximo) e a media seria puxada pelas pausas.
+    """
+
+    sigma = teto_de_variacao(leituras)
+    if sigma <= 0:
+        return 0.0
+    duracao = _duracao_mediana_s(leituras)
+    if duracao <= 0:
+        return 0.0
+    return sigma * TETO_EM_SIGMAS / duracao
+
+
+def suavizar_por_taxa(
+    leituras: tuple[tuple[int, float], ...], teto_s: float
+) -> tuple[float, ...]:
+    """Limitador de TAXA em TEMPO (o "contragiro" do operador), nao media movel.
+
+        g_i = g_(i-1) + clamp(f_i - g_(i-1), ± teto_s · Δt_i)
+
+    causal, comecando no primeiro valor observado. Diferenca que importa: uma
+    media movel atrasa TODO movimento, inclusive o lento; o limitador nao toca
+    em movimento algum que ande menos que `teto_s` por segundo — ele so age no
+    salto. Por isso o erro medio contra o valor cru e ~3x menor que o da MM5
+    (medicao completa em `TETO_EM_SIGMAS`).
+
+    Gap grande de tempo libera passo grande **de proposito**: se o tape ficou
+    6 s sem nova leitura, o mercado teve 6 s para andar, e fingir que o relogio
+    nao correu seria a mentira que a disciplina do projeto proibe. O custo
+    continua declarado na tela (tracinho no valor cru + carimbo `LIMITADO`).
+
+    `teto_s <= 0` devolve os valores intactos.
+    """
+
+    if not leituras:
+        return ()
+    valores = [valor for _, valor in leituras]
+    if teto_s <= 0:
+        return tuple(valores)
+    saida = [valores[0]]
+    atual = valores[0]
+    for anterior, atual_leitura in zip(leituras, leituras[1:]):
+        delta_t = max(0.0, (atual_leitura[0] - anterior[0]) / NS_POR_SEGUNDO)
+        permitido = teto_s * delta_t
+        passo = atual_leitura[1] - atual
+        atual += max(-permitido, min(permitido, passo))
+        saida.append(atual)
+    return tuple(saida)
 
 
 def _cor_forca(forca: float):
@@ -312,22 +567,42 @@ def _poligono_raio(caixa: QRect, invertido: bool) -> QPolygon:
     return QPolygon(pontos)
 
 
+def _texto_periodo(segundos: float) -> str:
+    """Periodo coberto pela tira, em unidade legivel de relance.
+
+    Abaixo de 90 s em segundos inteiros (a faixa medida no replay real:
+    12 s a 48 s); acima disso em minutos, para nao imprimir "312 s".
+    """
+
+    if segundos < 90:
+        return f"{segundos:.0f} s"
+    return f"{segundos / 60:.0f} min"
+
+
 def _desenhar_barras(painter: QPainter, rect: QRect,
                      serie: tuple[tuple[int, int, float, int], ...]) -> None:
-    """Tira de barras da forca observada, direto de ``estado.serie``.
+    """Tira de raios da forca observada, direto de ``estado.serie``.
 
     Sem amostra o bloco declara ``SEM HISTORICO DE FORCA`` em vez de
     desenhar barras inventadas — a mesma regra de estado honesto que vale
     para book ausente no replay MT5.
 
-    Correcao desta rodada: a legenda ("N AMOSTRAS · FORCA OBSERVADA") vivia
-    na MESMA faixa vertical onde as barras podem crescer ate a base do
-    bloco — com ``forca`` perto de 1.0 (o caso comum, ver evidencia desta
-    rodada) o preenchimento rosa/verde cobre o texto cinza por cima dele,
-    ou o deixa ilegivel por falta de contraste. Agora o rotulo (o "titulo"
-    que faltava, no mesmo lugar onde os placares COMPRA/VENDA tem o deles)
-    e a legenda de contagem ficam em faixas reservadas, fora da area onde
-    as barras desenham — nunca mais por baixo de uma barra.
+    Duas correcoes desta rodada, as duas medidas antes de escritas (evidencia
+    em ``.gauntlet_docx/rodadas/p9_serie.csv``, replay real de 2026-08-28):
+
+    * **a tira mostrava 24 copias do mesmo numero.** A forca de
+      ``estado.serie`` e um escalar por SNAPSHOT carimbado em cada negocio
+      (ver ``leituras_distintas``): patamar mediano de 32 amostras contra uma
+      janela visivel de 24. Agora cada raio e uma LEITURA distinta;
+    * **a media movel de 5 era inerte.** Com patamar de 32 amostras, a janela
+      de 5 vivia inteira DENTRO do patamar: ela nao suavizava o degrau, so
+      alisava o que ja era constante. No lugar dela entra um teto de variacao
+      medido da propria serie (``TETO_EM_SIGMAS``), que limita a TAXA em vez
+      de diluir o valor.
+
+    O rotulo e a legenda continuam em faixas reservadas, fora da area onde os
+    raios desenham — nunca por baixo de um raio (correcao da rodada anterior,
+    preservada).
     """
 
     painter.setPen(tema_asg.NEXO_GRADE)
@@ -345,47 +620,88 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
                      "FORCA OBSERVADA")
 
-    amostras = serie[-24:]
-    # Suavizado sobre a serie INTEIRA (nunca so a janela visivel), pra a
-    # primeira barra visivel nao comecar sem historico — so entao recorta
-    # as ultimas 24. Mesmo criterio causal do resto do projeto.
-    forcas_suavizadas = _suavizar_forca(serie)[-len(amostras):]
+    # Uma leitura por MUDANCA observada, e o teto medido sobre a serie
+    # INTEIRA (nunca so a janela visivel) — a primeira leitura visivel ja
+    # nasce com historico. So depois recorta as ultimas 24.
+    leituras = leituras_distintas(serie)
+    teto = teto_por_segundo(leituras)
+    limitadas = suavizar_por_taxa(leituras, teto)
+    visiveis = leituras[-24:]
+    exibidas = limitadas[-len(visiveis):]
+    periodo = periodo_coberto_s(visiveis)
+
     faixa_grafico = QRect(rect.left(), rect.top() + ALTURA_ROTULO_BARRAS, rect.width(),
                           max(10, rect.height() - ALTURA_ROTULO_BARRAS - ALTURA_LEGENDA_BARRAS))
     area = faixa_grafico.adjusted(3, 1, -3, -1)
     vao = 2
-    n = max(1, len(amostras))
+    n = max(1, len(exibidas))
     largura_barra = max(2, (area.width() - (n - 1) * vao) // n)
     meio_y = area.center().y()
     metade = max(4, area.height() // 2 - 2)
 
-    painter.setPen(Qt.PenStyle.NoPen)
+    def _altura(valor: float) -> int:
+        return max(4, round(min(1.0, abs(valor)) * metade))
+
+    limitou = False
     x = area.left()
-    for forca in forcas_suavizadas:
+    for forca, (_carimbo, bruto) in zip(exibidas, visiveis):
         cor = _cor_forca(forca)
-        altura = max(4, round(min(1.0, abs(forca)) * metade))
+        altura = _altura(forca)
         if forca >= 0:
             caixa_raio = QRect(x, meio_y - altura, largura_barra, altura)
             invertido = True
         else:
             caixa_raio = QRect(x, meio_y, largura_barra, altura)
             invertido = False
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(cor)
         painter.drawPolygon(_poligono_raio(caixa_raio, invertido))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        # Marca do custo: enquanto a leitura persegue um alvo maior que o
+        # teto, um tracinho na altura do valor CRU mostra para onde ela esta
+        # indo. Suavizar aqui nao pode esconder virada — o operador ve o
+        # alvo, nao so o valor freado.
+        if teto > 0 and abs(bruto - forca) > 0.01:
+            altura_bruta = _altura(bruto)
+            y_bruto = meio_y - altura_bruta if bruto >= 0 else meio_y + altura_bruta
+            y_bruto = max(area.top(), min(area.bottom(), y_bruto))
+            caneta_alvo = QPen(_cor_forca(bruto))
+            caneta_alvo.setWidth(1)
+            # Tracejada de proposito: linha cheia da mesma cor seria lida
+            # como MAIS UM raio. Tracejada le como "alvo", nao como leitura.
+            caneta_alvo.setStyle(Qt.PenStyle.DotLine)
+            painter.setPen(caneta_alvo)
+            painter.drawLine(x, y_bruto, x + largura_barra, y_bruto)
+            limitou = True
         x += largura_barra + vao
-    painter.setBrush(Qt.BrushStyle.NoBrush)
 
     caneta_eixo = QPen(tema_asg.NEXO_MUTED)
     caneta_eixo.setWidth(2)
     painter.setPen(caneta_eixo)
     painter.drawLine(area.left(), meio_y, area.right(), meio_y)
 
+    # A legenda imprime o teto MEDIDO, em % da escala: e a "estatistica em
+    # que podemos nos basear" visivel na tela, nao so na docstring.
+    # A legenda declara as TRES coisas que a tira afirma: quantas leituras,
+    # sobre QUANTO TEMPO (lacuna da rodada 1 — sem periodo, "constantemente"
+    # nao e verificavel e o mesmo elemento representa 12 s numa hora e 48 s
+    # noutra) e o teto medido, ja em unidade de tempo.
+    plural = "LEITURA" if len(visiveis) == 1 else "LEITURAS"
+    legenda = f"{len(visiveis)} {plural}"
+    if periodo > 0:
+        legenda += f" · {_texto_periodo(periodo)}"
+    if teto > 0:
+        legenda += f" · TETO {teto * 100:.0f}%/s (1σ)"
+        if limitou:
+            legenda += " · LIMITADO"
+    else:
+        legenda += " · SEM TETO (AMOSTRA CURTA)"
     painter.setFont(tokens.fonte_rotulo(6))
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(QRect(rect.left(), faixa_grafico.bottom(), rect.width() - 6,
                           ALTURA_LEGENDA_BARRAS),
                      Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                     f"{len(amostras)} AMOSTRAS · FORCA OBSERVADA")
+                     legenda)
 
 
 def _desenhar_ladrilhos(painter: QPainter, corpo: QRect,

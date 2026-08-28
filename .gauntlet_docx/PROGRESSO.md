@@ -56,6 +56,86 @@ gasta em rodada extra de build.
 | P7 | Coerência entre indicadores | `paineis/asg.py` | T3 |
 | P8 | Força Observada legível | `nexo/estatistica.py` | T3 |
 
+## Segunda passada — itens 11 e 13 (gradualidade)
+
+Os itens 11 (termômetro de agressões / EQUILÍBRIO) e 13 (Força Observada em raios) foram
+implementados numa sessão anterior e **nunca passaram por builder e crítico independentes**.
+Esta passada corrige isso: eles vão à mesma bancada que as outras cinco peças.
+
+| # | Peça | Arquivo | Pedido literal |
+|---|---|---|---|
+| P8 | Termômetro EQUILÍBRIO | `nexo/contexto.py` | "muda de negativo para positivo muito rápido... na teoria teria que ser igual um contragiro de carro que acelera e desacelera gradualmente; essas mudanças drásticas de extremos deve ser mostrado só quando existe agressões muito grandes em relação ao período constantemente" |
+| P9 | Força Observada | `nexo/estatistica.py` | "também segue a mesma lógica de ser gradual, verifique alguma estatística em que podemos nos basear, e deve ser representados por raios, verde quando é positivo e vermelho para negativos" |
+
+Estado de partida: os dois usam **média móvel de 5 amostras** (`JANELA_SUAVIZACAO_FORCA = 5`),
+acrescentada sem julgamento. Média móvel atrasa, mas não implementa nem o "contragiro" (que é
+sobre **taxa de variação**, não sobre média) nem o critério de "extremo só com agressão grande
+**em relação ao período**", que é uma afirmação estatística — comparação contra a própria
+distribuição recente, não contra um limiar cravado.
+
+### P9 Força Observada — ENCERRADA, vitória (2 rodadas)
+
+O defeito real não era "muda rápido demais". A coluna de força de `estado.serie` **não é força
+por negócio** — `aplicar` carimba um escalar do *snapshot* igual em todos os negócios daquele
+instante. Medido: 6.594 amostras com apenas **204 valores distintos**, patamares de 32 amostras
+em média. A janela visível é de 24 raios, e 24 < 32: **o normal era a tira ser 24 raios
+idênticos**, afirmando sequência enquanto mostrava um nível repetido.
+
+A média móvel de 5 era **inerte** — com patamar de 32, a janela vivia inteira dentro do
+patamar. Não suavizava degrau nenhum; os 203 degraus reais passavam quase inteiros.
+
+Corrigido com colapso de leituras repetidas + **limitador de taxa** (não média): teto = σ das
+variações da própria série, convertido em **taxa por segundo** e impresso na tela junto do
+período coberto. A/B na mesma série: a MM5 perdia nos dois eixos — distorcia 3,1× mais e nem
+assim garantia passo menor.
+
+Rodada 2 fechou a lacuna que o crítico levantou: cada raio era uma *leitura*, não uma fatia de
+tempo, então a mesma tira cobria de 12,4 s a 47,8 s sem declarar nada. Hoje a legenda imprime
+`24 LEITURAS · 14 S · TETO 14%/S (1σ) · LIMITADO`.
+
+Verificação final, com sonda independente em run diferente: erro entre período impresso e span
+real dos raios = **0,000000 s** em 8.111 amostras; **0 violações** do teto por segundo em 7.990
+amostras; 36 das 41 mudanças cruas grandes freadas, e as 5 que passaram inteiras só porque o
+tape realmente ficou parado. Maior lacuna: **nenhuma**.
+
+Nota: o número de σ na docstring foi corrigido **pelo escopo, não pelo dígito** — 0,1898 era da
+corrida inteira, o código só enxerga a deque de 480. Declarar um σ fixo era o defeito, já que
+ele é remedido a cada quadro.
+
+### P8 Termômetro EQUILÍBRIO — ENCERRADA, vitória (2 rodadas)
+
+A média móvel de 5 **não era um volante**: limitava o passo por AMOSTRA, e o intervalo entre
+snapshots vai de 0,28 s a 28 s. Em rajada o mostrador ainda girava a **0,80 escala/s** (a escala
+inteira em 2,5 s). E, pior, ela **escondia extremo real**: onde o cru foi ao fundo de escala
+11/9/8 vezes em três passadas, a MM5 mostrou 1/2/3.
+
+Substituída por inércia de verdade (posição + velocidade, velocidade proporcional ao que falta,
+teto de 0,20 escala/s) com fundo de escala relativo ao período — 2× a agressão típica dos
+últimos **15 min**, e os 15 min são **CONFIRMADO**, vêm de `bar/medidores_agressao_text.txt`
+("Períodos Adicionais (Média): 15 e 30 minutos"). Zona morta com histerese.
+
+Verificação final, sonda independente (4.328 snapshots / 4.174 s):
+- taxa exibida máx **0,2000 score/s** contra **3,401 score/s** do cru;
+- extremo **sustentado** chega a 1,00; extremo de um snapshot isolado é cortado — o pedido;
+- escala relativa limitou o alvo em 53,4% dos snapshots (não é limiar cravado);
+- 28 viradas sustentadas, **0 perdidas**, mediana 2,2 s.
+
+**Fórmula provada intacta bit a bit** após a rodada 2: o crítico reexecutou a série gravada na
+rodada 1 pelo `VolanteGauge` atual — 515/515 snapshots, divergências > 1e-12: **0**.
+
+Rodada 2 corrigiu o único ponto que não sobreviveu à medição independente: a docstring declarava
+cauda de atraso de "~28 s", e a medição deu p90 de 70,8 s e máximo de 225,8 s. Agora declara os
+**dois regimes** separados (forte: mediana 0,7 s, zero perdidas; fraca: cauda de minutos, que é
+a supressão pedida) — e declara um número **pior** do que o crítico conseguiu medir, errando
+para o lado da honestidade.
+
+**O builder recusou uma orientação minha, com dado.** Eu sugeri avisar na tela quando o
+mostrador ficasse represado "mais de um minuto". Ele mediu o estado: mediana 3,6 s, máximo
+22,2 s — um limiar de 30 s ou 1 min **nunca acenderia**, seria elemento declarado e inexistente,
+a mesma família de defeito que o aviso existiria para evitar. Implementou em 15 s (entre o p90 e
+o máximo do próprio estado). O crítico verificou a recusa com a própria sonda e confirmou:
+137 episódios, máximo 20,9 s — 30 s acenderia zero vezes.
+
 ## Rodadas
 
 | Peça | Rodada | Papel | Modelo | Veredito | Nota |

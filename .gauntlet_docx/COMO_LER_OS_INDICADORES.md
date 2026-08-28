@@ -20,7 +20,7 @@ São os quatro ladrilhos na base esquerda. Cada um mostra uma **força de −100
 +100%** (positivo = comprador, negativo = vendedor), um **rótulo de confiança**
 (ALTA / MEDIA / BAIXA / SEM CONF) e, embaixo, o **valor de onde a força saiu** —
 o número cru da métrica (`+534` contratos, `PARADO`) ou, quando a leitura é
-suavizada, o próprio valor suavizado marcado com `MM5`. Esse texto pequeno
+suavizada, o próprio valor suavizado marcado com `SUAV`. Esse texto pequeno
 sempre carrega o mesmo sinal do número grande logo acima dele (seção 7).
 
 ### HORIZONTE — o dia inteiro
@@ -43,19 +43,24 @@ sempre carrega o mesmo sinal do número grande logo acima dele (seção 7).
 ### PRESENÇA — o MakerProxy
 - **Mede:** comportamento do livro: absorção, reposição, divergência, clips e
   agressão, agregados num único score.
-- **Como sai:** `MakerProxy.pontuacao`, já **suavizado por média móvel de 5
-  amostras** antes de chegar à tela. **IMPRECISO** — é proxy de comportamento de
+- **Como sai:** `MakerProxy.pontuacao`, passado pelo **volante** descrito na
+  seção 2 antes de chegar à tela. **IMPRECISO** — é proxy de comportamento de
   quem está no livro. **AUSENTE NA FONTE: identidade de contraparte.** A B3 não
   publica quem é quem no tape público; o painel nunca diz "o player X está
   comprando", porque não tem como saber.
-- **Custo da suavização:** ~5 amostras de atraso. Sem ela o número girava de
-  −100% a +100% em um único negócio. Uma virada real aparece em poucos quadros,
-  não fica escondida.
-- **O sufixo `MM5`** no texto pequeno avisa que aquele número é a média móvel de
-  5 amostras, não o score cru do instante. Quando a média já virou e o score cru
-  ainda não (ou o contrário), **o painel inteiro mostra a média** — número, cor,
-  rótulo COMPRA/VENDA e barra do rodapé, todos ao mesmo tempo. Até 28/08 a média
-  ia só para o número grande e o cru continuava mandando na cor e no rótulo: o
+- **Custo da suavização:** medido, e está na seção 2. Em resumo: para uma virada
+  **forte** do score cru, mediana de 0,7 s e p90 de 4,5 s; para uma virada
+  **fraca** (que a zona morta barra de propósito), mediana 3,9 s e cauda de até
+  225,8 s. Nenhuma virada sustentada perdida em 143 medidas.
+- **O sufixo `SUAV`** no texto pequeno avisa que aquele número não é o score cru
+  do instante. Até 28/08 o sufixo era `MM5` e nomeava a média móvel de 5
+  amostras que existia então; o rótulo deixou de nomear o mecanismo justamente
+  porque nomear a fórmula no rosto do número faz a tela mentir quando a fórmula
+  muda.
+- Quando o número suavizado já virou e o score cru ainda não (ou o contrário),
+  **o painel inteiro mostra o suavizado** — número, cor,
+  rótulo COMPRA/VENDA e barra do rodapé, todos ao mesmo tempo. Até 28/08 o
+  suavizado ia só para o número grande e o cru continuava mandando na cor e no rótulo: o
   mesmo MakerProxy aparecia em quatro lugares do quadro com dois sinais
   diferentes (ex.: "+73%" escrito em vermelho, rotulado VENDA, com "−33%"
   impresso logo abaixo). Ver seção 7.
@@ -83,11 +88,105 @@ sempre carrega o mesmo sinal do número grande logo acima dele (seção 7).
 
 ## 2. EQUILÍBRIO — o termômetro grande (topo esquerdo)
 
-- **Mede:** o score do MakerProxy suavizado — **o mesmo número que o ladrilho
-  PRESENÇA**, em formato de mostrador. "Mesmo número" aqui é literal e
+- **Mede:** o score do MakerProxy passado pelo **volante** (abaixo) — **o mesmo
+  número que o ladrilho PRESENÇA**, em formato de mostrador. O rótulo da região
+  diz `CONTEXTO · SUAVIZADO` justamente para o número grande não ser lido como o
+  score do instante. "Mesmo número" aqui é literal e
   verificável: os dois leem a mesma leitura, com o mesmo sinal, a mesma cor e o
   mesmo rótulo. Se algum dia os dois divergirem na tela, é defeito, não leitura
   — e há teste automatizado prendendo isso (seção 7).
+### Como o número se move: o volante (28/08/2026)
+
+O pedido do operador foi literal: *"na teoria teria que ser igual um contragiro
+de carro que acelera e desacelera gradualmente"*, e as idas ao extremo *"só
+quando existe agressões muito grandes em relação ao período, constantemente"*.
+
+Até 28/08 havia aqui uma **média móvel de 5 amostras**, e ela **não atendia
+nenhuma das duas coisas** — isso foi medido, não achado. Na série real de
+WDOU26 (replay de 12:00, 120 s de tape, 190 snapshots), o intervalo entre
+snapshots vai de **0,28 s a 28 s**. Média móvel limita o passo **por amostra**;
+em rajada ela ainda girava o mostrador a **0,80 de escala por segundo** — a
+escala inteira em 2,5 s, tipicamente um quadro. E ela não tem noção nenhuma do
+que é "grande para o período": só atrasa o mesmo salto.
+
+O que existe hoje (`asg.VolanteGauge`) tem três camadas:
+
+1. **Inércia em tempo real.** O ponteiro tem posição *e* velocidade. A
+   velocidade persegue a distância que falta (por isso **desacelera** ao
+   chegar), ela própria muda com constante de tempo (por isso **acelera**
+   gradualmente) e é limitada por um **teto de 0,20 de escala por segundo**.
+   Consequência: atravessar a escala inteira custa no mínimo 10 s, e isso
+   independe de quantos snapshots chegam nesse intervalo.
+2. **Escala relativa ao período.** O fundo de escala não é mais "o score cru
+   encostou em 1,0": é **2× a agressão típica dos últimos 15 minutos** (a típica
+   medida como rms em torno do zero). Os 15 min vêm da fonte — os *Medidores de
+   Agressão* do Profit Pro nomeiam "Períodos Adicionais (Média)" de 15 e 30
+   minutos. O fator 2× é **IMPRECISO**, com precedente interno (o projeto já
+   normaliza por dispersão em `aprendizado/padroes.py`).
+3. **Zona morta com histerese.** Abaixo de 0,25 de escala (meia agressão típica)
+   o mostrador declara **EQUILÍBRIO**; só larga o lado abaixo de 0,15. Sem ela,
+   `_direcao_de_score` troca a **cor** do painel a partir de 1e-9 — na série
+   real o cru cruza o zero 27 vezes em 120 s.
+
+**Medido, mesma série, as duas fórmulas lado a lado**
+(`.gauntlet_docx/rodadas/p8_ab.py`, saída em `p8_evidencia_temporal.txt`;
+três replays independentes):
+
+| | cru | média móvel 5 | volante |
+|---|---|---|---|
+| maior taxa de giro | 1,70 / 1,29 / 2,81 escala/s | 0,80 / 0,64 / 0,45 | **0,200 nos três** (é teto, não acaso) |
+| trocas de cor em 120 s | 27 / 19 / 16 | 14 / 7 / 6 | **8 / 4 / 4** |
+| episódios de fundo de escala | 11 / 9 / 8 | 1 / 2 / 3 | 6 / 6 / 5 |
+| viradas sustentadas perdidas | — | 0 | **0** |
+
+#### O custo, dito na cara — e corrigido em 28/08 depois de medição independente
+
+A primeira versão desta seção declarava "mediana ~5 s, cauda de ~28 s". **Esse
+número estava otimista por 8x**, e a causa foi medir a cauda numa janela de
+120 s. Cauda não se mede em janela curta. Remedido sobre **4.361 snapshots /
+5.043 s de tape real** (`.gauntlet_docx/rodadas/p8_cauda.py`), o atraso tem
+**dois regimes**, e declarar só o otimista era o defeito:
+
+| virada do score cru | n | mediana | p90 | máximo | perdidas |
+|---|---|---|---|---|---|
+| **FORTE** — chega a ficar grande para o período (pico 0,25 a 1,00) | 108 | 0,7 s | 4,5 s | **25,8 s** | 0 |
+| **FRACA** — troca de lado mas nunca fica grande para o período (pico 0,04 a 0,25) | 35 | 3,9 s | 41,4 s | **225,8 s** | 0 |
+
+Lendo em português: **o mostrador acompanha depressa o que é agressão de
+verdade, e leva minutos para acompanhar o que não é.** Isso é o filtro pedido
+funcionando — mas só vale como custo declarado se o número grande estiver
+escrito, e agora está. Nas duas classes, **nenhuma** virada sustentada foi
+perdida (143 medidas).
+
+**Um mal-entendido que a medição desfez:** esses 225 s **não** são "mostrador
+congelado no zero por quase 4 minutos". Nesse regime o ponteiro está parado no
+**lado anterior** ou passeando perto do zero. O estado de ficar preso no
+EQUILÍBRIO *tendo* agressão de um lado só foi medido em separado: 154
+episódios, mediana 3,6 s, p90 9,1 s, **máximo 22,2 s**.
+
+**Por isso existe o aviso na tela.** Quando esse represamento passa de **15 s**,
+o rótulo da região vira `CONTEXTO · SUAVIZADO · AGRESSÃO FRACA HÁ 0M18S`. Serve
+para separar dois zeros que na tela seriam idênticos: "não há fluxo" e "há
+fluxo, fraco demais para este período". O limiar é 15 s porque está acima do p90
+dos próprios episódios (9,1 s) e ~3x o p90 do regime forte (4,5 s); na janela
+medida ele acende em 5 dos 154 episódios (0,5% dos quadros). **Um limiar de 30 s
+ou de 1 minuto nunca acenderia** — seria elemento de tela declarado e
+inexistente, que é a mesma família de defeito que este aviso existe para não
+cometer.
+
+Repare também que a média móvel
+mostrava o fundo de escala **1 a 3 vezes** onde o cru foi ao extremo **8 a 11**:
+ela não estava filtrando extremo, estava **escondendo** extremo real — que é o
+defeito pior dos dois. O volante mostra 5 a 6, e cada um deles exige a pressão
+sustentada por segundos para ser alcançado.
+
+**Um caso de borda que você vai ver:** se o score cru ficar **cravado** no mesmo
+valor por todo o período (acontece na fixture sintética de livro usada pela
+captura de sessão inteira), a agressão típica do período passa a ser o próprio
+valor, e o mostrador estaciona em **exatamente 50%** — metade da escala. Não é
+travamento: pressão constante não é agressão "muito grande em relação ao
+período", mas também não é equilíbrio.
+
 - **Interpretar:** é o **livro agora**, e só isso. Ele **não** é resumo do quadro
   e **não** é média das quatro leituras. Se ele marca −100% VENDA enquanto o
   placar abaixo marca saldo levemente comprador, não há erro: são fontes
@@ -141,16 +240,77 @@ peso: ALTA 1,0 · MEDIA 0,6 · BAIXA 0,3 · SEM CONF 0,0
 
 ## 4. FORÇA OBSERVADA — a tira de raios
 
-- **Mede:** a força por negócio da própria série do quadro, uma marca por
-  amostra, últimas 24.
-- **Como sai:** média móvel **causal** de 5 amostras (só olha para trás) sobre os
-  valores reais da série. Sem suavização a tira alternava de sinal a cada negócio
-  e não dava para ler tendência nenhuma.
-- **Interpretar:** verde para cima = agressão compradora; vermelho para baixo =
-  vendedora. Serve para ver **sequência**, não nível. Sem amostra o bloco declara
-  `SEM HISTÓRICO DE FORÇA` em vez de desenhar barra inventada.
+- **Mede:** a força das leituras do quadro, **uma marca por leitura**, últimas 24,
+  **sobre um período declarado na própria legenda**. Verde para cima = agressão
+  compradora; vermelho para baixo = vendedora.
+- **A legenda diz as três coisas que a tira afirma**, nesta ordem:
+  `24 LEITURAS · 31 s · TETO 9%/s (1σ) · LIMITADO`
+  — quantas leituras, **sobre quanto tempo**, com que teto de variação, e se
+  alguma leitura visível está sendo freada agora.
 
----
+### O que estava errado, e foi corrigido
+
+- **"Força por negócio" era falso** (corrigido em 28/08). A força que chega à
+  série é um escalar do *snapshot*, carimbado igual em todos os negócios
+  daquele snapshot. Medido no replay real de 28/08 (4.703 negócios): **6.594
+  amostras carregando só 204 valores distintos**, com patamar mediano de 32
+  amostras repetidas. Como a janela da tira é de 24, o normal era ela mostrar
+  **24 raios idênticos** — um nível, não uma sequência. Agora cada raio é uma
+  **leitura distinta**.
+- **A média móvel de 5 saiu.** Com patamar de 32 amostras, uma janela de 5 vive
+  inteira *dentro* do patamar: não suavizava degrau nenhum, só alisava o que já
+  era constante. Era suavização inerte, escolhida sem justificativa.
+- **O período não era declarado, e o teto não era ancorado em tempo** (a lacuna
+  da rodada anterior). Uma leitura não tem duração fixa: medido, mediana 0,84 s,
+  p90 2,33 s, máxima 5,94 s — a **mesma** tira de 24 raios cobria de 12 s a 48 s
+  conforme o tape acelerava ou esfriava, e o teto "1σ por leitura" era uma trava
+  elástica no tempo (os mesmos 13% valendo para 0,84 s ou para 5,9 s). O pedido
+  do operador tem a palavra **período** dentro dele; sem escala de tempo fixa,
+  "constantemente" não é verificável.
+
+### Como sai agora — teto medido, em segundos (a estatística)
+
+```
+teto por segundo = σ(variações entre leituras) / duração MEDIANA de uma leitura
+permissão de cada leitura = teto por segundo × Δt daquela leitura
+```
+
+- É a mesma linguagem de z-score que `fluxopro/aprendizado/padroes.py` usa para
+  dizer "grande em relação ao período". **Nada cravado:** σ e a duração mediana
+  são remedidos a cada quadro, e o teto sai impresso na legenda.
+- **σ não é uma constante, e é por isso que ele aparece na tela.** O painel
+  enxerga no máximo as últimas 480 amostras: medido quadro a quadro, σ variou de
+  0,042 a 0,324 (mediana 0,176) num run, e outra sonda mediu mediana 0,133 em
+  outro. Em unidade de tela: teto mediano de **8,7%/s**, faixa de 1,8%/s a
+  17,0%/s.
+- **Invariante que você pode conferir com relógio na mão:** nenhum trecho da
+  linha anda mais que o teto por segundo impresso. Antes a garantia era "1σ por
+  leitura de duração indefinida", que não dava para checar.
+- **Por que atende ao "contragiro":** pico isolado é cortado e recua na leitura
+  seguinte; empurrão que se **sustenta** chega ao extremo, porque ganha mais 1σ
+  a cada duração típica. Gap grande de tempo libera passo grande **de propósito**
+  — se o tape ficou 6 s parado, o mercado teve 6 s para andar.
+
+### O custo, medido, e visível na tela
+
+- Medido por sonda independente no replay de 28/08: **6,4% das amostras com cor
+  divergente do valor cru, 1,0% com cor oposta**, em 8 episódios, atraso mediano
+  de 1,51 s e **máximo de 4,28 s**.
+- Enquanto a leitura persegue o alvo, o painel desenha **um tracinho pontilhado
+  na altura do valor cru** sobre o raio e escreve `LIMITADO` na legenda — a
+  virada nunca fica escondida.
+- **Contra a média móvel que estava aqui, na mesma série:** maior passo 0,190
+  (garantido por construção) contra 0,199 (sem garantia nenhuma); erro médio
+  contra o valor cru 0,042 contra 0,133 — **3,1x menos distorção**. Um limitador
+  de taxa não toca em movimento lento; uma média móvel atrasa tudo.
+
+### Interpretar
+
+Serve para ver **sequência**, não nível — e sempre lendo o período junto, porque
+24 raios em 12 s e 24 raios em 48 s não contam a mesma história. Sem amostra o
+bloco declara `SEM HISTÓRICO DE FORÇA`; com série curta demais para um sigma
+significativo, declara `SEM TETO (AMOSTRA CURTA)` (medido: ~280 amostras de
+arranque) e deixa o valor cru passar — nunca inventa um desvio-padrão.
 
 ## 5. PRESSÃO — o par 56 / 44 (canto inferior direito)
 
@@ -246,7 +406,8 @@ ladrilho saía verde com "+0%" escrito. Magnitude zero não autoriza pintar lado
 tinha sido feito só dentro do RITMO. O MakerProxy continuava passando o zero
 negativo adiante, e no retrato de fechamento ele saiu por três portas ao mesmo
 tempo — `-0%` no mostrador EQUILÍBRIO, `-0%` no ladrilho PRESENÇA e `-0% MM5` no
-texto pequeno — todas as três já pintadas de neutro, só com o sinal errado.
+texto pequeno (o sufixo chamava-se `MM5` naquela data; hoje é `SUAV`) — todas as
+três já pintadas de neutro, só com o sinal errado.
 Agora a normalização está no **mesmo portão único** que re-deriva direção, cor e
 rótulo, e o corte usado é o mesmo de `_direcao_de_score`: só perde o sinal aquilo
 que a direção já declarou NEUTRO. Uma leitura de −0,4% continua saindo negativa.
