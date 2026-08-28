@@ -240,6 +240,47 @@ def test_evento_de_dia_ja_fechado_e_descartado_e_contado(tmp_path: Path):
     assert g2.descartados_por_dia_fechado == {("WDOV26", dia): 5}
 
 
+def test_rabo_de_dia_fechado_nao_pode_sobrescrever_o_meta_json_do_dia_seguinte(
+    tmp_path: Path,
+):
+    """Achado ao vivo em 2026-08-26/27: o rabo de um dia JA finalizado, ao ser
+    o PRIMEIRO evento de uma execucao nova, virava `_dia_aberto[symbol]`
+    (nenhum dia estava aberto ainda nesta execucao) — e quando o primeiro
+    evento de um dia REALMENTE novo chegava, `_fechar_dia` fechava aquele dia
+    velho de novo, com zero eventos rastreados nesta execucao, e SOBRESCREVIA
+    o `meta.json` real (hashes inclusos) por um vazio.
+
+    Cenario: dia 1 fechado com 1 negocio real. Execucao nova recebe so o rabo
+    do dia 1 (nenhum dia aberto ainda) e DEPOIS o primeiro negocio do dia 2.
+    O `meta.json` do dia 1 tem de continuar intacto.
+    """
+    bus1 = Barramento()
+    g1 = Gravador(bus1, tmp_path)
+    g1.iniciar()
+    bus1.publicar(_trade(_DIA_1_TS, trade_id="T1"))
+    g1.parar()
+
+    dia1 = date.fromtimestamp(_DIA_1_TS / 1e9)
+    pasta_dia1 = tmp_path / "WDOV26" / dia1.isoformat()
+    meta_original = json.loads((pasta_dia1 / "meta.json").read_text(encoding="utf-8"))
+    assert meta_original["hashes_sha256"], "sanity: o dia 1 tem de ter hash real"
+
+    # execucao nova: primeiro chega o rabo do dia 1 (ja fechado), DEPOIS o
+    # primeiro negocio genuino do dia 2.
+    bus2 = Barramento()
+    g2 = Gravador(bus2, tmp_path)
+    g2.iniciar()
+    bus2.publicar(_trade(_DIA_1_TS + 1, trade_id="REPUB0"))
+    bus2.publicar(_trade(_DIA_1_TS + _UM_DIA_NS, symbol="WDOV26", trade_id="D2T1"))
+    g2.parar()
+
+    meta_depois = json.loads((pasta_dia1 / "meta.json").read_text(encoding="utf-8"))
+    assert meta_depois == meta_original, (
+        "o rabo do dia fechado clobbrou o meta.json real com uma versao vazia"
+    )
+    assert g2.descartados_por_dia_fechado == {("WDOV26", dia1): 1}
+
+
 def test_a_guarda_nao_atrapalha_a_retomada_apos_crash(tmp_path: Path):
     """O controle do teste acima, e ele e obrigatorio.
 

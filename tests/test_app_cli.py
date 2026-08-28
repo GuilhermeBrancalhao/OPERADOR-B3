@@ -203,7 +203,8 @@ def _saida_deterministica(texto: str) -> list[str]:
 
 
 def test_a_saida_do_cli_e_deterministica_para_a_mesma_seed(capsys):
-    argv = ["--seed", "7", "--n-eventos", "800", "--status-a-cada", "0", "--simbolo", "WDOV26"]
+    argv = ["--fonte", "simulador", "--seed", "7", "--n-eventos", "800",
+            "--status-a-cada", "0", "--simbolo", "WDOV26"]
     operar.main(argv)
     primeira = _saida_deterministica(capsys.readouterr().out)
     operar.main(argv)
@@ -215,7 +216,7 @@ def test_a_saida_do_cli_e_deterministica_para_a_mesma_seed(capsys):
 
 def test_seed_diferente_muda_a_saida_do_cli(capsys):
     """CONTROLE: sem isto, o teste acima passaria com saída constante vazia."""
-    base = ["--n-eventos", "800", "--status-a-cada", "0", "--simbolo", "WDOV26"]
+    base = ["--fonte", "simulador", "--n-eventos", "800", "--status-a-cada", "0", "--simbolo", "WDOV26"]
     operar.main(base + ["--seed", "7"])
     a = _saida_deterministica(capsys.readouterr().out)
     operar.main(base + ["--seed", "8"])
@@ -229,6 +230,7 @@ def test_gravar_liga_o_gravador_no_mesmo_pipeline(tmp_path: Path, capsys):
     saida = tmp_path / "gravacao"
     codigo = operar.main(
         [
+            "--fonte", "simulador",
             "--simbolo", "WDOV26",
             "--seed", "3",
             "--n-eventos", "400",
@@ -340,7 +342,7 @@ def test_duracao_encerra_sozinha(capsys):
     """`--duracao` tem de parar um simulador "sem limite" — é o caminho que o
     dono usa para dar uma olhada de 60s sem ficar com o terminal preso."""
     codigo = operar.main(
-        ["--simbolo", "WDOV26", "--duracao", "0.4", "--status-a-cada", "0"]
+        ["--fonte", "simulador", "--simbolo", "WDOV26", "--duracao", "0.4", "--status-a-cada", "0"]
     )
     assert codigo == 0
     saida = capsys.readouterr().out

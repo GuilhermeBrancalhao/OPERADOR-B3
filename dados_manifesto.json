@@ -6,8 +6,8 @@
     "2. python scripts/manifesto_dados.py --arquivo dados/ --verificar",
     "3. se os hashes baterem: python scripts/estudo_pregoes.py --arquivo dados/ --simbolo <sym>"
   ],
-  "n_dias": 34,
-  "n_eventos_total": 5537633,
+  "n_dias": 36,
+  "n_eventos_total": 7883802,
   "dias": [
     {
       "symbol": "WDOU26",
@@ -637,6 +637,60 @@
         "book_snapshots.csv": 676798,
         "book_deltas.csv": 496011,
         "falhas.csv": 1
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-26",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 159922,
+        "BookSnapshot": 542602,
+        "BookDelta": 474037,
+        "FalhaCaptura": 24
+      },
+      "n_eventos_total": 1176585,
+      "inicio_utc": "2026-08-26T06:36:50.060000+00:00",
+      "fim_utc": "2026-08-26T18:29:59.575579+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv.gz": "788241ceba648000fc27d20490824e1bb6716dc2b548621c21dcea2272dba845",
+        "book_snapshots.csv.gz": "9324f1603d3fdf02aedf8c31ad6b8d1455f5a4576b04bc11dba228a8ded7e2c4",
+        "book_deltas.csv.gz": "d40946e54f38479aa731fd74903325b016825fe6cf01ce9deec03d42fc467af5",
+        "falhas.csv.gz": "5671f24af44fbacf7a9fbbc63104109f822f2c19261fcba36f6c93aba414fb06"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv.gz": 159922,
+        "book_snapshots.csv.gz": 542602,
+        "book_deltas.csv.gz": 474037,
+        "falhas.csv.gz": 24
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-27",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 158440,
+        "BookSnapshot": 543477,
+        "BookDelta": 467650,
+        "FalhaCaptura": 17
+      },
+      "n_eventos_total": 1169584,
+      "inicio_utc": "2026-08-27T06:00:07.535000+00:00",
+      "fim_utc": "2026-08-27T18:30:00.490638+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "4f15ecca928c423ebe78965b443344930f13d27fc267efa13eaa55251b182eab",
+        "book_snapshots.csv": "4eec9e12fe3f9ecd4ff472fc8365624c482bd42897a27e18e1111956733caa61",
+        "book_deltas.csv": "684b49d0541c871fb11d88d48d47e0db0dcbba6287affc45840e46eb858315be",
+        "falhas.csv": "1168d5ac559ef91a9e305a0ce01c2898dcbb34069948f77ae2d0b457466a4c10"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 158440,
+        "book_snapshots.csv": 543477,
+        "book_deltas.csv": 467650,
+        "falhas.csv": 17
       }
     }
   ]

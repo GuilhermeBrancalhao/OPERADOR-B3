@@ -106,6 +106,8 @@ class EstadoNexo:
     candles_m15: tuple[object, ...] = ()
     vap_niveis: tuple[tuple[int, int, int, int, bool], ...] = ()
     vap_poc: int | None = None
+    vap_timeframe_min: int = 0
+    """0 = sessao inteira; 5/15 = perfil recortado dos ultimos N minutos."""
     vap_val: int | None = None
     vap_vah: int | None = None
     risco_volatilidade: float = 0.0

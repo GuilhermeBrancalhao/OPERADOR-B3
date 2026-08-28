@@ -21,6 +21,9 @@ echo INICIO %date% %time% >> "%LOG%"
 
 cd /d "%RAIZ%"
 
+python scripts\fechar_pregao.py --simbolo WDOU26 --data %HOJE% >> "%LOG%" 2>&1
+python scripts\manifesto_dados.py --arquivo dados\ --saida dados_manifesto.json >> "%LOG%" 2>&1
+
 git add dados\ dados_manifesto.json >> "%LOG%" 2>&1
 git diff --cached --quiet
 if %ERRORLEVEL%==0 (

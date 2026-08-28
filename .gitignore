@@ -36,3 +36,8 @@ __pycache__/
 
 # logs de pregao (gerados pela tarefa agendada)
 /logs/
+
+# banco de aprendizado (dados_aprendizado/asg.db) cresce todo dia, e derivado
+# 100% reconstruivel a partir de dados/ + logs/ — nao versiona binario que so
+# vai divergir a cada `fechar_pregao.py`.
+/dados_aprendizado/

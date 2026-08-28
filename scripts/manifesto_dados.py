@@ -59,7 +59,13 @@ VERSAO_MANIFESTO = 1
 _UTC = dt.timezone.utc
 
 
-def _iso(ns: int) -> str:
+def _iso(ns: int | None) -> str | None:
+    """`None` acontece num dia fechado sem nenhum evento (reconexao tardia
+    que so republica o rabo de um dia ja finalizado, ver
+    `fluxopro.gravacao.gravador`) — honesto reportar ausencia, nunca inventar
+    um timestamp epoch(0) que pareceria um dado real."""
+    if ns is None:
+        return None
     return dt.datetime.fromtimestamp(ns / 1e9, tz=_UTC).isoformat()
 
 

@@ -1721,6 +1721,15 @@ class PainelNexoMercadoASG(_PainelASG):
         # sintetizado pela UI. Isso permite candles causais e um grafico que
         # ganha densidade no pregão sem reter dados indefinidamente.
         self._serie: deque[tuple[int, int, float, int]] = deque(maxlen=480)
+        # Buffer de negocios crus (timestamp, preco, qty, agressor) so pra
+        # montar o VAP recortado em 5M/15M sob pedido (achado do operador em
+        # 27/08/2026: o VAP so tinha o perfil da sessao inteira). Trimado por
+        # TEMPO (nao por contagem) porque o ritmo de negocios varia demais ao
+        # longo do pregao pra um maxlen fixo ser seguro nos dois sentidos.
+        self._trades_vap_recentes: deque[tuple[int, int, int, AgressorSide]] = deque()
+        self._vap_timeframe_min = 0
+        """0 = perfil da sessao inteira (`self._vap`, nunca reamostrado);
+        5/15 = perfil recortado dos ultimos N minutos via `_perfil_vap_ativo`."""
         # Renko (gráfico superior direito, "4R"): blocos por deslocamento de
         # preço, nunca por tempo. Agregador puro, alimentado por chamada
         # direta junto com `_serie` — nunca assina o barramento. Ver
@@ -1876,6 +1885,10 @@ class PainelNexoMercadoASG(_PainelASG):
                 Trade(timestamp_ns=timestamp_ns, symbol="", price=preco,
                      qty=quantidade, side_agressor=agressor, trade_id="")
             )
+            self._trades_vap_recentes.append((timestamp_ns, preco, quantidade, agressor))
+            limite = timestamp_ns - self._JANELA_VAP_RECENTE_NS_MAX
+            while self._trades_vap_recentes and self._trades_vap_recentes[0][0] < limite:
+                self._trades_vap_recentes.popleft()
 
     def _forca_atual(self) -> float:
         linhas = self._snapshot.matriz.linhas
@@ -1982,7 +1995,32 @@ class PainelNexoMercadoASG(_PainelASG):
     voce esquece ela". Nunca um numero solto — e o unico caso em que a
     contagem exata vem dita na transcricao, nao inferida."""
 
-    def _congelar_vap(self, top_n: int = 120) -> tuple[tuple[int, int, int, int, bool], ...]:
+    _JANELA_VAP_RECENTE_NS_MAX = 15 * 60 * 1_000_000_000
+
+    def _perfil_vap_ativo(self) -> VolumeProfile:
+        """Perfil da sessao inteira (padrao) ou recortado aos ultimos
+        5/15 minutos, conforme `self._vap_timeframe_min` (chip clicavel no
+        rodape do VAP, ver `mousePressEvent`). Recorte SEMPRE reconstruido do
+        mesmo buffer de negocios crus — nunca um segundo feed."""
+
+        if self._vap_timeframe_min <= 0:
+            return self._vap
+        janela_ns = self._vap_timeframe_min * 60 * 1_000_000_000
+        if not self._trades_vap_recentes:
+            return VolumeProfile()
+        agora_ns = self._trades_vap_recentes[-1][0]
+        limite = agora_ns - janela_ns
+        trades = (
+            Trade(timestamp_ns=ts, symbol="", price=preco, qty=qtd,
+                 side_agressor=agressor, trade_id="")
+            for ts, preco, qtd, agressor in self._trades_vap_recentes
+            if ts >= limite
+        )
+        return VolumeProfile.de_trades(trades)
+
+    def _congelar_vap(
+        self, perfil: VolumeProfile | None = None, top_n: int = 120
+    ) -> tuple[tuple[int, int, int, int, bool], ...]:
         """Congela ate `top_n` niveis do VAP em tuplas planas (retencao
         limitada — `VolumeProfile` e objeto vivo, uma regiao NUNCA pode
         reter referencia a ele).
@@ -1997,7 +2035,7 @@ class PainelNexoMercadoASG(_PainelASG):
         e literalmente o volume total do nivel, rotulado como proxy.
         """
 
-        niveis = self._vap.niveis_ordenados()
+        niveis = (perfil if perfil is not None else self._perfil_vap_ativo()).niveis_ordenados()
         por_volume = sorted(niveis, key=lambda kv: kv[1].volume_total, reverse=True)
         destacados = {preco for preco, _ in por_volume[: self.N_NIVEIS_DESTACADOS]}
         recortados = por_volume[:top_n]
@@ -2023,8 +2061,25 @@ class PainelNexoMercadoASG(_PainelASG):
         quadro = QRect(0, 0, largura, max(1, altura - nexo.ALTURA_RESSALVA))
         return nexo.retangulos(quadro).get("candles")
 
+    def _retangulo_ladder(self) -> QRect | None:
+        largura, altura = self.width(), self.height()
+        if largura < 420 or altura < 180:
+            return None
+        quadro = QRect(0, 0, largura, max(1, altura - nexo.ALTURA_RESSALVA))
+        return nexo.retangulos(quadro).get("ladder")
+
     def mousePressEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
         pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+
+        caixa_ladder = self._retangulo_ladder()
+        if caixa_ladder is not None:
+            modulo_ladder = nexo.modulo("ladder")
+            if modulo_ladder.retangulo_rotulo(caixa_ladder).contains(pos):
+                self._vap_timeframe_min = {0: 5, 5: 15, 15: 0}[self._vap_timeframe_min]
+                self.marcar_tudo_sujo()
+                evento.accept()
+                return
+
         caixa = self._retangulo_candles()
         if caixa is None or not caixa.contains(pos):
             super().mousePressEvent(evento)
@@ -2089,6 +2144,7 @@ class PainelNexoMercadoASG(_PainelASG):
         exatamente este retrato e nada mais. Precos seguem ``int`` em ticks.
         """
 
+        _perfil_vap = self._perfil_vap_ativo()
         return nexo.EstadoNexo(
             snapshot=self._snapshot,
             serie=tuple(self._serie),
@@ -2107,8 +2163,9 @@ class PainelNexoMercadoASG(_PainelASG):
                if self._agregador_candles_atual().candle_atual else ()),
             candles_timeframe_min=self._timeframe_candles_min,
             candles_offset=self._candles_offset,
-            vap_niveis=self._congelar_vap(),
-            vap_poc=self._vap.poc,
+            vap_niveis=self._congelar_vap(_perfil_vap),
+            vap_poc=_perfil_vap.poc,
+            vap_timeframe_min=self._vap_timeframe_min,
             vap_val=self._vap.val(),
             vap_vah=self._vap.vah(),
             risco_volatilidade=self._risco_volatilidade(),

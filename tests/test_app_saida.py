@@ -406,7 +406,7 @@ def test_o_CLI_nao_retem_o_pregao_inteiro_em_memoria():
     operar.ConsoleFluxo = espiao  # type: ignore[assignment]
     try:
         codigo = operar.main(
-            ["--simbolo", SYMBOL, "--n-eventos", "800", "--status-a-cada", "0"]
+            ["--fonte", "simulador", "--simbolo", SYMBOL, "--n-eventos", "800", "--status-a-cada", "0"]
         )
     finally:
         operar.ConsoleFluxo = original  # type: ignore[assignment]

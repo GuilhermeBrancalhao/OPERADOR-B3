@@ -172,6 +172,19 @@ class Gravador:
                 self._fechar_dia(symbol, dia_atual)
                 dia_atual = None
             if dia_atual is None:
+                # O rabo republicado de um dia JA FECHADO em execucao anterior
+                # (ver `_descartar_de_dia_fechado`) nao pode virar "dia aberto"
+                # nesta execucao: um processo novo, sem `_dia_aberto[symbol]`
+                # ainda, que recebe so esse rabo tratava esse dia velho como o
+                # dia corrente — e quando o primeiro evento de HOJE chegasse,
+                # `_fechar_dia` fechava aquele dia velho de novo, com as
+                # contagens desta execucao (zero) e SOBRESCREVIA o
+                # `meta.json` real (hashes inclusos) por um de 0 eventos.
+                # Achado ao vivo em 2026-08-26 -> meta.json clobbrado no
+                # ciclo seguinte (27/08 09:00).
+                if self._dia_ja_finalizado(symbol, data_evento, type(evento)):
+                    self._descartar_de_dia_fechado(symbol, data_evento)
+                    return
                 self._dia_aberto[symbol] = data_evento
                 dia_atual = data_evento
 

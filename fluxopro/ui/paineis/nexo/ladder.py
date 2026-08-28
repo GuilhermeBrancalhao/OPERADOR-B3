@@ -51,6 +51,15 @@ ALTURA_ROTULO = 12
 ALTURA_MIN_PARA_ROTULO = 60
 
 
+def retangulo_rotulo(rect: QRect) -> QRect:
+    """Faixa inferior do rotulo — tambem o alvo de clique do timeframe
+    (SESSAO/5M/15M). Funcao PURA, reaproveitada por `desenhar` (pintar) e
+    por `PainelNexoMercadoASG.mousePressEvent` (hit-test), mesmo padrao
+    de `candles.retangulos_controles`."""
+
+    return QRect(rect.left(), rect.bottom() - ALTURA_ROTULO, rect.width(), ALTURA_ROTULO)
+
+
 def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if rect.width() < LARGURA_MIN or rect.height() < ALTURA_LINHA_MIN * 2:
         return
@@ -174,17 +183,18 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     if reservar_rotulo:
         painter.setFont(tokens.fonte_rotulo(6))
-        rotulo = "VAP"
+        sufixo_tf = "SESSAO" if estado.vap_timeframe_min <= 0 else f"{estado.vap_timeframe_min}M"
+        rotulo = f"VAP {sufixo_tf}"
         if estado.vap_poc is not None:
             preco_poc = formato.formatar_preco(estado.grid, estado.vap_poc)
             painter.setPen(tema_asg.NEXO_AMARELO)
-            rotulo = f"VAP · POC {preco_poc[0]}{preco_poc[1]}"
+            rotulo = f"VAP {sufixo_tf} · POC {preco_poc[0]}{preco_poc[1]}"
         else:
             painter.setPen(tema_asg.NEXO_MUTED)
         painter.drawText(
-            QRect(rect.left(), rect.bottom() - ALTURA_ROTULO, rect.width(), ALTURA_ROTULO),
+            retangulo_rotulo(rect),
             Qt.AlignmentFlag.AlignCenter,
-            rotulo,
+            f"⇄ {rotulo}",
         )
 
 
