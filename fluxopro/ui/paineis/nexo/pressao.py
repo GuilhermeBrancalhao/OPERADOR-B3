@@ -153,6 +153,33 @@ def _forca_ritmo(estado: EstadoNexo) -> float:
     return 0.0
 
 
+LIMIAR_COERENCIA = 0.10
+"""IMPRECISO — limiar de engenharia. So carimbamos divergencia entre a
+PRESSAO (livro: maker+ritmo) e o SALDO do PLACAR (as 4 leituras derivadas)
+quando os dois passam desta magnitude com sinais opostos. Abaixo disso,
+sinal oposto e ruido em torno do zero, nao discordancia de leitura."""
+
+
+def rotulo_coerencia(score_pressao: float, saldo_placar: float) -> str:
+    """Reconcilia, na propria tela, os dois numeros que o operador via
+    lado a lado sem relacao declarada.
+
+    Ate 27/08/2026 o quadro podia mostrar a barra de pressao em VENDA e o
+    placar logo abaixo em COMPRA sem UMA palavra explicando por que. Eles
+    medem coisas diferentes de propria construcao (pressao = livro agora;
+    placar = 4 leituras derivadas, uma delas desde a abertura), entao
+    discordar e legitimo — o que nao e legitimo e discordar em silencio.
+    Este rotulo nomeia o estado: ``CONFIRMA``, ``DIVERGE`` ou ``NEUTRO``.
+    Nenhum dado novo: e so o sinal dos dois numeros que ja estao na tela.
+    """
+
+    if abs(score_pressao) < LIMIAR_COERENCIA or abs(saldo_placar) < LIMIAR_COERENCIA:
+        return "NEUTRO VS PLACAR"
+    if (score_pressao > 0) == (saldo_placar > 0):
+        return "CONFIRMA O PLACAR"
+    return "DIVERGE DO PLACAR"
+
+
 def pressao_composta(maker_forca: float, ritmo_forca: float) -> float:
     """`score` em [-1, 1] — ver docstring do modulo pra formula e pesos."""
 
@@ -291,9 +318,17 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     rodape = QRect(coluna_pressao.left(), rect.bottom() - ALTURA_RODAPE, coluna_pressao.width(), ALTURA_RODAPE)
     painter.setFont(tokens.fonte_rotulo(7))
     painter.setPen(tema_asg.NEXO_MUTED)
+    # Import tardio: `estatistica` importa o pacote `nexo`, e este modulo
+    # tambem e importado por ele durante a montagem do pacote — resolver a
+    # dependencia aqui dentro evita ciclo na carga.
+    from fluxopro.ui.paineis.nexo.estatistica import pesos_por_lado
+
+    compra_placar, venda_placar = pesos_por_lado(estado.leituras)
+    coerencia = rotulo_coerencia(score, compra_placar - venda_placar)
     painter.drawText(
         rodape, Qt.AlignmentFlag.AlignCenter,
-        f"MAKER {PESO_MAKER_PRESSAO*100:.0f}% + RITMO {PESO_RITMO_PRESSAO*100:.0f}% · PROXY · NAO E EXECUCAO",
+        f"MAKER {PESO_MAKER_PRESSAO*100:.0f}% + RITMO {PESO_RITMO_PRESSAO*100:.0f}%"
+        f" · {coerencia} · PROXY",
     )
 
     # --- bloco do instrumento ----------------------------------------------

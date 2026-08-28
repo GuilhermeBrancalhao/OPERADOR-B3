@@ -84,6 +84,63 @@ def placar_ponderado(leituras: tuple[tuple[str, object], ...]) -> float:
     return max(-1.0, min(1.0, bruto))
 
 
+def pesos_por_lado(leituras: tuple[tuple[str, object], ...]) -> tuple[float, float]:
+    """Convicção de CADA lado, medida separadamente, em [0, 1] cada uma.
+
+    Achado do operador (27/08/2026: "mudancas tao abruptas sempre"). Ate
+    aqui as duas caixas nasciam de UM unico score assinado
+    (``max(0, score)`` / ``max(0, -score)``): um dos dois lados era
+    **sempre exatamente 0%** e, ao cruzar o zero, os dois numeros trocavam
+    de lugar de uma vez. Nao era o mercado virando de uma vez — era a
+    formula.
+
+    Agora cada lado soma as SUAS proprias leituras:
+
+        compra = Σ w_i · max(0, f_i) / Σ w_i
+        venda  = Σ w_i · max(0, -f_i) / Σ w_i
+
+    com ``w_i`` o peso de confianca de ``_PESO_CONFIANCA_PLACAR``. Duas
+    propriedades que o operador pode conferir na tela:
+
+    * **discordancia fica visivel**: com HORIZONTE comprador e RITMO
+      vendedor os dois numeros ficam positivos ao mesmo tempo — antes o
+      painel era obrigado a esconder um dos dois;
+    * **reconciliacao exata**: ``compra - venda == placar_ponderado(...)``
+      ao float. O saldo impresso no titulo do placar E o mesmo score, nao
+      um segundo numero de outra fonte;
+    * ``compra + venda <= 1``; o que falta para 1 e leitura sem conviccao
+      (forca perto de zero ou confianca baixa) — nunca renormalizamos para
+      100%, porque isso fabricaria conviccao que ninguem mediu.
+
+    CONFIRMADO quanto a origem dos dados (as `forca`/`confianca` sao as
+    mesmas ja congeladas no snapshot); IMPRECISO quanto aos pesos de
+    confianca, que sao de engenharia deste projeto.
+
+    Custo: nenhum atraso. A continuidade vem da formula ser continua nas
+    forcas, nao de media movel — uma virada real de HORIZONTE aparece no
+    mesmo quadro em que acontece.
+    """
+
+    pares = [
+        (float(getattr(linha, "forca", 0.0)), _PESO_CONFIANCA_PLACAR.get(linha.confianca, 0.0))
+        for _, linha in leituras
+    ]
+    soma_pesos = sum(peso for _, peso in pares)
+    if soma_pesos <= 0:
+        return 0.0, 0.0
+    compra = sum(max(0.0, forca) * peso for forca, peso in pares) / soma_pesos
+    venda = sum(max(0.0, -forca) * peso for forca, peso in pares) / soma_pesos
+    return min(1.0, compra), min(1.0, venda)
+
+
+LIMIAR_DIVERGENCIA = 0.15
+"""IMPRECISO — limiar de engenharia. Acima disso nos DOIS lados ao mesmo
+tempo, o placar carimba DIVERGENTES no titulo: as leituras discordam de
+verdade e o operador precisa saber que o saldo pequeno nao e calmaria, e
+puxao dos dois lados. 0,15 e ~1 leitura de confianca ALTA a meia forca
+entre 4."""
+
+
 JANELA_SUAVIZACAO_FORCA = 5
 """Media movel causal (so olha pra tras) sobre a forca bruta de cada
 amostra. Pedido do operador: a tira de barras crua alternava sinal a cada
@@ -127,14 +184,23 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     leituras = estado.leituras
     total = len(leituras)
 
+    compra_peso, venda_peso = pesos_por_lado(leituras)
+    saldo = compra_peso - venda_peso
+
     painter.setFont(tokens.fonte_rotulo(8))
     painter.setPen(tema_asg.NEXO_MUTED)
-    painter.drawText(QRect(rect.left() + 4, rect.top(), rect.width() - 90, ALTURA_TITULO),
+    titulo = "PLACAR ESTATISTICO  ·  4 LEITURAS PONDERADAS POR CONFIANCA"
+    if min(compra_peso, venda_peso) >= LIMIAR_DIVERGENCIA:
+        titulo += "  ·  LEITURAS DIVERGENTES"
+    painter.drawText(QRect(rect.left() + 4, rect.top(), rect.width() - 110, ALTURA_TITULO),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                     "PLACAR ESTATISTICO  ·  LEITURAS DERIVADAS")
-    painter.drawText(QRect(rect.right() - 86, rect.top(), 82, ALTURA_TITULO),
+                     titulo)
+    # O SALDO impresso aqui e, por construcao, o mesmo `placar_ponderado`
+    # (compra - venda). E a ponte explicita entre as duas caixas grandes e
+    # o score unico que o resto do quadro usa — nunca um terceiro numero.
+    painter.drawText(QRect(rect.right() - 106, rect.top(), 102, ALTURA_TITULO),
                      Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                     f"N={total}")
+                     f"SALDO {saldo * 100:+.0f}%  ·  N={total}")
 
     corpo = QRect(rect.left(), rect.top() + ALTURA_TITULO + 2, rect.width(),
                   max(20, rect.height() - ALTURA_TITULO - 2))
@@ -176,9 +242,10 @@ def _desenhar_contagem(painter: QPainter, rect: QRect,
 
     n_compra = sum(1 for _, linha in leituras if linha.direcao is _asg.DirecaoASG.COMPRA)
     n_venda = sum(1 for _, linha in leituras if linha.direcao is _asg.DirecaoASG.VENDA)
-    score = placar_ponderado(leituras)
-    peso_compra = max(0.0, score)
-    peso_venda = max(0.0, -score)
+    # Cada lado sai da SUA propria soma (ver `pesos_por_lado`), nao de um
+    # score assinado unico — por isso os dois podem ser >0 ao mesmo tempo e
+    # nenhum dos dois salta ao cruzar o zero.
+    peso_compra, peso_venda = pesos_por_lado(leituras)
     largura = max(40, (rect.width() - VAO_LADRILHO) // 2)
     caixa_compra = QRect(rect.left(), rect.top(), largura, rect.height())
     caixa_venda = QRect(caixa_compra.right() + VAO_LADRILHO, rect.top(),
@@ -217,7 +284,7 @@ def _desenhar_placar(painter: QPainter, caixa: QRect, rotulo: str, peso: float,
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(caixa.adjusted(6, 0, -6, -3),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
-                     f"{contagem} DE {total} LEITURAS · PONDERADO")
+                     f"{contagem} DE {total} LEITURAS · CONVICCAO PONDERADA")
 
 
 # Silhueta de raio/relampago (pedido do operador, 27/08/2026: "deve ser

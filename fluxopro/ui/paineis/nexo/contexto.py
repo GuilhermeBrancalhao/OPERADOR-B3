@@ -309,7 +309,12 @@ def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor, ranking_m
     painter.setFont(tokens.fonte_numero(TAM_FONTE_NUMERO_PRISMA, QFont.Weight.Bold))
     painter.setPen(cor)
     painter.drawText(QRect(x - 12, chao_y + 10, largura + prof_x + 40, 16),
-                     Qt.AlignmentFlag.AlignCenter, f"{score * 100:+.1f}%")
+                     # MESMO formato do numero do mostrador logo acima: e o
+                     # MESMO score, impresso duas vezes na mesma regiao. Com
+                     # `+.1f` o prisma era o unico percentual da tela inteira
+                     # com casa decimal — e com separador `.`, num quadro que
+                     # escreve preco em `5.174,5`. Mesma leitura, mesma forma.
+                     Qt.AlignmentFlag.AlignCenter, f"{score * 100:+.0f}%")
     painter.setFont(tokens.fonte_rotulo(TAM_FONTE_ROTULO_PRISMA))
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(QRect(x - 18, topo_y + prof_y - 15, largura + prof_x + 52, 14),

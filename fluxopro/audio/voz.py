@@ -81,18 +81,25 @@ def texto_para_transicao_ultra(anterior: DirecaoUltra, nova: DirecaoUltra) -> st
 
     if anterior is nova:
         return None
-    if nova is DirecaoUltra.COMPRA:
+    if nova in (DirecaoUltra.COMPRA, DirecaoUltra.VENDA):
+        lado = "compra" if nova is DirecaoUltra.COMPRA else "venda"
+        fluxo = "comprador" if nova is DirecaoUltra.COMPRA else "vendedor"
+        # O texto falado espelha o que a regiao OPERADOR IA mostra na tela
+        # (fluxopro/ui/paineis/nexo/vies.py): quais portoes concordaram e o
+        # que observar. Leitura, nunca conselho de execucao — nenhuma frase
+        # daqui pode citar entrada, alvo, stop, tamanho ou momento de operar.
         return (
-            "Sinal Ultra de compra confirmado. Leitura consultiva: "
-            "confluencia de tendencia no Renko e fluxo comprador forte."
-        )
-    if nova is DirecaoUltra.VENDA:
-        return (
-            "Sinal Ultra de venda confirmado. Leitura consultiva: "
-            "confluencia de tendencia no Renko e fluxo vendedor forte."
+            f"Sinal Ultra de {lado} armado. As tres fontes concordam: "
+            f"decisao de {lado}, Renko em tendencia e fluxo {fluxo} forte "
+            "no maker proxy. Observe se o Renko perde a tendencia ou a forca "
+            "do maker cruza o limiar. Leitura consultiva, nao e ordem."
         )
     if anterior is not DirecaoUltra.NENHUMA and nova is DirecaoUltra.NENHUMA:
-        return "Sinal Ultra encerrado."
+        lado = "compra" if anterior is DirecaoUltra.COMPRA else "venda"
+        return (
+            f"Sinal Ultra de {lado} encerrado. A confluencia se desfez; "
+            "o painel voltou a leitura sem sinal."
+        )
     return None
 
 

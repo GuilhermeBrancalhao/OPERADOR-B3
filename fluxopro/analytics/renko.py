@@ -16,7 +16,12 @@ Funcionam no Day Trade"). Rótulos de confiança por regra, no mesmo padrão de
   lateralizar, vermelho quando há possível inversão de fase. Funciona como
   alerta antecipado ("pode antecipar algo que a micro ainda não confirmou").
 - **IMPRECISO** — o tamanho do tijolo. A fonte nunca fixa um número; `4`
-  pontos vem do operador deste projeto, não do autor do método.
+  pontos vem do operador deste projeto, não do autor do método, e desde
+  28/08/2026 vale só como semente até a primeira calibragem dinâmica: o
+  próprio operador constatou que 4 pontos fixos não representam a micro.
+  A calibragem é uma fração da amplitude recente, com piso de **1 tick** do
+  papel (`ConfigRenko.tijolo_minimo_ticks`) — piso em pontos é armadilha,
+  porque muda de significado a cada instrumento.
 - **AUSENTE NA FONTE, INFERIDO como replicável** — a fórmula exata de
   "amplitude média da frequência do dia" que ancora os alvos A1/A2/A3 nunca é
   revelada. Aqui a amplitude usa o alcance (high-low) dos últimos
@@ -110,10 +115,21 @@ class ConfigRenko:
     da amplitude recente vira um tijolo". Fração do range (máx-mín) dos
     últimos `janela_amplitude_precos` preços observados."""
 
-    tijolo_minimo_pontos: float = 2.0
+    tijolo_minimo_ticks: int = 1
+    """IMPRECISO — piso do tijolo dinâmico, em TICKS do próprio instrumento,
+    nunca em pontos.
+
+    Achado do operador (28/08/2026): o piso antigo era `2.0` PONTOS, o que no
+    WDO (tick de 0,5) equivale a 4 ticks. Numa janela real de pregão em que o
+    papel andou 2,5 pontos no total, 4 ticks é maior que o dia inteiro — a
+    região ficava LITERALMENTE vazia. O piso natural de um Renko é o passo da
+    grade de preços do papel (1 tick); abaixo disso não existe deslocamento
+    representável, e acima disso o piso deixa de ser um piso e vira uma
+    calibragem cravada por instrumento — o que o `tijolo_dinamico` existe
+    justamente para evitar."""
+
     tijolo_maximo_pontos: float = 20.0
-    """Clamps para o tijolo dinâmico não colapsar a ruído de tick nem inflar
-    a um bloco único cobrindo o dia inteiro."""
+    """Teto, para o tijolo dinâmico não inflar a um bloco único cobrindo o dia."""
 
     janela_amplitude_precos: int = 240
     """Quantos preços brutos recentes (não tijolos, negócios crus) entram no
@@ -123,6 +139,22 @@ class ConfigRenko:
     """Recalibra o tamanho do tijolo a cada N tijolos FECHADOS, nunca a cada
     negócio — mudar o tamanho no meio de uma sequência quebraria a leitura
     visual da fase (`FaseRenko`) no meio do movimento."""
+
+    aquecimento_minimo_precos: int = 24
+    """Quantos preços crus precisam ter chegado antes da PRIMEIRA calibragem
+    dinâmica, a que acontece ANTES de existir qualquer tijolo.
+
+    Defeito corrigido em 28/08/2026 (impasse de partida): a recalibragem só
+    rodava depois que um tijolo FECHAVA, mas o tamanho de partida
+    (`tamanho_tijolo_pontos`, valor cravado pelo operador) podia ser maior que
+    toda a amplitude da sessão — e aí nenhum tijolo fechava nunca, logo a
+    recalibragem nunca rodava. Impasse: o dimensionamento dinâmico dependia do
+    resultado que ele mesmo deveria destravar. Enquanto nenhum tijolo tiver
+    fechado, o tamanho é recalibrado a cada `aquecimento_a_cada_precos` preços
+    observados; assim que o primeiro tijolo fecha, o aquecimento acaba e volta
+    a valer só a recalibragem por tijolos fechados."""
+
+    aquecimento_a_cada_precos: int = 8
 
     tijolos_para_tendencia: int = 3
     """IMPRECISO — limiar de tijolos seguidos na mesma direção para FaseRenko.TENDENCIA."""
@@ -158,6 +190,9 @@ class Renko:
             maxlen=max(2, self._config.janela_amplitude_precos)
         )
         self._tijolos_desde_recalibragem = 0
+        # Comeca "vencido" para que a primeira calibragem de aquecimento role
+        # no exato preco em que o minimo de amostras e atingido.
+        self._precos_desde_aquecimento = max(1, self._config.aquecimento_a_cada_precos)
 
     @property
     def tamanho_tijolo_ticks(self) -> int:
@@ -176,13 +211,13 @@ class Renko:
         amplitude_ticks = max(self._precos_recentes) - min(self._precos_recentes)
         if amplitude_ticks <= 0:
             return
-        amplitude_pontos = amplitude_ticks * self._grid.tick_size
-        tijolo_pontos = amplitude_pontos * self._config.fracao_da_amplitude_recente
-        tijolo_pontos = max(
-            self._config.tijolo_minimo_pontos,
-            min(self._config.tijolo_maximo_pontos, tijolo_pontos),
-        )
-        self._tamanho_ticks = max(1, round(tijolo_pontos / self._grid.tick_size))
+        # Toda a conta e feita em TICKS: o piso do tijolo e o passo da grade do
+        # papel, nao um numero de pontos cravado que muda de significado de um
+        # instrumento para o outro (ver `ConfigRenko.tijolo_minimo_ticks`).
+        piso = max(1, self._config.tijolo_minimo_ticks)
+        teto = max(piso, round(self._config.tijolo_maximo_pontos / self._grid.tick_size))
+        alvo = round(amplitude_ticks * self._config.fracao_da_amplitude_recente)
+        self._tamanho_ticks = max(piso, min(teto, alvo))
 
     def registrar(self, timestamp_ns: int, preco: int) -> None:
         """Alimenta um novo preço observado. Preço em ticks inteiros."""
@@ -196,6 +231,20 @@ class Renko:
             self._ancora = preco
             self._recalibrar_tamanho()
             return
+
+        # Aquecimento: enquanto nenhum tijolo fechou, o tamanho ainda e o valor
+        # de partida cravado — que pode ser maior que a amplitude inteira da
+        # sessao. Recalibra pelos precos crus para destravar o impasse (ver
+        # `ConfigRenko.aquecimento_minimo_precos`).
+        if (
+            self._config.tijolo_dinamico
+            and not self._tijolos
+            and len(self._precos_recentes) >= self._config.aquecimento_minimo_precos
+        ):
+            self._precos_desde_aquecimento += 1
+            if self._precos_desde_aquecimento >= self._config.aquecimento_a_cada_precos:
+                self._precos_desde_aquecimento = 0
+                self._recalibrar_tamanho()
 
         tam = self._tamanho_ticks
         while True:

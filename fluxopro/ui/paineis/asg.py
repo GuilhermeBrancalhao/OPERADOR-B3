@@ -1762,6 +1762,27 @@ class PainelNexoMercadoASG(_PainelASG):
         self._arrasto_candles_ativo = False
         self._arrasto_candles_x0 = 0
         self._arrasto_candles_offset0 = 0
+        # ESCALA do grafico (pedido do operador, 27/08/2026: "eu podendo
+        # mexer no grafico na escala arrastando"). Sao dois zooms
+        # independentes, como em qualquer grafico de pregao:
+        #   - tempo: quantas velas cabem na janela. `None` = janela do pregao
+        #     inteiro (o padrao calculado por `nexo/candles.py`).
+        #   - preco: fator multiplicativo sobre a faixa de precos visivel;
+        #     1,0 e a faixa "cabe tudo", >1 amplia (achata menos), <1 achata.
+        # Nenhum dos dois altera dado nenhum: sao so o recorte que a pintura
+        # usa. Preco continua int de ticks ate a fronteira de desenho.
+        self._candles_velas_visiveis: int | None = None
+        self._candles_zoom_preco = 1.0
+        # CROSSHAIR / leitura por vela (achado de 28/08/2026: dava para
+        # ampliar a vela mas nao para LER o preco dela). Guarda a posicao do
+        # cursor SO quando ela cai dentro da regiao de candles; fora dali o
+        # estado volta a None e nada e repintado por causa do mouse.
+        self._cursor_candles: tuple[int, int] | None = None
+        self.setMouseTracking(True)
+        self._arrasto_escala: str | None = None  # "tempo" | "preco"
+        self._arrasto_escala_x0 = 0
+        self._arrasto_escala_y0 = 0
+        self._arrasto_escala_base = 0.0
         # Suavizacao do score do MakerProxy (gauge EQUILIBRIO, PRESENCA e a
         # barra 56/44 de "pressao" em pressao.py — os 3 leem o MESMO numero).
         # Mesmo padrao ja usado em estatistica.py para a forca bruta por
@@ -1949,6 +1970,38 @@ class PainelNexoMercadoASG(_PainelASG):
                 return ("VENDA", linha.forca)
         return None
 
+    def _linha_regime(self) -> LinhaMatrizASG | None:
+        """A linha REGIME do snapshot, verificada como coerente antes de
+        atravessar a fronteira.
+
+        O REGIME ja nasce solidario em `_linhas_da_matriz_asg` (a `forca`
+        e derivada da PROPRIA `direcao`: +1 comprador, -1 vendedor). O que
+        faltava era **entregar isso a quem desenha** — o cartao central lia
+        so o texto e escolhia um token de cor fixo. Agora a leitura inteira
+        atravessa, e a assercao abaixo impede que uma futura mudanca de
+        fonte reintroduza sinal e palavra em desacordo.
+        """
+
+        linha = next(
+            (l for l in self._snapshot.matriz.linhas if l.componente == "REGIME"), None
+        )
+        if linha is None or not leitura_e_coerente(linha):
+            return None
+        return linha
+
+    def _linha_maker_coerente(self, linha: LinhaMatrizASG) -> LinhaMatrizASG:
+        """Aplica a suavizacao do MakerProxy SEM quebrar a solidariedade
+        entre grandeza e sinal — ver `_linha_com_forca`.
+
+        Este metodo existe porque o `dataclass_replace(linha, forca=...)`
+        solto (o que havia aqui ate 28/08/2026) trocava so a grandeza: a
+        `direcao` e o `valor` continuavam vindo do score CRU. Com a media
+        movel de um lado e o cru do outro, o mesmo MakerProxy aparecia em
+        quatro lugares do quadro com sinais diferentes.
+        """
+
+        return _linha_com_forca(linha, self._forca_maker_suavizada(linha.forca))
+
     def _forca_maker_suavizada(self, bruta: float) -> float:
         if not self._historico_forca_maker:
             return bruta
@@ -1957,7 +2010,7 @@ class PainelNexoMercadoASG(_PainelASG):
     def _linha_maker(self) -> LinhaMatrizASG | None:
         for linha in self._snapshot.matriz.linhas:
             if linha.componente == "MAKERPROXY":
-                return dataclass_replace(linha, forca=self._forca_maker_suavizada(linha.forca))
+                return self._linha_maker_coerente(linha)
         return None
 
     def total_itens(self) -> int:
@@ -2074,6 +2127,16 @@ class PainelNexoMercadoASG(_PainelASG):
         caixa_ladder = self._retangulo_ladder()
         if caixa_ladder is not None:
             modulo_ladder = nexo.modulo("ladder")
+            # Selecao DIRETA do timeframe pelo seletor de tres segmentos no
+            # topo do VAP (SESSAO/5M/15M). O rodape continua ciclando, como
+            # antes — o seletor so tira o filtro do escuro.
+            for minutos, caixa_seg in modulo_ladder.retangulos_timeframe(caixa_ladder).items():
+                if caixa_seg.contains(pos):
+                    if self._vap_timeframe_min != minutos:
+                        self._vap_timeframe_min = minutos
+                        self.marcar_tudo_sujo()
+                    evento.accept()
+                    return
             if modulo_ladder.retangulo_rotulo(caixa_ladder).contains(pos):
                 self._vap_timeframe_min = {0: 5, 5: 15, 15: 0}[self._vap_timeframe_min]
                 self.marcar_tudo_sujo()
@@ -2094,9 +2157,26 @@ class PainelNexoMercadoASG(_PainelASG):
             self.marcar_tudo_sujo()
             evento.accept()
             return
-        if self._candles_offset > 0 and controles["agora"].contains(pos):
-            self._candles_offset = 0
-            self.marcar_tudo_sujo()
+        if controles["agora"].contains(pos) and modulo_candles.escala_fora_do_automatico(
+                self._estado_nexo()):
+            self._voltar_escala_ao_automatico()
+            evento.accept()
+            return
+        # ESCALA ARRASTAVEL (pedido do operador, 27/08/2026): pegar o eixo de
+        # PRECO (calha da direita) e arrastar na vertical comprime/expande a
+        # escala de preco; pegar a escala de TEMPO (rodape) e arrastar na
+        # horizontal muda quantas velas cabem na janela. E o gesto do Profit:
+        # o eixo e a alavanca, o miolo do grafico continua sendo pan.
+        if modulo_candles.retangulo_eixo_preco(caixa).contains(pos):
+            self._arrasto_escala = "preco"
+            self._arrasto_escala_y0 = pos.y()
+            self._arrasto_escala_base = self._candles_zoom_preco
+            evento.accept()
+            return
+        if modulo_candles.retangulo_eixo_tempo(caixa).contains(pos):
+            self._arrasto_escala = "tempo"
+            self._arrasto_escala_x0 = pos.x()
+            self._arrasto_escala_base = float(self._velas_visiveis_efetivas(caixa))
             evento.accept()
             return
         self._arrasto_candles_ativo = True
@@ -2104,18 +2184,173 @@ class PainelNexoMercadoASG(_PainelASG):
         self._arrasto_candles_offset0 = self._candles_offset
         evento.accept()
 
+    def _atualizar_cursor_candles(self, evento) -> bool:
+        """Estado do crosshair. Devolve True quando o evento foi consumido
+        (cursor dentro do grafico) — fora dali o painel nem se suja.
+
+        Custo por quadro: so marca sujo quando o cursor muda de VELA ou anda
+        pelo menos 2px na vertical. Varrer o grafico com o mouse nao vira um
+        repaint por pixel.
+        """
+
+        pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+        caixa = self._retangulo_candles()
+        if caixa is None or not caixa.contains(pos):
+            if self._cursor_candles is not None:
+                self._cursor_candles = None
+                self.marcar_tudo_sujo()
+            return False
+        modulo_candles = nexo.modulo("candles")
+        novo = (pos.x(), pos.y())
+        anterior = self._cursor_candles
+        if anterior is not None:
+            estado = self._estado_nexo()
+            mesma_vela = (modulo_candles.indice_vela_em(caixa, estado, novo[0])
+                          == modulo_candles.indice_vela_em(caixa, estado, anterior[0]))
+            if mesma_vela and abs(novo[1] - anterior[1]) < 2:
+                return True
+        self._cursor_candles = novo
+        self.marcar_tudo_sujo()
+        return True
+
+    def leaveEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        """Cursor saiu do widget: o crosshair some. Sem isto ele congelaria
+        no ultimo ponto e o operador leria uma vela que nao esta apontando."""
+
+        if self._cursor_candles is not None:
+            self._cursor_candles = None
+            self.marcar_tudo_sujo()
+        super().leaveEvent(evento)
+
+    def _voltar_escala_ao_automatico(self) -> None:
+        """Desfaz TODO ajuste manual da vista de uma vez: volta ao presente,
+        a janela do dia e a escala de preco neutra.
+
+        Antes o chip so zerava `_candles_offset`; com o eixo ampliado em 4x,
+        clicar nele nao mudava nada (medido em 28/08/2026: zoom 4,0 antes e
+        depois, 85 das 116 velas fora da vista nos dois casos). Um controle
+        que existe mas nao desfaz e pior que controle nenhum — e por isso o
+        desenho e este metodo leem a MESMA `escala_fora_do_automatico`.
+        """
+
+        self._candles_offset = 0
+        self._candles_velas_visiveis = None
+        self._candles_zoom_preco = 1.0
+        self.marcar_tudo_sujo()
+
+    def mouseDoubleClickEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        """Duplo-clique no eixo de preco volta a escala ao automatico — o
+        mesmo gesto do grafico de referencia, para quem procura no eixo
+        antes de procurar no chip."""
+
+        pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+        caixa = self._retangulo_candles()
+        if caixa is not None and caixa.contains(pos):
+            modulo_candles = nexo.modulo("candles")
+            if (modulo_candles.retangulo_eixo_preco(caixa).contains(pos)
+                    or modulo_candles.retangulo_eixo_tempo(caixa).contains(pos)):
+                self._voltar_escala_ao_automatico()
+                evento.accept()
+                return
+        super().mouseDoubleClickEvent(evento)
+
+    def _total_candles_do_dia(self) -> int:
+        """Quantas velas o dia REALMENTE tem no timeframe selecionado (as
+        fechadas mais a em formacao). E este numero que dimensiona a janela
+        padrao: um teto de relogio cortava as primeiras velas do pregao."""
+
+        agregador = self._agregador_candles_atual()
+        return len(agregador.candles_fechados) + (1 if agregador.candle_atual else 0)
+
+    def _velas_visiveis_efetivas(self, caixa) -> int:
+        """Quantas velas a janela mostra AGORA — inclusive quando o operador
+        ainda nao mexeu na escala (`None` = a sessao inteira disponivel).
+        Serve de ponto de partida do zoom, para o primeiro arrasto nao dar
+        um salto."""
+
+        modulo_candles = nexo.modulo("candles")
+        return modulo_candles.slots_da_janela(
+            caixa.width() if caixa is not None else 400,
+            self._timeframe_candles_min, self._candles_velas_visiveis,
+            self._total_candles_do_dia())
+
+    def _aplicar_zoom_tempo(self, fator: float, caixa=None) -> None:
+        """Multiplica o numero de velas visiveis. Menos velas = mais zoom."""
+
+        modulo_candles = nexo.modulo("candles")
+        caixa = caixa if caixa is not None else self._retangulo_candles()
+        atual = self._velas_visiveis_efetivas(caixa)
+        alvo = int(round(atual * fator))
+        alvo = max(modulo_candles.VELAS_MIN, alvo)
+        novo = modulo_candles.slots_da_janela(
+            caixa.width() if caixa is not None else 400,
+            self._timeframe_candles_min, alvo, self._total_candles_do_dia())
+        if novo != self._candles_velas_visiveis:
+            self._candles_velas_visiveis = novo
+            self.marcar_tudo_sujo()
+
+    def _aplicar_zoom_preco(self, fator: float) -> None:
+        modulo_candles = nexo.modulo("candles")
+        novo = max(modulo_candles.ZOOM_PRECO_MIN,
+                   min(modulo_candles.ZOOM_PRECO_MAX, self._candles_zoom_preco * fator))
+        if abs(novo - self._candles_zoom_preco) > 1e-6:
+            self._candles_zoom_preco = novo
+            self.marcar_tudo_sujo()
+
     def mouseMoveEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        if self._arrasto_escala is not None:
+            pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+            caixa = self._retangulo_candles()
+            modulo_candles = nexo.modulo("candles")
+            if self._arrasto_escala == "preco":
+                # 120px de arrasto dobram (pra cima) ou reduzem a metade (pra
+                # baixo) a escala — o gesto e continuo e reversivel, sem
+                # degrau: solta e pega de novo de onde parou.
+                dy = self._arrasto_escala_y0 - pos.y()
+                fator = 2.0 ** (dy / 120.0)
+                novo = max(modulo_candles.ZOOM_PRECO_MIN,
+                           min(modulo_candles.ZOOM_PRECO_MAX,
+                               self._arrasto_escala_base * fator))
+                if abs(novo - self._candles_zoom_preco) > 1e-6:
+                    self._candles_zoom_preco = novo
+                    self.marcar_tudo_sujo()
+            else:
+                # Arrastar a escala de tempo pra ESQUERDA comprime (mais velas
+                # na mesma largura); pra direita expande (menos velas, leitura
+                # aberta de um trecho).
+                dx = pos.x() - self._arrasto_escala_x0
+                alvo = int(round(self._arrasto_escala_base * (2.0 ** (-dx / 200.0))))
+                novo = modulo_candles.slots_da_janela(
+                    caixa.width() if caixa is not None else 400,
+                    self._timeframe_candles_min,
+                    max(modulo_candles.VELAS_MIN, alvo),
+                    self._total_candles_do_dia())
+                if novo != self._candles_velas_visiveis:
+                    self._candles_velas_visiveis = novo
+                    self.marcar_tudo_sujo()
+            evento.accept()
+            return
         if not self._arrasto_candles_ativo:
+            # Sem botao pressionado: e o CROSSHAIR. `setMouseTracking` vale
+            # para o widget inteiro, entao o filtro de regiao mora aqui — o
+            # cursor so vira estado (e so suja quadro) dentro da regiao de
+            # candles. Passar por VAP, Renko, nucleo ou placar nao repinta
+            # nada por causa do mouse.
+            if self._atualizar_cursor_candles(evento):
+                evento.accept()
+                return
             super().mouseMoveEvent(evento)
             return
         pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
         caixa = self._retangulo_candles()
         modulo_candles = nexo.modulo("candles")
-        largura_plot = max(1, (caixa.width() if caixa is not None else 400)
-                          - modulo_candles.LARGURA_EIXO - modulo_candles.LARGURA_ROTULO_NIVEL)
-        n_velas_estimado = min(modulo_candles.VELAS_MAX,
-                               max(modulo_candles.VELAS_MIN, largura_plot // 11))
-        passo_px = max(4, largura_plot // max(1, n_velas_estimado))
+        # Passo do arrasto = largura de UM slot de tempo, a mesma conta que o
+        # desenho usa (`candles.largura_slot_px`). Antes era uma estimativa
+        # propria (largura // 11), que nao tinha relacao com a grade
+        # realmente pintada: o grafico andava mais (ou menos) que o mouse.
+        passo_px = max(3.0, modulo_candles.largura_slot_px(
+            caixa.width() if caixa is not None else 400, self._timeframe_candles_min,
+            self._candles_velas_visiveis, self._total_candles_do_dia()))
         dx = pos.x() - self._arrasto_candles_x0
         # Arrastar pra DIREITA revela velas mais ANTIGAS (convencao usual de
         # grafico: empurrar o grafico com o dedo/mouse pra direita "puxa" o
@@ -2131,11 +2366,37 @@ class PainelNexoMercadoASG(_PainelASG):
         evento.accept()
 
     def mouseReleaseEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        if self._arrasto_escala is not None:
+            self._arrasto_escala = None
+            evento.accept()
+            return
         if self._arrasto_candles_ativo:
             self._arrasto_candles_ativo = False
             evento.accept()
             return
         super().mouseReleaseEvent(evento)
+
+    def wheelEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        """Roda do mouse = zoom. Sobre a calha do eixo de preco, ela mexe na
+        escala VERTICAL; em qualquer outro ponto do grafico, no numero de
+        velas da janela (escala HORIZONTAL). Fora da regiao de candles, o
+        evento segue para a base intocado."""
+
+        caixa = self._retangulo_candles()
+        pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+        delta = evento.angleDelta().y() if hasattr(evento, "angleDelta") else 0
+        if caixa is None or not caixa.contains(pos) or not delta:
+            super().wheelEvent(evento)
+            return
+        modulo_candles = nexo.modulo("candles")
+        # Um "clique" de roda = 120 -> 1 passo de 15%. Composto, entao o gesto
+        # e reversivel: subir e descer a mesma quantidade volta ao mesmo lugar.
+        passos = delta / 120.0
+        if modulo_candles.retangulo_eixo_preco(caixa).contains(pos):
+            self._aplicar_zoom_preco(1.15 ** passos)
+        else:
+            self._aplicar_zoom_tempo(1.15 ** (-passos), caixa)
+        evento.accept()
 
     def _estado_nexo(self) -> nexo.EstadoNexo:
         """Congela o quadro em um valor imutavel antes de qualquer pintura.
@@ -2152,6 +2413,7 @@ class PainelNexoMercadoASG(_PainelASG):
             paleta=self.paleta,
             maker=self._linha_maker(),
             leituras=self._linhas_contexto_nexo(),
+            regime=self._linha_regime(),
             largura=self.width(),
             altura=self.height(),
             tijolos_renko=self._renko.tijolos,
@@ -2163,11 +2425,19 @@ class PainelNexoMercadoASG(_PainelASG):
                if self._agregador_candles_atual().candle_atual else ()),
             candles_timeframe_min=self._timeframe_candles_min,
             candles_offset=self._candles_offset,
+            candles_cursor=self._cursor_candles,
+            candles_velas_visiveis=self._candles_velas_visiveis,
+            candles_zoom_preco=self._candles_zoom_preco,
             vap_niveis=self._congelar_vap(_perfil_vap),
             vap_poc=_perfil_vap.poc,
             vap_timeframe_min=self._vap_timeframe_min,
-            vap_val=self._vap.val(),
-            vap_vah=self._vap.vah(),
+            # Value area do perfil ATIVO, nao mais do perfil de sessao: com o
+            # filtro em 5M/15M o VAL/VAH vinha da sessao inteira e contradizia
+            # as barras desenhadas ao lado dele (defeito achado ao alargar o
+            # VAP em 27/08/2026).
+            vap_val=_perfil_vap.val(),
+            vap_vah=_perfil_vap.vah(),
+            vap_volume_total=_perfil_vap.volume_total,
             risco_volatilidade=self._risco_volatilidade(),
             alerta_exaustao=self._alerta_exaustao(),
             sinal_ultra=self._ultimo_sinal_ultra,
@@ -2195,6 +2465,19 @@ class PainelNexoMercadoASG(_PainelASG):
         estado = self._estado_nexo()
         quadro = QRect(0, 0, largura, max(1, altura - nexo.ALTURA_RESSALVA))
         caixas = nexo.retangulos(quadro)
+
+        # Amarracao de escala entre duas regioes vizinhas: o Renko ("forca")
+        # tem de desenhar na MESMA escala vertical do grafico de velas logo
+        # abaixo ("candles"), senao o olho compara amplitudes falsas entre uma
+        # e outra (achado do operador, 27/08/2026). Este e o unico ponto do
+        # codigo que conhece os retangulos das DUAS regioes — as regioes
+        # continuam funcoes puras, sem uma enxergar a outra. A medida vem da
+        # funcao pura de `candles`, nunca de uma copia da formula.
+        estado = dataclass_replace(
+            estado,
+            escala_candle_px_por_tick=nexo.modulo("candles").px_por_tick(
+                caixas["candles"], estado),
+        )
         for nome in nexo.ORDEM_DESENHO:
             painter.save()
             try:
@@ -2252,8 +2535,12 @@ class PainelNexoMercadoASG(_PainelASG):
             if apelido is None:
                 continue
             if linha.componente == "MAKERPROXY":
-                linha = dataclass_replace(linha, forca=self._forca_maker_suavizada(linha.forca))
-            saida.append((apelido, linha))
+                linha = self._linha_maker_coerente(linha)
+            # Portao unico: NENHUMA das quatro leituras chega a tela sem
+            # passar por aqui. Ate 28/08/2026 so o REGIME era conferido, e
+            # HORIZONTE/PULSO/PRESENCA/RITMO desenhavam direto — justamente
+            # as quatro em que a familia de defeitos ja nasceu duas vezes.
+            saida.append((apelido, _coerir_leitura(linha)))
         return tuple(saida[:4])
 
     def _caixa_nexo(self, painter: QPainter, rect: QRect, titulo: str) -> QRect:
@@ -2672,6 +2959,134 @@ def _forca_limitada(valor: float) -> float:
     return max(-1.0, min(1.0, valor))
 
 
+def _sem_zero_negativo(forca: float) -> float:
+    """`-0.0` vira `0.0`. CONFIRMADO — regra do proprio painel: zero nao tem lado.
+
+    `f"{-0.0:+.0f}%"` imprime `-0%`: um sinal de VENDA em cima de uma leitura
+    que e exatamente zero e que ja esta pintada de NEUTRA. O defeito foi
+    consertado uma vez, LOCALMENTE, no RITMO (`_forca_ritmo_composta`) — e
+    sobreviveu no MakerProxy, saindo por tres portas ao mesmo tempo no
+    retrato de 28/08: `-0%` no mostrador EQUILIBRIO, `-0%` no ladrilho
+    PRESENCA e `-0% MM5` no texto pequeno. E a mesma familia de "grandeza e
+    sinal viajando separados", so que na casa decimal.
+
+    O corte e o MESMO de `_direcao_de_score`, de proposito: so zera o que a
+    direcao ja declarou NEUTRA. Uma leitura de -0,4% continua saindo com o
+    sinal dela — isto nao e um deadband novo, e a remocao do sinal de um
+    zero.
+    """
+
+    return 0.0 if _direcao_de_score(forca) is DirecaoASG.NEUTRA else forca
+
+
+def _linha_com_forca(linha: LinhaMatrizASG, forca: float) -> LinhaMatrizASG:
+    """Troca a forca de uma leitura e RE-DERIVA tudo que carrega o sinal.
+
+    Regra estrutural deste painel (28/08/2026): **grandeza e sinal nunca
+    viajam separados**. Uma `LinhaMatrizASG` publica o mesmo numero por
+    tres portas — `forca` (o numero grande do ladrilho), `direcao` (de onde
+    saem a COR e o rotulo COMPRA/VENDA em toda regiao do NEXO) e `valor`
+    (o texto pequeno da lista de contexto) — e cada consumidor le uma delas
+    sem falar com os outros.
+
+    O defeito que isso conserta: a suavizacao do MakerProxy trocava so a
+    `forca`, e `direcao`/`valor` continuavam vindos do score CRU. Resultado
+    na tela, com o cru em -0,33 e a media movel em +0,73: a lista de
+    contexto dizia "PRESENCA -33%", o ladrilho imprimia "+73%" em vermelho
+    com "-33%" embaixo, o gauge EQUILIBRIO desenhava "+73%" rotulado VENDA,
+    e a barra do rodape desenhava "73% COMPRA" em verde. Quatro leituras
+    do MESMO numero, com dois sinais.
+
+    O mesmo defeito ja havia aparecido no RITMO (numero alto ao lado do
+    rotulo DESACELERANDO) e foi consertado la de forma local — por isso
+    renasceu. Aqui ele e fechado na origem: qualquer recalculo de forca
+    tem de passar por esta funcao, que devolve a linha inteira coerente.
+
+    `valor` passa a declarar `MM5` quando o numero e suavizado, para que o
+    texto pequeno nao seja confundido com o score cru do instante.
+    """
+
+    forca = _sem_zero_negativo(forca)
+    return dataclass_replace(
+        linha,
+        forca=forca,
+        direcao=_direcao_de_score(forca),
+        valor=f"{forca * 100:+.0f}% MM5",
+    )
+
+
+def sinal_da_leitura(linha: LinhaMatrizASG) -> int:
+    """`-1`, `0` ou `+1` — o sinal UNICO de uma leitura.
+
+    E o contrato que cor, rotulo COMPRA/VENDA, numero impresso e barra do
+    rodape tem de respeitar juntos. Existe para ser verificavel por teste,
+    nao so por inspecao visual.
+    """
+
+    if linha.direcao is DirecaoASG.COMPRA:
+        return 1
+    if linha.direcao is DirecaoASG.VENDA:
+        return -1
+    return 0
+
+
+def leitura_e_coerente(linha: LinhaMatrizASG) -> bool:
+    """A `forca` impressa e a `direcao` que pinta apontam para o mesmo lado?
+
+    **Zero nao tem lado, e por isso zero tambem nao pode ser pintado.** Ate
+    28/08/2026 esta funcao devolvia `True` incondicionalmente para forca
+    zero, o que deixava passar uma linha com `forca 0.0` e
+    `direcao=COMPRA` — na tela, um ladrilho VERDE com "+0%" escrito, que e
+    exatamente o tipo de contradicao que esta disciplina existe para
+    impedir (o caso real: VELOCIMETRO com `sentido` definido mas estado
+    PARADO). Agora forca zero exige direcao NEUTRA/AGUARDAR.
+
+    A regra completa, entao: `_direcao_de_score(linha.forca)` tem de ser
+    IGUAL a `linha.direcao`, com AGUARDAR aceito no lugar de NEUTRA (e um
+    estado de espera declarado, nao um lado).
+    """
+
+    sinal_forca = _direcao_de_score(linha.forca)
+    if sinal_forca is DirecaoASG.NEUTRA:
+        return linha.direcao in (DirecaoASG.NEUTRA, DirecaoASG.AGUARDAR)
+    return linha.direcao is sinal_forca
+
+
+def _coerir_leitura(linha: LinhaMatrizASG) -> LinhaMatrizASG:
+    """Portao de producao: nenhuma leitura direcional chega a tela sem
+    passar por aqui.
+
+    **O que eu escolhi e por que.** Havia duas saidas para uma linha
+    reprovada pelo invariante:
+
+    * *barrar* (nao desenhar), como o REGIME faz — mas isso **apagaria
+      leitura legitima da tela**. Um HORIZONTE valido sumir porque um
+      campo secundario veio torto e um preco alto demais para pagar, e
+      deixaria o operador sem a leitura em vez de com ela;
+    * *corrigir na origem*, que e o que esta funcao faz: re-deriva
+      `direcao` a partir da `forca`, porque **a forca e o numero que o
+      operador le** — o percentual grande do ladrilho. O rotulo e a cor
+      passam a seguir o numero, nunca o contrario.
+
+    A excecao declarada e o **REGIME**: la a medida E a palavra
+    (COMPRADOR/VENDEDOR, vinda da estrutura de preco) e a `forca` e que e
+    derivada dela (+1/-1). Re-derivar a direcao a partir da forca seria
+    circular, entao o REGIME continua com o gate de *barrar*
+    (`_linha_regime`): palavra em desacordo com o proprio sinal indica
+    dado corrompido, e o cartao degrada para "—".
+
+    Custo: se algum dia uma fonte passar a emitir `direcao` com semantica
+    propria, diferente do sinal da `forca`, esta funcao vai silenciosamente
+    sobrescrever essa semantica. O contrato deste painel e que isso NAO
+    existe — uma leitura tem um sinal so — e o teste de varredura por
+    componente e quem defende esse contrato.
+    """
+
+    if leitura_e_coerente(linha):
+        return linha
+    return dataclass_replace(linha, direcao=_direcao_de_score(linha.forca))
+
+
 def _ranking_componentes_maker(maker: object, top_n: int = 3) -> str:
     """Os N componentes do MakerProxy de maior magnitude, "1o/2o/3o".
 
@@ -2717,6 +3132,51 @@ def _ranking_componentes_maker(maker: object, top_n: int = 3) -> str:
 # mostrar alta/baixa demais na pratica.
 REFERENCIA_MAGNITUDE_HORIZONTE_CONTRATOS = 8000.0
 REFERENCIA_MAGNITUDE_PULSO_CONTRATOS = 80.0
+
+
+# IMPRECISO — fatores de engenharia deste projeto.
+#
+# Achado do operador (27/08/2026): o ladrilho RITMO mostrava "+100%" com o
+# rotulo "DESACELERANDO" logo abaixo, no mesmo ladrilho. Nao era erro de
+# leitura: `LeituraVelocimetro` tem DOIS eixos declarados
+# (`fluxopro/metodologia/velocimetro.py`) — GRANDEZA (`magnitude_relativa`)
+# e MANUTENCAO (`estado`) — e o numero grande usava so o primeiro. Um
+# movimento grande que ja esta perdendo forca aparecia como conviccao
+# maxima.
+#
+# Aqui a manutencao entra como FATOR sobre a magnitude, para que o numero
+# na tela signifique "quanto de ritmo o mercado tem AGORA" e nao "quao
+# grande foi o ultimo empurrao". A direcao (sinal) continua vindo so do
+# `sentido` — nunca invertida por este fator. O rotulo de estado continua
+# impresso ao lado: quem quiser os dois eixos separados continua tendo.
+_FATOR_MANUTENCAO_RITMO = {
+    "ACELERANDO": 1.00,
+    "MANTENDO": 0.85,
+    "DESACELERANDO": 0.45,
+    # VIROU: o sentido acabou de inverter — ha movimento, mas a leitura de
+    # continuidade e a mais fraca das que ainda tem sentido definido.
+    "VIROU": 0.30,
+    "PARADO": 0.0,
+    "SEM_DADOS": 0.0,
+}
+
+
+def _forca_ritmo_composta(magnitude: object, estado_nome: str, sinal: float) -> float:
+    """GRANDEZA x MANUTENCAO x direcao — ver `_FATOR_MANUTENCAO_RITMO`.
+
+    Custo declarado: um mercado que acelera do zero passa a chegar ao
+    numero cheio um passo depois (o estado precisa virar ACELERANDO), mas
+    nao ha media movel nem atraso temporal aqui — o fator e do proprio
+    quadro, entao uma virada real nunca fica escondida atras de historico.
+    """
+
+    if not isinstance(magnitude, (int, float)) or isinstance(magnitude, bool):
+        return 0.0
+    fator = _FATOR_MANUTENCAO_RITMO.get(estado_nome.upper(), 0.0)
+    bruta = _forca_limitada(float(magnitude) * fator) * sinal
+    # `+.0f` sobre -0.0 imprime "-0%": um sinal de venda em cima de uma
+    # leitura que e exatamente zero. Zero nao tem lado.
+    return 0.0 if bruta == 0 else bruta
 
 
 def _linhas_da_matriz_asg(
@@ -2784,8 +3244,8 @@ def _linhas_da_matriz_asg(
         LinhaMatrizASG(
             componente="MAKERPROXY",
             direcao=_direcao_de_score(maker_score),
-            valor=f"{maker_score * 100:+.0f}%",
-            forca=maker_score,
+            valor=f"{_sem_zero_negativo(maker_score) * 100:+.0f}%",
+            forca=_sem_zero_negativo(maker_score),
             confianca=_confianca_numerica(maker_conf),
             procedencia=_procedencia_do_maker(getattr(maker, "procedencia", "")),
             evidencias=len(tuple(getattr(maker, "evidence", ()))),
@@ -2798,10 +3258,10 @@ def _linhas_da_matriz_asg(
             componente="VELOCIMETRO",
             direcao=_direcao_textual(velocidade_lado),
             valor=_valor_enum(velocidade_estado).upper(),
-            forca=(
-                0.0 if not isinstance(magnitude, (int, float)) or isinstance(magnitude, bool)
-                else _forca_limitada(float(magnitude))
-                * (-1.0 if _direcao_textual(velocidade_lado) is DirecaoASG.VENDA else 1.0)
+            forca=_forca_ritmo_composta(
+                magnitude,
+                _valor_enum(velocidade_estado),
+                -1.0 if _direcao_textual(velocidade_lado) is DirecaoASG.VENDA else 1.0,
             ),
             confianca=(ConfiancaASG.INDISPONIVEL if velocidade_lado is None else ConfiancaASG.MEDIA),
             procedencia=ProcedenciaASG.DERIVADO,

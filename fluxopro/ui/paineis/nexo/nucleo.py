@@ -1,24 +1,50 @@
-"""Regiao VISOR HUD (x 0,40-0,63 · y 0,02-0,42).
+"""Regiao NUCLEO — visor central + painel do filtro ULTRA (x 0,40-0,63 · y 0,02-0,42).
 
-Visor central da superficie NEXO: moldura assimetrica tipo posto de leitura
-(bisel largo no topo, quase reto na base), carimbo de tempo do quadro, glifo
-direcional em escala cheia e os tres cartoes curtos de regime/confianca/
-evidencias.
+Achado do operador (26/08/2026, MUDANCAS E IMPLEMENTACOES.docx, item 1): o
+visor estava "feio, muito simples, longe do padrao" e sobretudo "nao esta
+funcional, pois nunca apareceu nada" a respeito do Sinal Ultra.
 
-O visor **nao e um botao**: nao tem estado de hover, pressed nem callback —
-apenas ``desenhar(painter, rect, estado)`` chamado uma vez por quadro com o
-``EstadoNexo`` imutavel. O glifo central tem tres leituras distintas, nunca
-uma so "seta ou nada":
+O diagnostico, olhando o retrato: a regiao e a MAIOR da tela e era a que menos
+informava — um octogono vazio com um losango de contorno, a hora, tres cartoes
+curtos e a legenda "SEM DECISAO". O Ultra so tinha DOIS estados visuais
+(aceso / apagado), entao enquanto ele nao disparava — que e quase sempre, por
+construcao — a regiao nao dizia nada sobre ele. "Nunca apareceu nada" era
+literalmente verdade: nao havia o que aparecer.
 
-* ``COMPRA``/``VENDA`` — seta solida cheia, cor do eixo neon da direcao;
-* ``AGUARDAR`` — losango vazado (duas cunhas se tocando no meio), a leitura
-  "aguardando confirmacao" antes de qualquer direcao ser assumida;
-* ``NEUTRA`` — laco de equilibrio (dois arcos com ponta), a leitura "sem
-  vies, mercado em equilibrio".
+O que esta regiao passa a mostrar, sem tocar na semantica do motor:
 
-Nenhum dos tres estados e uma seta-padrao disfarcada: cada um tem silhueta
-propria, entao o visor nunca fica com o desenho de "COMPRA" quando na
-verdade nao ha sinal algum.
+1. **O visor** — mesma silhueta assimetrica, agora com profundidade real
+   (sombra projetada, corpo em degrade vertical, brilho de bisel no topo,
+   halo interno na cor da direcao) e o glifo EXTRUDADO em tres camadas, a
+   mesma linguagem do prisma 3D do MakerProxy na regiao vizinha.
+2. **O painel de CONDICOES do filtro ULTRA** — as quatro condicoes de
+   `fluxopro.asg.sinal_ultra` (decisao confirmada, Renko em TENDENCIA na
+   mesma direcao, MakerProxy forte, confianca do Maker ALTA), cada uma com
+   sua lampada e o valor medido ao lado. Sao os "padroes bem definidos" que
+   o operador pediu, tornados visiveis: quando o Ultra nao acende, a tela
+   diz QUAL condicao faltou.
+3. **A faixa de estado do ULTRA** — tres leituras distintas, nunca duas:
+   ``ULTRA <direcao>`` (ligado, apos a histerese), ``CONFLUENCIA 4/4 ·
+   CONFIRMANDO`` (a confluencia crua fecha agora mas ainda nao cumpriu a
+   janela de persistencia) e ``ULTRA INATIVO · k/4``. A distincao entre a
+   segunda e a primeira e exatamente a histerese que existe para o Ultra
+   "nao acender toda hora" — mostra-la e o que faz a raridade parecer
+   projeto em vez de defeito.
+
+Honestidade de estado: nada aqui inventa sinal para preencher espaco. Sem
+decisao, o visor diz "SEM DECISAO" e as lampadas ficam apagadas; sem
+``estado.sinal_ultra`` (montagem antiga/teste), a faixa diz "ULTRA
+INDISPONIVEL" em vez de fingir "inativo".
+
+O visor **nao e um botao**: sem hover, sem pressed, sem callback — apenas
+``desenhar(painter, rect, estado)``, funcao pura, uma vez por quadro. O glifo
+tem tres leituras com silhuetas proprias (seta solida = direcao confirmada,
+losango vazado = aguardando, laco = equilibrio), entao o visor nunca fica com
+o desenho de "COMPRA" quando nao ha sinal algum.
+
+Produto CONSULTIVO: nem o selo do Ultra nem o painel de condicoes e convite a
+operar — a ressalva do rodape do quadro continua valendo e o rotulo do Ultra
+diz "FILTRO ADICIONAL", nao "entrada".
 """
 
 from __future__ import annotations
@@ -26,71 +52,114 @@ from __future__ import annotations
 import math
 
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygon
+from PySide6.QtGui import (
+    QColor,
+    QFont,
+    QLinearGradient,
+    QPainter,
+    QPen,
+    QPolygon,
+    QRadialGradient,
+)
 
-from fluxopro.asg.sinal_ultra import DirecaoUltra
+from fluxopro.analytics.renko import FaseRenko
+from fluxopro.asg.sinal_ultra import ConfigSinalUltra, DirecaoUltra
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
 from fluxopro.ui.paineis.nexo import EstadoNexo
 
-RAIO_MIN = 30
+# Configuracao de ULTIMO RECURSO, usada so quando nao ha snapshot do motor
+# neste quadro (`estado.sinal_ultra is None`: montagem antiga ou teste).
+#
+# Havendo snapshot, todo numero exibido — limiar do Maker e janela da
+# histerese — vem de `SinalUltraSnapshot.config`/`janela_alvo_ns`, isto e, da
+# instancia do motor que de fato decidiu. Uma `ConfigSinalUltra()` construida
+# aqui acerta por COINCIDENCIA enquanto ninguem passar configuracao
+# customizada ao motor, e passa a mentir em silencio no dia em que alguem
+# passar; e o mesmo defeito de procedencia que
+# `tests/test_ui_footprint.py::TestProcedencia` existe para tornar impossivel
+# em outra fase, e ele esta amarrado por teste de mutacao em
+# `tests/test_ui_nexo_nucleo.py`.
+#
+# Rotulo: IMPRECISO — os limiares em si sao proxy de engenharia deste projeto
+# (o "Sinal Ultra" da fonte original e AUSENTE_NA_FONTE, ver docstring de
+# `fluxopro/asg/sinal_ultra.py`). O que e CONFIRMADO e apenas que o numero
+# mostrado e o mesmo que o motor aplicou.
+_CONFIG_PADRAO = ConfigSinalUltra()
+
+
+def _config_do_quadro(ultra) -> ConfigSinalUltra:
+    """A configuracao que o motor usou neste quadro, ou o padrao se nao houver."""
+
+    config = getattr(ultra, "config", None)
+    return config if config is not None else _CONFIG_PADRAO
+
+
+# Barra de confirmacao/histerese: altura do trilho e recuo lateral, dentro da
+# faixa de estado do Ultra.
+ALTURA_BARRA_JANELA = 3
+
+RAIO_MIN = 24
 RAIO_MAX = 96
 
-# O glifo de AGUARDAR/NEUTRA (losango/laco) e desenhado com um semi-eixo por
-# direcao (rx horizontal, ry vertical) em vez de um raio unico: o bisel do
-# visor e bem mais largo que alto (assimetria de proposito, ver
-# ``_silhueta_visor``), entao um raio uniforme ou fica curto na largura ou
-# estoura a altura. As fracoes abaixo sao aplicadas cada uma sobre a
-# dimensao correspondente do miolo do bisel (largura util / altura util, ja
-# descontado o carimbo de tempo), mantendo o glifo entre 55% e 75% de cada
-# eixo — a faixa que evita tanto o glifo perdido num bisel vazio quanto um
-# glifo que atropela a moldura. A seta de COMPRA/VENDA NAO usa estas duas
-# fracoes — ver ``FRACAO_SETA_LARGURA``/``_dimensoes_seta`` abaixo, onde a
-# altura decorre da largura por um angulo de apice fixo em vez de um
-# segundo raio livre.
-FRACAO_GLIFO_LARGURA = 0.65
-FRACAO_GLIFO_ALTURA = 0.75
+# Glifo de AGUARDAR/NEUTRA (losango/laco): um semi-eixo por direcao, porque o
+# bisel do visor e bem mais largo que alto (assimetria de proposito, ver
+# `_silhueta_visor`) e um raio unico ou fica curto na largura ou estoura a
+# altura. Faixa 55%-75% de cada eixo util — nem glifo perdido no vazio nem
+# glifo atropelando a moldura.
+FRACAO_GLIFO_LARGURA = 0.62
+FRACAO_GLIFO_ALTURA = 0.70
 
-# Seta de COMPRA/VENDA: largura como fracao da largura util do bisel,
-# independente de ``FRACAO_GLIFO_LARGURA``/``_ALTURA`` acima. A seta e um
-# triangulo de angulo de apice fixo (``ANGULO_APICE_SETA_GRAUS``) e nao um
-# glifo com dois semi-eixos livres como o losango/equilibrio — a altura
-# decorre da largura pelo angulo, nunca e calibrada a parte. Com 60% a seta
-# ocupa a mesma faixa 50%-60% da largura util cobrada pelo bisel de
-# referencia, sobrando ~20% de vao de cada lado antes do chanfro; um valor
-# menor (a versao anterior efetivamente caia bem abaixo disso) deixa a seta
-# como uma marca perdida no meio de um campo escuro vazio.
-FRACAO_SETA_LARGURA = 0.60
-ANGULO_APICE_SETA_GRAUS = 51.0
+# Seta de COMPRA/VENDA: triangulo de angulo de apice FIXO, largura como fracao
+# da largura util. A altura decorre da largura pelo angulo — nunca um segundo
+# raio calibrado a parte, que deixaria a ponta ora gorda ora fina conforme a
+# proporcao do bisel muda.
+FRACAO_SETA_LARGURA = 0.46
+# 78 graus, e nao os 51 da primeira passada: com apice estreito a seta fica
+# ALTA (altura ~2,1x a meia-base) e, num bisel cujo topo e cortado em chanfro
+# fundo, a unica forma de faze-la caber e encolher a largura — sobrava campo
+# escuro dos dois lados e a ponta ainda encostava na moldura. Um apice largo da
+# uma cunha baixa e larga, que e a forma que casa com a silhueta do visor e
+# com a leitura de "direcao" de um terminal de fluxo.
+ANGULO_APICE_SETA_GRAUS = 78.0
 
-ALTURA_CARTAO = 28
+# Profundidade do glifo extrudado, em pixels de deslocamento por camada. Tres
+# camadas (sombra, corpo escurecido, face) e a menor contagem que ainda le
+# como volume; duas leem como contorno mal alinhado.
+CAMADAS_EXTRUSAO = 3
+PASSO_EXTRUSAO = 2
+
+# Deslocamento da sombra projetada da moldura (luz vinda de cima).
+SOMBRA_DY = 3
+
+# Cartoes de rodape: tres linhas cada (rotulo / valor / o que o campo E).
+# A terceira linha nao e enfeite — os tres rotulos eram siglas mudas
+# ("REGIME", "CONFIANCA", "EVID.") sem explicacao em lugar nenhum da tela.
+ALTURA_CARTAO = 38
 VAO_CARTAO = 3
 
-# Faixa reservada, no topo da moldura, para o carimbo de tempo do quadro.
-ALTURA_CARIMBO = 13
+# Faixa do cabecalho (titulo da regiao + carimbo de tempo do quadro).
+ALTURA_CABECALHO = 14
 
-# Espessuras de traco: uma para o contorno fino (grade/hairline), outra para
-# o glifo e os brackets de canto, que precisam ler como instrumento e nao
-# como fio de tabela.
+# Painel de condicoes do Ultra: uma linha por condicao, mais o cabecalho.
+LINHAS_CONDICAO = 4
+ALTURA_LINHA_CONDICAO = 20
+ALTURA_TITULO_CONDICOES = 16
+
+# Faixa de estado do Ultra (a leitura grande: ATIVO / CONFIRMANDO / INATIVO).
+ALTURA_FAIXA_ULTRA = 30
+
 TRACO_FINO = 1
 TRACO_GLIFO = 2
 
-# Bisel do topo e da base da moldura, como fracao do lado menor: o topo e
-# bem mais fundo que a base de proposito — e essa assimetria (posto de
-# leitura, nao octogono regular) que distingue o visor de um botao.
+# Bisel do topo e da base, como fracao do lado menor: o topo e bem mais fundo
+# que a base de proposito — silhueta de posto de leitura, nao de tecla.
 BISEL_TOPO_DIV = 3
 BISEL_BASE_DIV = 8
 
-# Comprimento dos brackets de canto (mira tipo visor de camera), como fracao
-# do lado menor da moldura.
 BRACO_CANTO_DIV = 8
-
-# Recuo do contorno interno (linha fina duplicada), reforcando profundidade
-# de vidro em vez de preenchimento chapado de botao.
 RECUO_CONTORNO = 4
 
-# Fundo do glow por direcao: apenas tokens ja pre-alocados em ``tema_asg``
-# (nenhum QColor novo e construido aqui).
 _FAIXA_POR_DIRECAO = {
     _asg.DirecaoASG.COMPRA: tema_asg.NEXO_VERDE_FAIXA,
     _asg.DirecaoASG.VENDA: tema_asg.NEXO_ROSA_FAIXA,
@@ -98,101 +167,448 @@ _FAIXA_POR_DIRECAO = {
     _asg.DirecaoASG.NEUTRA: tema_asg.NEXO_CIANO_FAIXA,
 }
 
-# Selo do Sinal Ultra (fluxopro/asg/sinal_ultra.py — filtro adicional,
-# construido do zero por este projeto, ver docstring do modulo). Achado do
-# operador sobre o visor antigo: "nunca aparece nada" — antes deste selo o
-# visor nao tinha NENHUM estado visual distinto para quando o Ultra confirma
-# confluencia; agora um anel pulsante e um rotulo proprio marcam esse
-# instante, sem reciclar a cor de COMPRA/VENDA (para nao confundir "decisao
-# principal confirmada" com "confluencia Ultra confirmada" — sao leituras
-# diferentes, mesmo quando concordam).
-PERIODO_PULSO_ULTRA_NS = 1_200_000_000  # 1,2s por ciclo — visivel, nao estroboscopico
+# Selo do Sinal Ultra: anel pulsante. Periodo longo o bastante para ler como
+# "respiracao" e nao como estroboscopio.
+PERIODO_PULSO_ULTRA_NS = 1_200_000_000
 ALPHA_PULSO_ULTRA_MIN = 90
 ALPHA_PULSO_ULTRA_MAX = 235
 
+# Alturas minimas abaixo das quais uma faixa e omitida em vez de desenhada
+# esmagada. A regiao encolhe em telas pequenas; melhor perder a faixa inteira
+# do que entregar texto cortado que o operador leria errado.
+ALTURA_MIN_VISOR = 90
+ALTURA_MIN_REGIAO = 90
+LARGURA_MIN_REGIAO = 90
+
+
+class _Condicao:
+    """Uma condicao do filtro Ultra, ja avaliada para ESTE quadro.
+
+    Objeto local e efemero (nao atravessa fronteira, nao e cacheado): existe
+    so para o desenho nao virar quatro blocos copiados.
+    """
+
+    __slots__ = ("rotulo", "medida", "atendida")
+
+    def __init__(self, rotulo: str, medida: str, atendida: bool) -> None:
+        self.rotulo = rotulo
+        self.medida = medida
+        self.atendida = atendida
+
 
 def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
-    if rect.width() < 90 or rect.height() < 90:
+    if rect.width() < LARGURA_MIN_REGIAO or rect.height() < ALTURA_MIN_REGIAO:
         return
+
     decisao = estado.snapshot.decisao
     direcao = decisao.direcao
     cor = _asg._cor_nexo_direcao(direcao)
-
-    moldura = QRect(rect.left(), rect.top(), rect.width(),
-                    max(60, rect.height() - ALTURA_CARTAO - 34))
-
-    # AA ja vem ligado do chamador (``PainelNexoMercadoASG.desenhar``); o
-    # `painter.save()`/`restore()` que envolve cada regiao cobre qualquer
-    # estado que este bloco mude, entao nao ha necessidade de desligar de
-    # volta aqui. Reforcar explicitamente so garante o glifo liso mesmo se
-    # algum dia este modulo for chamado fora daquele laco.
-    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-    _desenhar_moldura(painter, moldura, direcao, cor)
-    _desenhar_carimbo_tempo(painter, moldura, estado.snapshot.timestamp_ns)
-    _desenhar_glifo(painter, moldura, direcao, cor)
-
-    direcao_ultra = getattr(estado.sinal_ultra, "direcao", None)
+    ultra = estado.sinal_ultra
+    direcao_ultra = getattr(ultra, "direcao", None)
     ultra_ativo = direcao_ultra is not None and direcao_ultra is not DirecaoUltra.NENHUMA
-    if ultra_ativo:
-        _desenhar_selo_ultra(painter, moldura, direcao_ultra, estado.snapshot.timestamp_ns)
 
-    painter.setFont(tokens.fonte_ui(8, QFont.Weight.DemiBold))
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+
+    # ---- reparticao vertical -------------------------------------------
+    # De baixo para cima: cartoes, condicoes, faixa do Ultra, e o que sobra
+    # e do visor. Ordem deliberada — o visor e a peca elastica, as leituras
+    # numericas tem altura fixa porque texto esmagado nao e leitura.
+    y_cartoes = rect.bottom() - ALTURA_CARTAO
+    altura_condicoes = ALTURA_TITULO_CONDICOES + LINHAS_CONDICAO * ALTURA_LINHA_CONDICAO
+    y_condicoes = y_cartoes - 3 - altura_condicoes
+    y_faixa = y_condicoes - 2 - ALTURA_FAIXA_ULTRA
+    altura_visor = y_faixa - 3 - rect.top()
+
+    if altura_visor >= ALTURA_MIN_VISOR:
+        moldura = QRect(rect.left(), rect.top(), rect.width(), altura_visor)
+        _desenhar_cabecalho(painter, moldura, estado.snapshot.timestamp_ns)
+        corpo = QRect(moldura.left(), moldura.top() + ALTURA_CABECALHO,
+                      moldura.width(), moldura.height() - ALTURA_CABECALHO)
+        _desenhar_moldura(painter, corpo, direcao, cor)
+        _desenhar_glifo(painter, corpo, direcao, cor)
+        _desenhar_titulo_decisao(painter, corpo, decisao, cor)
+        if ultra_ativo:
+            _desenhar_selo_ultra(painter, corpo, estado.snapshot.timestamp_ns)
+
+    condicoes = _condicoes_ultra(estado, direcao)
+    atendidas = sum(1 for item in condicoes if item.atendida)
+
+    _desenhar_faixa_ultra(
+        painter,
+        QRect(rect.left(), y_faixa, rect.width(), ALTURA_FAIXA_ULTRA),
+        ultra,
+        atendidas,
+        len(condicoes),
+        estado.snapshot.timestamp_ns,
+    )
+    _desenhar_condicoes(
+        painter,
+        QRect(rect.left(), y_condicoes, rect.width(), altura_condicoes),
+        condicoes,
+    )
+    _desenhar_cartoes(painter, QRect(rect.left(), y_cartoes, rect.width(), ALTURA_CARTAO),
+                      estado, decisao, cor)
+
+
+# ==========================================================================
+# Condicoes do filtro Ultra
+# ==========================================================================
+def _condicoes_ultra(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> tuple[_Condicao, ...]:
+    """As quatro condicoes de `sinal_ultra._confluencia`, avaliadas do MESMO
+    estado que alimenta o motor.
+
+    Nao e uma reimplementacao paralela do motor: a decisao oficial de ligar
+    continua sendo `SinalUltraSnapshot.direcao` (com histerese), e e ela que a
+    faixa exibe. Isto aqui e leitura de DIAGNOSTICO — "o que falta agora" —
+    derivada dos mesmos campos de `EstadoNexo` que `asg.py` empacota em
+    `EntradaSinalUltra`. Sao os mesmos numeros porque sao os mesmos objetos
+    (`estado.maker` e literalmente a linha que o motor recebeu, ja suavizada).
+
+    Rotulo: IMPRECISO — os limiares vem de `ConfigSinalUltra`, que e proxy
+    proprio deste projeto e nao regra da fonte.
+    """
+
+    alvo = _direcao_ultra_de(direcao)
+    confirmada = alvo is not DirecaoUltra.NENHUMA
+
+    fase = estado.fase_renko
+    tijolos = estado.tijolos_renko
+    direcao_renko = DirecaoUltra.NENHUMA
+    if tijolos:
+        ultimo = getattr(tijolos[-1], "direcao", 0)
+        direcao_renko = DirecaoUltra.COMPRA if ultimo > 0 else DirecaoUltra.VENDA
+    renko_ok = (
+        fase is FaseRenko.TENDENCIA
+        and confirmada
+        and direcao_renko is alvo
+    )
+    if fase is None:
+        texto_renko = "—"
+    elif fase is FaseRenko.TENDENCIA:
+        texto_renko = "TENDENCIA " + _sigla_ultra(direcao_renko)
+    else:
+        texto_renko = str(getattr(fase, "value", fase)).upper().replace("_", " ")
+
+    maker = estado.maker
+    forca = float(getattr(maker, "forca", 0.0) or 0.0)
+    confianca = getattr(maker, "confianca", None)
+    conf_alta = confianca is _asg.ConfiancaASG.ALTA
+    limiar = _config_do_quadro(estado.sinal_ultra).forca_maker_minima
+    if alvo is DirecaoUltra.VENDA:
+        forca_ok = forca <= -limiar
+    elif alvo is DirecaoUltra.COMPRA:
+        forca_ok = forca >= limiar
+    else:
+        forca_ok = abs(forca) >= limiar
+
+    return (
+        _Condicao("DECISAO", direcao.value if confirmada else "SEM DIRECAO", confirmada),
+        _Condicao("RENKO", texto_renko, renko_ok),
+        _Condicao(
+            "MAKER",
+            "%s / %s" % (formato.formatar_sinalizado(forca, 2),
+                         formato.formatar_sinalizado(limiar, 2)),
+            forca_ok,
+        ),
+        _Condicao(
+            "CONFIANCA",
+            "—" if confianca is None else confianca.value.replace("CONF ", ""),
+            conf_alta,
+        ),
+    )
+
+
+def _direcao_ultra_de(direcao: "_asg.DirecaoASG") -> DirecaoUltra:
+    """Mesma traducao de `asg._direcao_ultra_de` — AGUARDAR/NEUTRA nao sao
+    direcao confirmada e viram NENHUMA."""
+
+    if direcao is _asg.DirecaoASG.COMPRA:
+        return DirecaoUltra.COMPRA
+    if direcao is _asg.DirecaoASG.VENDA:
+        return DirecaoUltra.VENDA
+    return DirecaoUltra.NENHUMA
+
+
+def _sigla_ultra(direcao: DirecaoUltra) -> str:
+    if direcao is DirecaoUltra.COMPRA:
+        return "COMPRA"
+    if direcao is DirecaoUltra.VENDA:
+        return "VENDA"
+    return "—"
+
+
+def _desenhar_condicoes(painter: QPainter, rect: QRect,
+                        condicoes: tuple[_Condicao, ...]) -> None:
+    """Painel "padroes bem definidos": uma linha por condicao, lampada + medida.
+
+    A lampada e um losango pequeno, cheio quando a condicao esta atendida e
+    apenas contornado quando nao esta — a direcao nunca depende so da cor
+    (mesmo invariante de "sem cor e canal" das outras fases da interface).
+    """
+
+    if rect.height() < ALTURA_TITULO_CONDICOES + ALTURA_LINHA_CONDICAO:
+        return
+
+    painter.fillRect(rect, tema_asg.NEXO_PAINEL)
+    painter.setPen(QPen(tema_asg.NEXO_GRADE, TRACO_FINO))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawLine(rect.left(), rect.top(), rect.right(), rect.top())
+
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(rect.adjusted(8, 1, -8, 0), Qt.AlignmentFlag.AlignLeft,
+                     "CONDICOES DO FILTRO ULTRA · TODAS AO MESMO TEMPO")
+
+    y = rect.top() + ALTURA_TITULO_CONDICOES
+    for item in condicoes:
+        if y + ALTURA_LINHA_CONDICAO > rect.bottom() + 1:
+            break
+        linha = QRect(rect.left(), y, rect.width(), ALTURA_LINHA_CONDICAO)
+        cor = tema_asg.NEXO_VERDE if item.atendida else tema_asg.NEXO_MUTED
+        _lampada(painter, QPoint(linha.left() + 12, linha.center().y()), 4,
+                 cor, item.atendida)
+        painter.setFont(tokens.fonte_ui(8, QFont.Weight.DemiBold))
+        painter.setPen(tema_asg.NEXO_TEXTO if item.atendida else tema_asg.NEXO_MUTED)
+        painter.drawText(linha.adjusted(22, 0, -8, 0),
+                         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                         item.rotulo)
+        painter.setFont(tokens.fonte_numero(8))
+        painter.setPen(cor)
+        painter.drawText(linha.adjusted(22, 0, -8, 0),
+                         Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+                         item.medida[:22])
+        y += ALTURA_LINHA_CONDICAO
+
+
+def _lampada(painter: QPainter, centro: QPoint, raio: int, cor, cheia: bool) -> None:
+    losango = QPolygon([
+        QPoint(centro.x(), centro.y() - raio),
+        QPoint(centro.x() + raio, centro.y()),
+        QPoint(centro.x(), centro.y() + raio),
+        QPoint(centro.x() - raio, centro.y()),
+    ])
+    if cheia:
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(cor)
+    else:
+        painter.setPen(QPen(cor, TRACO_FINO))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawPolygon(losango)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+
+
+# ==========================================================================
+# Faixa de estado do Ultra
+# ==========================================================================
+def _desenhar_faixa_ultra(painter: QPainter, rect: QRect, ultra,
+                          atendidas: int, total: int, timestamp_ns: int) -> None:
+    """A leitura grande do Ultra, com QUATRO estados distintos.
+
+    Antes havia dois (aceso/apagado) e por isso "nunca aparecia nada": o
+    apagado nao distinguia "faltam tres condicoes" de "as quatro fecharam
+    agora e falta so a janela de persistencia". Sao situacoes muito
+    diferentes para o operador e agora tem leituras diferentes.
+
+    ``CONFIRMANDO`` sai da confluencia CRUA (`confluencia_no_instante`) e e
+    rotulada como tal — nunca apresentada como sinal oficial, que continua
+    sendo `direcao` (pos-histerese). Mostrar a janela e o que faz a raridade
+    do Ultra ler como projeto (histerese assimetrica deliberada) em vez de
+    defeito.
+    """
+
+    if rect.height() < 12:
+        return
+
+    if ultra is None:
+        _faixa_texto(painter, rect, tema_asg.NEXO_MUTED,
+                     "ULTRA INDISPONIVEL", "SEM MOTOR NESTE QUADRO", pulso=None)
+        return
+
+    direcao = getattr(ultra, "direcao", DirecaoUltra.NENHUMA)
+    crua = getattr(ultra, "confluencia_no_instante", DirecaoUltra.NENHUMA)
+
+    # Progresso da janela de histerese que estiver correndo AGORA. Os dois
+    # numeros sao lidos do motor: o decorrido de `pendente_desde_ns` (o
+    # cronometro que ele ja mantinha) e o alvo de `janela_alvo_ns` (a metade
+    # da histerese que ele mesmo escolheu). A UI nao decide qual janela se
+    # aplica nem quanto ela vale — so divide um pelo outro.
+    janela_ns = int(getattr(ultra, "janela_alvo_ns", 0) or 0)
+    pendente_desde = int(getattr(ultra, "pendente_desde_ns", 0) or 0)
+    decorrido_ns = max(0, timestamp_ns - pendente_desde) if pendente_desde else 0
+    progresso = min(1.0, decorrido_ns / janela_ns) if janela_ns > 0 else None
+    relogio = "%s / %s" % (
+        formato.formatar_duracao_s(decorrido_ns / 1e9),
+        formato.formatar_duracao_s(janela_ns / 1e9),
+    )
+
+    if direcao is not DirecaoUltra.NENHUMA:
+        if janela_ns > 0:
+            # Aceso, mas a confluencia quebrou: o que corre agora e a janela
+            # de DESLIGAMENTO. Dizer isso e o oposto de esconder — o operador
+            # ve que o selo esta se sustentando por histerese, nao por
+            # confluencia viva.
+            detalhe = "SEGURANDO · " + relogio
+        else:
+            ligado_desde = getattr(ultra, "ligado_desde_ns", None)
+            detalhe = "FILTRO ADICIONAL · CONSULTIVO"
+            if ligado_desde and timestamp_ns > ligado_desde:
+                detalhe += " · HA " + formato.formatar_duracao_s(
+                    (timestamp_ns - ligado_desde) / 1e9)
+        _faixa_texto(painter, rect, tema_asg.NEXO_AMARELO,
+                     "ULTRA " + _sigla_ultra(direcao), detalhe,
+                     pulso=timestamp_ns, progresso=progresso)
+        return
+
+    if crua is not DirecaoUltra.NENHUMA:
+        _faixa_texto(
+            painter, rect, tema_asg.NEXO_CIANO,
+            "CONFIRMANDO " + _sigla_ultra(crua),
+            "%d/%d CONDICOES · %s" % (atendidas, total, relogio),
+            pulso=None, progresso=progresso,
+        )
+        return
+
+    _faixa_texto(painter, rect, tema_asg.NEXO_MUTED, "ULTRA INATIVO",
+                 "%d/%d CONDICOES" % (atendidas, total), pulso=None,
+                 progresso=None)
+
+
+def _faixa_texto(painter: QPainter, rect: QRect, cor, titulo: str,
+                 detalhe: str, *, pulso: int | None,
+                 progresso: float | None = None) -> None:
+    """Faixa com fundo em degrade horizontal a partir da esquerda.
+
+    O degrade (e nao um preenchimento chapado) existe para a faixa nao ler
+    como cartao: a intensidade nasce na lampada da esquerda e se dissolve, o
+    mesmo gesto do bisel do visor logo acima.
+    """
+
+    alpha_base = 46
+    if pulso is not None:
+        fase = (pulso % PERIODO_PULSO_ULTRA_NS) / PERIODO_PULSO_ULTRA_NS
+        onda = (1 - math.cos(2 * math.pi * fase)) / 2.0
+        alpha_base = round(ALPHA_PULSO_ULTRA_MIN
+                           + (ALPHA_PULSO_ULTRA_MAX - ALPHA_PULSO_ULTRA_MIN) * onda) // 2
+
+    esquerda = QColor(cor)
+    esquerda.setAlpha(alpha_base)
+    direita = QColor(cor)
+    direita.setAlpha(0)
+    degrade = QLinearGradient(rect.left(), 0, rect.right(), 0)
+    degrade.setColorAt(0.0, esquerda)
+    degrade.setColorAt(1.0, direita)
+    painter.fillRect(rect, tema_asg.NEXO_PAINEL_ALTO)
+    painter.fillRect(rect, degrade)
+
+    painter.setPen(QPen(cor, TRACO_GLIFO))
+    painter.drawLine(rect.left(), rect.top(), rect.left(), rect.bottom())
+
+    painter.setFont(tokens.fonte_ui(9, QFont.Weight.Bold))
     painter.setPen(cor)
-    painter.drawText(QRect(rect.left(), moldura.bottom() + 2, rect.width(), 15),
-                     Qt.AlignmentFlag.AlignCenter, decisao.titulo.upper())
-    painter.setFont(tokens.fonte_rotulo(8))
-    painter.setPen(tema_asg.NEXO_AMARELO if ultra_ativo else tema_asg.NEXO_MUTED)
-    rotulo_consultivo = (
-        f"⚡ ULTRA {direcao_ultra.value.upper()} · FILTRO ADICIONAL"
-        if ultra_ativo else "SINAL CONSULTIVO"
-    )
-    painter.drawText(QRect(rect.left(), moldura.bottom() + 16, rect.width(), 14),
-                     Qt.AlignmentFlag.AlignCenter, rotulo_consultivo)
+    painter.drawText(rect.adjusted(8, 0, -8, -rect.height() // 2),
+                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                     titulo)
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(rect.adjusted(8, rect.height() // 2, -8, -ALTURA_BARRA_JANELA),
+                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                     detalhe)
 
-    regime = next((linha for linha in estado.snapshot.matriz.linhas
-                   if linha.componente == "REGIME"), None)
-    cartoes = (
-        ("REGIME", "—" if regime is None else regime.valor, tema_asg.NEXO_CIANO),
-        ("CONFIANCA", decisao.confianca.value.replace("CONF ", ""), cor),
-        ("EVID.", str(estado.snapshot.evidencias.retidos), tema_asg.NEXO_AMARELO),
-    )
-    largura = max(32, (rect.width() + VAO_CARTAO) // len(cartoes) - VAO_CARTAO)
-    y = rect.bottom() - ALTURA_CARTAO
-    for indice, (nome, valor, cor_cartao) in enumerate(cartoes):
-        caixa = QRect(rect.left() + indice * (largura + VAO_CARTAO), y,
-                      largura, ALTURA_CARTAO)
-        painter.fillRect(caixa, tema_asg.NEXO_PAINEL_ALTO)
-        painter.setFont(tokens.fonte_rotulo(6))
-        painter.setPen(tema_asg.NEXO_MUTED)
-        painter.drawText(caixa.adjusted(3, 1, -3, -14), Qt.AlignmentFlag.AlignCenter, nome)
-        painter.setFont(tokens.fonte_numero(8, QFont.Weight.Bold))
-        painter.setPen(cor_cartao)
-        painter.drawText(caixa.adjusted(3, 12, -3, -1), Qt.AlignmentFlag.AlignCenter,
-                         valor[:12])
+    if progresso is None:
+        return
+    # Trilho da janela de histerese, rente a base da faixa. Fundo de escala
+    # ABSOLUTO — a janela inteira, sempre — entao a barra pela metade quer
+    # dizer metade do tempo, e nunca "metade do maior que ja vi". Sem piso:
+    # comprimento zero significa "o cronometro acabou de zerar", que e
+    # informacao, e um piso apagaria justamente o instante em que a
+    # confluencia se refez.
+    trilho = QRect(rect.left(), rect.bottom() - ALTURA_BARRA_JANELA + 1,
+                   rect.width(), ALTURA_BARRA_JANELA)
+    painter.fillRect(trilho, tema_asg.NEXO_GRADE)
+    cheio = int(trilho.width() * max(0.0, min(1.0, progresso)))
+    if cheio > 0:
+        painter.fillRect(QRect(trilho.left(), trilho.top(), cheio, trilho.height()),
+                         cor)
+
+
+# ==========================================================================
+# Visor
+# ==========================================================================
+def _desenhar_cabecalho(painter: QPainter, rect: QRect, timestamp_ns: int) -> None:
+    """Titulo da regiao a esquerda, carimbo de tempo do quadro a direita.
+
+    ``timestamp_ns`` vem do `WorkspaceASGSnapshot` (um so por quadro, sob
+    lock, pelo relogio unico da janela) — nunca de um relogio proprio do
+    visor. Sem ele o visor era uma leitura sem hora, a mesma imagem parada
+    servindo para qualquer instante.
+    """
+
+    caixa = QRect(rect.left(), rect.top(), rect.width(), ALTURA_CABECALHO)
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(caixa.adjusted(8, 0, -8, 0),
+                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                     "NUCLEO DE LEITURA")
+    painter.setFont(tokens.fonte_numero(7))
+    texto = formato.formatar_hora_ns(timestamp_ns) if timestamp_ns > 0 else "— SEM RELOGIO —"
+    painter.drawText(caixa.adjusted(8, 0, -8, 0),
+                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+                     texto)
 
 
 def _desenhar_moldura(painter: QPainter, moldura: QRect,
-                       direcao: "_asg.DirecaoASG", cor) -> None:
-    """Corpo do visor: silhueta assimetrica + contorno duplo + brackets.
+                      direcao: "_asg.DirecaoASG", cor) -> None:
+    """Corpo do visor em cinco camadas — a profundidade que o operador pediu.
 
-    Tres camadas, nenhuma delas um retangulo/octogono chapado com uma unica
-    borda (a assinatura visual de "botao"):
+    Nenhuma delas e um poligono chapado com uma borda so (a assinatura visual
+    de "botao"):
 
-    1. preenchimento escuro com o traco externo em ``faixa`` (translucido,
-       largo) fazendo as vezes de glow sem inventar cor nova;
-    2. um segundo contorno, fino e recuado, em ``NEXO_GRADE`` — a leitura de
-       "vidro com profundidade" em vez de fundo liso com uma borda so;
-    3. brackets de canto tipo mira de visor, na cor da direcao — o detalhe
-       que marca "instrumento" e nunca aparece num botao convencional.
+    1. **sombra projetada** — a mesma silhueta em quase-preto, deslocada
+       ``SOMBRA_DY`` para baixo: firma a luz vindo de cima e descola o visor
+       do fundo da superficie;
+    2. **corpo em degrade vertical** — claro no topo, escuro na base, que e o
+       que um objeto solido faz sob luz de cima;
+    3. **halo interno radial** na cor da direcao, denso no centro e nulo na
+       borda — brilho vindo de DENTRO do vidro, nao uma borda colorida;
+    4. **brilho de bisel** — as duas arestas superiores em branco translucido
+       fino, o realce de quina que separa "chanfro" de "contorno";
+    5. **brackets de canto** tipo mira, na cor da direcao — o detalhe de
+       instrumento que nunca aparece num botao convencional.
     """
 
     faixa = _FAIXA_POR_DIRECAO.get(direcao, tema_asg.NEXO_CIANO_FAIXA)
+    silhueta = _silhueta_visor(moldura)
 
-    painter.setPen(QPen(faixa, TRACO_GLIFO + 1))
-    painter.setBrush(tema_asg.NEXO_PAINEL_ALTO)
-    painter.drawPolygon(_silhueta_visor(moldura))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(tema_asg.NEXO_FUNDO)
+    painter.drawPolygon(_silhueta_visor(moldura.translated(0, SOMBRA_DY)))
+
+    corpo = QLinearGradient(0, moldura.top(), 0, moldura.bottom())
+    corpo.setColorAt(0.0, tema_asg.NEXO_GRADE)
+    corpo.setColorAt(0.35, tema_asg.NEXO_PAINEL_ALTO)
+    corpo.setColorAt(1.0, tema_asg.NEXO_PAINEL)
+    painter.setBrush(corpo)
+    painter.drawPolygon(silhueta)
+
+    centro = moldura.center()
+    raio = max(moldura.width(), moldura.height()) / 2.0
+    halo = QRadialGradient(centro.x(), centro.y(), raio)
+    dentro = QColor(cor)
+    dentro.setAlpha(38)
+    fora = QColor(cor)
+    fora.setAlpha(0)
+    halo.setColorAt(0.0, dentro)
+    halo.setColorAt(1.0, fora)
+    painter.setBrush(halo)
+    painter.drawPolygon(silhueta)
 
     painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(faixa, TRACO_GLIFO + 1))
+    painter.drawPolygon(silhueta)
+
+    _linhas_de_varredura(painter, moldura)
+    _brilho_bisel(painter, moldura)
+
     painter.setPen(QPen(tema_asg.NEXO_GRADE, TRACO_FINO))
     interna = moldura.adjusted(RECUO_CONTORNO, RECUO_CONTORNO,
                                -RECUO_CONTORNO, -RECUO_CONTORNO)
@@ -201,10 +617,57 @@ def _desenhar_moldura(painter: QPainter, moldura: QRect,
     _brackets_canto(painter, moldura, cor)
 
 
+def _linhas_de_varredura(painter: QPainter, rect: QRect) -> None:
+    """Quatro hairlines horizontais no miolo do visor, alpha muito baixo.
+
+    Nao sao dado e nao pretendem ser: sao TEXTURA. O campo do visor era uma
+    chapa preta uniforme, e uma chapa uniforme nao tem profundidade nenhuma —
+    o olho nao tem em que se apoiar para ler o vidro como plano a frente do
+    fundo. Quatro linhas (nao vinte) bastam para dar o plano sem competir com
+    o glifo nem sugerir escala. Recuadas do chanfro para nunca vazar da
+    silhueta.
+    """
+
+    lado = min(rect.width(), rect.height())
+    bisel = max(10, lado // BISEL_TOPO_DIV)
+    linha = QColor(tema_asg.NEXO_GRADE)
+    linha.setAlpha(90)
+    painter.setPen(QPen(linha, TRACO_FINO))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    passo = rect.height() // 5
+    if passo <= 0:
+        return
+    for k in range(1, 5):
+        y = rect.top() + k * passo
+        painter.drawLine(rect.left() + bisel // 2, y, rect.right() - bisel // 2, y)
+
+
+def _brilho_bisel(painter: QPainter, rect: QRect) -> None:
+    """Realce de quina nas duas arestas superiores do chanfro.
+
+    Um contorno inteiro em branco leria como segunda borda; so as arestas que
+    ficam de frente para a luz recebem o realce, que e o que torna o chanfro
+    legivel como chanfro.
+    """
+
+    lado = min(rect.width(), rect.height())
+    bisel = max(10, lado // BISEL_TOPO_DIV)
+    realce = QColor(tema_asg.NEXO_TEXTO)
+    realce.setAlpha(46)
+    painter.setPen(QPen(realce, TRACO_FINO))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawLine(rect.left() + bisel, rect.top() + 1,
+                     rect.right() - bisel, rect.top() + 1)
+    painter.drawLine(rect.left() + 1, rect.top() + bisel,
+                     rect.left() + bisel, rect.top() + 1)
+    painter.drawLine(rect.right() - 1, rect.top() + bisel,
+                     rect.right() - bisel, rect.top() + 1)
+
+
 def _silhueta_visor(rect: QRect) -> QPolygon:
     """Moldura em bisel assimetrico: topo fundo, base quase reta.
 
-    Um octogono regular (mesmo corte nos quatro cantos) le como um botao
+    Um octogono regular (mesmo corte nos quatro cantos) le como botao
     hexagonal generico. Aqui o bisel do topo e proporcionalmente bem mais
     fundo que o da base — silhueta de posto de leitura, nao de tecla.
     """
@@ -230,6 +693,7 @@ def _brackets_canto(painter: QPainter, rect: QRect, cor) -> None:
     lado = min(rect.width(), rect.height())
     braco = max(6, lado // BRACO_CANTO_DIV)
     painter.setPen(QPen(cor, TRACO_GLIFO))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
     for x, y, dx, dy in (
         (rect.left(), rect.top(), 1, 1),
         (rect.right(), rect.top(), -1, 1),
@@ -240,28 +704,52 @@ def _brackets_canto(painter: QPainter, rect: QRect, cor) -> None:
         painter.drawLine(x, y, x, y + dy * braco)
 
 
-def _desenhar_selo_ultra(painter: QPainter, moldura: QRect,
-                          direcao_ultra: DirecaoUltra, timestamp_ns: int) -> None:
-    """Anel pulsante em torno do visor quando o Sinal Ultra esta ativo.
+def _desenhar_titulo_decisao(painter: QPainter, moldura: QRect, decisao, cor) -> None:
+    """Titulo da decisao DENTRO do visor, na base do bisel.
 
-    A pulsacao usa `timestamp_ns` (o mesmo relogio do quadro, nunca um
-    relogio de UI separado) — o anel respira em fase com o feed, nao com o
-    framerate de repintura da janela. Onda cosseno (nunca linear/dente de
-    serra) para a transicao de alpha nunca "cortar" abruptamente nos extremos
-    do ciclo — o mesmo defeito de mudanca abrupta que motivou suavizar o
-    gauge EQUILIBRIO (ver `fluxopro/ui/paineis/asg.py`), aqui evitado de
-    saida em vez de corrigido depois.
+    Estava fora da moldura, num vao morto entre o visor e o resto — e o vao
+    existia so por causa dele. Trazido para dentro, o texto pertence ao
+    instrumento e a regiao recupera a altura.
+    """
+
+    lado = min(moldura.width(), moldura.height())
+    base = max(4, lado // BISEL_BASE_DIV)
+    caixa = QRect(moldura.left(), moldura.bottom() - base - 26, moldura.width(), 16)
+    painter.setFont(tokens.fonte_ui(11, QFont.Weight.Bold))
+    painter.setPen(cor)
+    painter.drawText(caixa, Qt.AlignmentFlag.AlignCenter, decisao.titulo.upper())
+
+    # A ressalva consultiva mora DENTRO do instrumento, e nao so na linha do
+    # rodape do quadro: o glifo grande e colorido e a peca mais parecida com
+    # "sinal de entrada" da tela inteira, e e junto dele que a negativa precisa
+    # estar para ser lida por quem olha so para o centro.
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(QRect(moldura.left(), caixa.bottom(), moldura.width(), 12),
+                     Qt.AlignmentFlag.AlignCenter,
+                     "LEITURA CONSULTIVA · NAO E ORDEM")
+
+
+def _desenhar_selo_ultra(painter: QPainter, moldura: QRect, timestamp_ns: int) -> None:
+    """Anel pulsante sobre o contorno do visor quando o Sinal Ultra esta ativo.
+
+    A pulsacao usa `timestamp_ns` (o mesmo relogio do quadro, nunca um relogio
+    de UI separado) — o anel respira em fase com o feed, nao com o framerate de
+    repintura da janela. Onda cosseno (nunca linear/dente de serra) para a
+    transicao de alpha nao "cortar" nos extremos do ciclo — o mesmo defeito de
+    mudanca abrupta que motivou suavizar o gauge EQUILIBRIO, aqui evitado de
+    saida.
+
+    Redesenha a MESMA silhueta, nunca uma expandida para fora dela: as regioes
+    do NEXO encostam borda a borda sem vao (ver docstring do pacote) e um anel
+    externo sangraria na regiao vizinha.
     """
 
     fase = (timestamp_ns % PERIODO_PULSO_ULTRA_NS) / PERIODO_PULSO_ULTRA_NS
     onda = (1 - math.cos(2 * math.pi * fase)) / 2.0
-    alpha = round(ALPHA_PULSO_ULTRA_MIN + (ALPHA_PULSO_ULTRA_MAX - ALPHA_PULSO_ULTRA_MIN) * onda)
+    alpha = round(ALPHA_PULSO_ULTRA_MIN
+                  + (ALPHA_PULSO_ULTRA_MAX - ALPHA_PULSO_ULTRA_MIN) * onda)
 
-    # Redesenha a MESMA silhueta da moldura (nunca expandida para fora dela —
-    # as regioes do NEXO encostam borda a borda sem vao, ver docstring do
-    # pacote; expandir o anel para fora sangraria na regiao vizinha), so que
-    # por cima, com o traco mais grosso e a cor pulsante — um brilho que
-    # "respira" sobre o proprio contorno em vez de um anel novo ao redor.
     cor_anel = QColor(tema_asg.NEXO_AMARELO)
     cor_anel.setAlpha(alpha)
     painter.setPen(QPen(cor_anel, TRACO_GLIFO + 2))
@@ -269,90 +757,90 @@ def _desenhar_selo_ultra(painter: QPainter, moldura: QRect,
     painter.drawPolygon(_silhueta_visor(moldura.adjusted(1, 1, -1, -1)))
 
 
-def _desenhar_carimbo_tempo(painter: QPainter, moldura: QRect, timestamp_ns: int) -> None:
-    """Carimbo de tempo do quadro, no bisel do topo do visor.
-
-    ``timestamp_ns`` vem do ``WorkspaceASGSnapshot`` (um so por quadro, sob
-    lock, pelo relogio unico da janela) — nunca de um relogio proprio do
-    visor. Sem isso o visor era uma leitura sem hora, a mesma imagem parada
-    servindo para qualquer instante.
-    """
-
-    painter.setFont(tokens.fonte_numero(7))
-    painter.setPen(tema_asg.NEXO_MUTED)
-    caixa = QRect(moldura.left(), moldura.top() + 3, moldura.width(), ALTURA_CARIMBO)
-    texto = formato.formatar_hora_ns(timestamp_ns) if timestamp_ns > 0 else "— SEM RELOGIO —"
-    painter.drawText(caixa, Qt.AlignmentFlag.AlignCenter, texto)
-
-
+# ==========================================================================
+# Glifo
+# ==========================================================================
 def _desenhar_glifo(painter: QPainter, moldura: QRect,
-                     direcao: "_asg.DirecaoASG", cor) -> None:
+                    direcao: "_asg.DirecaoASG", cor) -> None:
     """Glifo central, escalado para ocupar o visor (nao um icone perdido nele).
 
     ``rx``/``ry`` sao semi-eixos independentes — nao um raio unico — porque o
-    bisel e bem mais largo que alto. Um raio uniforme calibrado pela altura
-    (o eixo mais curto) deixava larguras inteiras de campo escuro vazias dos
-    dois lados do glifo; calibrando cada eixo pela sua propria dimensao util
-    o glifo ocupa a mesma fracao (55%-75%) tanto da largura quanto da altura
-    internas do bisel.
+    bisel e bem mais largo que alto. Um raio uniforme calibrado pela altura (o
+    eixo mais curto) deixava larguras inteiras de campo escuro vazias dos dois
+    lados do glifo.
+
+    A faixa inferior do visor esta reservada ao titulo da decisao, entao a
+    altura util e descontada aqui — sem isso o glifo cresceria por cima do
+    texto exatamente nos biseis mais altos.
     """
 
+    lado = min(moldura.width(), moldura.height())
+    # Chanfro da base + as DUAS linhas do bloco de titulo (decisao + ressalva
+    # consultiva) — ver `_desenhar_titulo_decisao`. Sem reservar as duas, o
+    # glifo cresce por cima do texto justamente nos biseis mais altos.
+    reserva_titulo = max(4, lado // BISEL_BASE_DIV) + 28
+    disponivel_h = moldura.height() - reserva_titulo
+    if disponivel_h <= 2 * RECUO_CONTORNO:
+        return
     cx = moldura.center().x()
-    disponivel_h = moldura.height() - ALTURA_CARIMBO
-    cy = moldura.top() + ALTURA_CARIMBO + disponivel_h // 2
+    cy = moldura.top() + disponivel_h // 2
 
     largura_util = moldura.width() - 2 * RECUO_CONTORNO
-    altura_util = disponivel_h - 2 * RECUO_CONTORNO
+    # O chanfro do topo e FUNDO (`BISEL_TOPO_DIV`), entao a caixa da moldura
+    # NAO e a area util: perto do topo a silhueta ja se estreitou e um glifo
+    # dimensionado pelo retangulo fura o bisel pelo lado longo. Metade do
+    # chanfro sai da altura util — a metade, e nao ele inteiro, porque o glifo
+    # e centrado e so a ponta chega perto da aresta.
+    bisel_topo = max(10, min(moldura.width(), moldura.height()) // BISEL_TOPO_DIV)
+    altura_util = disponivel_h - 2 * RECUO_CONTORNO - bisel_topo // 2
+    if altura_util <= 0:
+        return
 
-    if direcao is _asg.DirecaoASG.COMPRA:
+    if direcao in (_asg.DirecaoASG.COMPRA, _asg.DirecaoASG.VENDA):
         rx, ry = _dimensoes_seta(largura_util, altura_util)
-        _glifo_seta(painter, cx, cy, rx, ry, cor, para_cima=True)
-    elif direcao is _asg.DirecaoASG.VENDA:
-        rx, ry = _dimensoes_seta(largura_util, altura_util)
-        _glifo_seta(painter, cx, cy, rx, ry, cor, para_cima=False)
-    elif direcao is _asg.DirecaoASG.AGUARDAR:
-        rx = _semi_eixo(largura_util, FRACAO_GLIFO_LARGURA)
-        ry = _semi_eixo(altura_util, FRACAO_GLIFO_ALTURA)
+        # A seta NAO e simetrica em torno de ``cy``: ela ocupa ``ry`` de um
+        # lado e ``ry//2`` do outro. Passar ``cy`` cru (o centro da banda util)
+        # centraria o APICE em vez da silhueta, e a ponta furava a moldura pelo
+        # lado longo — foi exatamente o que aconteceu na primeira passada, com
+        # o triangulo sangrando para fora do bisel. Deslocar meio-vao do lado
+        # longo centra a CAIXA da seta na banda.
+        para_cima = direcao is _asg.DirecaoASG.COMPRA
+        recuo = ry // 4
+        _glifo_seta(painter, cx, cy + (recuo if para_cima else -recuo), rx, ry,
+                    cor, para_cima=para_cima)
+        return
+
+    rx = _semi_eixo(largura_util, FRACAO_GLIFO_LARGURA)
+    ry = _semi_eixo(altura_util, FRACAO_GLIFO_ALTURA)
+    if direcao is _asg.DirecaoASG.AGUARDAR:
         _glifo_losango(painter, cx, cy, rx, ry, cor)
     else:
-        rx = _semi_eixo(largura_util, FRACAO_GLIFO_LARGURA)
-        ry = _semi_eixo(altura_util, FRACAO_GLIFO_ALTURA)
         _glifo_equilibrio(painter, cx, cy, rx, ry, cor)
 
 
 def _semi_eixo(dimensao_util: int, fracao: float) -> int:
-    """Semi-eixo do glifo num unico eixo: ``fracao`` da dimensao util do bisel.
-
-    ``dimensao_util`` e a largura ou a altura internas do bisel (ja com a
-    faixa do carimbo e o recuo do contorno descontados). O resultado ainda
-    passa pelo piso/teto absolutos (``RAIO_MIN``/``RAIO_MAX``) para nao
-    colapsar em biseis minusculos nem explodir em biseis gigantes.
-    """
+    """Semi-eixo do glifo num unico eixo: ``fracao`` da dimensao util do bisel,
+    depois o piso/teto absolutos para nao colapsar nem explodir."""
 
     return max(RAIO_MIN, min(RAIO_MAX, round(dimensao_util * fracao / 2)))
 
 
 def _dimensoes_seta(largura_util: int, altura_util: int) -> tuple[int, int]:
-    """Semi-eixos (rx, ry) da seta de COMPRA/VENDA, derivados um do outro.
+    """Semi-eixos (rx, ry) da seta, derivados um do outro.
 
-    Ao contrario de ``_semi_eixo`` (usado por AGUARDAR/NEUTRA, onde largura e
-    altura sao dois raios calibrados de forma independente), a seta e um
-    triangulo isosceles de angulo de apice fixo: a metade da base (``rx``)
-    vem direto de ``FRACAO_SETA_LARGURA`` sobre a largura util do bisel, e a
-    altura decorre dela por ``ANGULO_APICE_SETA_GRAUS`` — nunca um segundo
-    raio calibrado a parte, que deixaria a ponta ora gorda ora fina conforme
-    a proporcao do bisel muda. Sem teto absoluto (``RAIO_MAX``) sobre ``rx``:
-    um teto em pixels fixos e o que faz a seta encolher, em fracao do bisel,
-    justamente nos biseis maiores — o efeito que este ajuste existe para
-    eliminar. Se o resultado nao couber na altura util (bisel baixo demais),
-    os dois eixos sao escalados pelo mesmo fator, preservando o angulo e a
-    proporcao base:altura, em vez de espremer so a altura.
+    Ao contrario de ``_semi_eixo`` (dois raios independentes), a seta e um
+    triangulo isosceles de angulo de apice FIXO: a metade da base vem de
+    ``FRACAO_SETA_LARGURA`` e a altura decorre dela pelo angulo — nunca um
+    segundo raio calibrado a parte, que deixaria a ponta ora gorda ora fina
+    conforme a proporcao do bisel muda. Sem teto em pixels sobre ``rx``: um
+    teto absoluto e o que faz a seta encolher, EM FRACAO do bisel, justamente
+    nos biseis maiores. Se nao couber na altura util, os dois eixos sao
+    escalados pelo mesmo fator, preservando o angulo.
     """
 
     rx = max(RAIO_MIN, round(largura_util * FRACAO_SETA_LARGURA / 2))
     meio_angulo = math.radians(ANGULO_APICE_SETA_GRAUS / 2)
-    altura_total = rx / math.tan(meio_angulo)
-    ry = max(1, round(altura_total / 1.5))
+    ry = max(1, round((rx / math.tan(meio_angulo)) / 1.5))
 
     altura_ocupada = ry + ry // 2
     if altura_util > 0 and altura_ocupada > altura_util:
@@ -362,20 +850,49 @@ def _dimensoes_seta(largura_util: int, altura_util: int) -> tuple[int, int]:
     return rx, ry
 
 
-def _glifo_seta(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor,
-                 *, para_cima: bool) -> None:
-    """Seta solida cheia — unica leitura confirmada de direcao (COMPRA/VENDA)."""
-
+def _pontos_seta(cx: int, cy: int, rx: int, ry: int, *, para_cima: bool) -> QPolygon:
     if para_cima:
-        pontos = [QPoint(cx, cy - ry), QPoint(cx - rx, cy + ry // 2),
-                  QPoint(cx + rx, cy + ry // 2)]
-    else:
-        pontos = [QPoint(cx, cy + ry), QPoint(cx - rx, cy - ry // 2),
-                  QPoint(cx + rx, cy - ry // 2)]
+        return QPolygon([QPoint(cx, cy - ry), QPoint(cx - rx, cy + ry // 2),
+                         QPoint(cx + rx, cy + ry // 2)])
+    return QPolygon([QPoint(cx, cy + ry), QPoint(cx - rx, cy - ry // 2),
+                     QPoint(cx + rx, cy - ry // 2)])
+
+
+def _glifo_seta(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor,
+                *, para_cima: bool) -> None:
+    """Seta EXTRUDADA — unica leitura confirmada de direcao (COMPRA/VENDA).
+
+    Tres camadas deslocadas no eixo da propria seta (para baixo quando ela
+    aponta para cima, e vice-versa): as de tras escurecidas, a da frente na
+    cor cheia, mais a face superior em realce. E a mesma linguagem do prisma
+    3D do MakerProxy na regiao vizinha — o volume vem de camadas de cor, nunca
+    de um contorno duplicado, que leria como erro de registro.
+    """
+
+    # Deslocamento DIAGONAL (para baixo e para a direita), nunca so vertical:
+    # com deslocamento puro no eixo da seta as camadas ficam escondidas atras
+    # da face e so aparecem como uma tarja na aresta reta — leu como erro de
+    # registro na primeira passada, nao como volume. Na diagonal as camadas
+    # aparecem nas DUAS arestas inclinadas, que e o que da o corpo do prisma.
     painter.setPen(Qt.PenStyle.NoPen)
+    for camada in range(CAMADAS_EXTRUSAO, 0, -1):
+        sombra = QColor(cor).darker(150 + 40 * camada)
+        painter.setBrush(sombra)
+        painter.drawPolygon(_pontos_seta(cx + camada * PASSO_EXTRUSAO,
+                                         cy + camada * PASSO_EXTRUSAO,
+                                         rx, ry, para_cima=para_cima))
+
     painter.setBrush(cor)
-    painter.drawPolygon(QPolygon(pontos))
+    face = _pontos_seta(cx, cy, rx, ry, para_cima=para_cima)
+    painter.drawPolygon(face)
+
+    realce = QColor(tema_asg.NEXO_TEXTO)
+    realce.setAlpha(120)
+    painter.setPen(QPen(realce, TRACO_FINO))
     painter.setBrush(Qt.BrushStyle.NoBrush)
+    apice = face[0]
+    painter.drawLine(apice, face[1])
+    painter.drawLine(apice, face[2])
 
 
 def _glifo_losango(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor) -> None:
@@ -383,25 +900,39 @@ def _glifo_losango(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor) -
 
     Vazado e nunca preenchido: e o segundo estado do visor, distinto da seta
     solida da direcao confirmada, para que o visor nunca finja saber uma
-    direcao que ainda nao existe.
+    direcao que ainda nao existe. O preenchimento translucido interno da
+    profundidade sem transformar o vazado em solido.
     """
 
     topo = QPoint(cx, cy - ry)
     base = QPoint(cx, cy + ry)
     esquerda = QPoint(cx - rx, cy)
     direita = QPoint(cx + rx, cy)
-    painter.setPen(QPen(cor, TRACO_GLIFO))
+    poligono = QPolygon([topo, direita, base, esquerda])
+
+    interior = QLinearGradient(0, cy - ry, 0, cy + ry)
+    topo_cor = QColor(cor)
+    topo_cor.setAlpha(52)
+    base_cor = QColor(cor)
+    base_cor.setAlpha(8)
+    interior.setColorAt(0.0, topo_cor)
+    interior.setColorAt(1.0, base_cor)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(interior)
+    painter.drawPolygon(poligono)
+
     painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.drawPolygon(QPolygon([topo, direita, base, esquerda]))
+    painter.setPen(QPen(cor, TRACO_GLIFO))
+    painter.drawPolygon(poligono)
     painter.drawLine(esquerda, direita)
 
 
 def _glifo_equilibrio(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor) -> None:
     """Laco de equilibrio (dois arcos com ponta) — leitura "sem vies, NEUTRA".
 
-    Terceiro estado do visor: nem seta cheia nem losango de espera, e sim um
-    circuito fechado — a mesma leitura de "balanco de preco" sem direcao
-    assumida, sem reciclar a silhueta da seta.
+    Terceiro estado: nem seta cheia nem losango de espera, e sim um circuito
+    fechado — "balanco de preco" sem direcao assumida, sem reciclar a silhueta
+    da seta.
     """
 
     caixa = QRect(cx - rx, cy - ry, rx * 2, ry * 2)
@@ -418,7 +949,8 @@ def _glifo_equilibrio(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor
         painter.save()
         painter.translate(ponta)
         painter.rotate(-ponta_graus + 90)
-        seta = QPolygon([QPoint(0, -raio_ponta // 3), QPoint(-raio_ponta // 4, raio_ponta // 6),
+        seta = QPolygon([QPoint(0, -raio_ponta // 3),
+                         QPoint(-raio_ponta // 4, raio_ponta // 6),
                          QPoint(raio_ponta // 4, raio_ponta // 6)])
         painter.drawPolygon(seta)
         painter.restore()
@@ -430,3 +962,77 @@ def _ponto_elipse(cx: int, cy: int, rx: float, ry: float, graus: float) -> QPoin
 
     rad = math.radians(graus)
     return QPoint(round(cx + rx * math.cos(rad)), round(cy - ry * math.sin(rad)))
+
+
+# ==========================================================================
+# Cartoes de rodape
+# ==========================================================================
+def _desenhar_cartoes(painter: QPainter, rect: QRect, estado: EstadoNexo,
+                      decisao, cor) -> None:
+    """Tres leituras curtas de rodape, cada uma com o que ela E escrito embaixo.
+
+    **Um numero, um sinal.** A cor do cartao REGIME sai de
+    ``_asg._cor_nexo_direcao(estado.regime.direcao)`` — a direcao ja resolvida
+    e conferida como coerente do outro lado da fronteira (ver
+    `EstadoNexo.regime` e `asg._linha_regime`), nunca de um token escolhido
+    aqui. Ate 28/08/2026 este cartao pintava COMPRADOR/VENDEDOR em ciano fixo:
+    a palavra direcional mais destacada da tela fora do eixo de cor do quadro,
+    e o mesmo ciano servindo para os dois lados. Essa recombinacao local de
+    cor+rotulo e exatamente o defeito que ja reincidiu em RITMO e PRESENCA.
+
+    **Discordancia explicada, nunca muda.** O REGIME pode legitimamente
+    apontar para o lado oposto do PLACAR do rodape sem que nenhum dos dois
+    esteja errado: sao janelas diferentes. A terceira linha do cartao publica
+    a procedencia que a propria leitura carrega (`regime.detalhe`, hoje
+    "ESTRUTURA DO DIA") — entao a tela diz de que prazo cada palavra fala em
+    vez de exibir duas palavras brigando sem legenda.
+
+    Quando `estado.regime` e None (montagem antiga/teste), o cartao cai para a
+    linha REGIME do snapshot e sai em cor NEUTRA — jamais numa cor direcional
+    que ele nao pode justificar.
+    """
+
+    regime = estado.regime
+    if regime is None:
+        regime = next((linha for linha in estado.snapshot.matriz.linhas
+                       if linha.componente == "REGIME"), None)
+        cor_regime = tema_asg.NEXO_MUTED
+    else:
+        cor_regime = _asg._cor_nexo_direcao(regime.direcao)
+
+    nota_regime = getattr(regime, "detalhe", "") or "ESTRUTURA DO DIA"
+    cartoes = (
+        ("REGIME", "—" if regime is None else regime.valor, cor_regime, nota_regime),
+        ("CONFIANCA", decisao.confianca.value.replace("CONF ", ""), cor,
+         "DA DECISAO ACIMA"),
+        ("EVIDENCIAS", str(estado.snapshot.evidencias.retidos),
+         tema_asg.NEXO_AMARELO, "ITENS RETIDOS NA TRILHA"),
+    )
+    largura = max(32, (rect.width() + VAO_CARTAO) // len(cartoes) - VAO_CARTAO)
+    for indice, (nome, valor, cor_cartao, nota) in enumerate(cartoes):
+        caixa = QRect(rect.left() + indice * (largura + VAO_CARTAO), rect.top(),
+                      largura, rect.height())
+        # Degrade vertical (claro em cima) e uma linha de acento no topo: o
+        # mesmo vocabulario de luz do visor, para os cartoes lerem como parte
+        # do instrumento e nao como tres retangulos avulsos.
+        fundo = QLinearGradient(0, caixa.top(), 0, caixa.bottom())
+        fundo.setColorAt(0.0, tema_asg.NEXO_PAINEL_ALTO)
+        fundo.setColorAt(1.0, tema_asg.NEXO_PAINEL)
+        painter.fillRect(caixa, fundo)
+        acento = QColor(cor_cartao)
+        acento.setAlpha(150)
+        painter.setPen(QPen(acento, TRACO_FINO))
+        painter.drawLine(caixa.left(), caixa.top(), caixa.right(), caixa.top())
+
+        painter.setFont(tokens.fonte_rotulo(6))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(caixa.adjusted(3, 2, -3, -24),
+                         Qt.AlignmentFlag.AlignCenter, nome)
+        painter.setFont(tokens.fonte_numero(9, QFont.Weight.Bold))
+        painter.setPen(cor_cartao)
+        painter.drawText(caixa.adjusted(3, 11, -3, -11),
+                         Qt.AlignmentFlag.AlignCenter, valor[:12])
+        painter.setFont(tokens.fonte_rotulo(6))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(caixa.adjusted(2, 24, -2, -1),
+                         Qt.AlignmentFlag.AlignCenter, nota[:24])

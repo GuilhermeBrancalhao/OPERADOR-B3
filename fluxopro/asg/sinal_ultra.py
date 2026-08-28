@@ -128,6 +128,49 @@ class SinalUltraSnapshot:
     ligado_desde_ns: int | None
     """`None` quando `direcao is NENHUMA`."""
 
+    pendente_desde_ns: int = 0
+    """Instante em que a confluencia CRUA corrente (`confluencia_no_instante`)
+    passou a valer sem interrupcao. E o cronometro que o motor ja mantinha
+    internamente (`_pendente_desde_ns`) — este campo apenas o **publica**, e
+    nao altera nada de quando o Ultra liga ou desliga.
+
+    Existe porque sem ele a UI nao conseguia distinguir "a confluencia fechou
+    agora" de "a confluencia esta fechada ha 4,8s e falta um piscar para o
+    Ultra ligar" — as duas saiam como o mesmo estado mudo, que e o miolo do
+    "nunca apareceu nada" relatado pelo operador em 26/08/2026. Com
+    `entrada.timestamp_ns - pendente_desde_ns` a tela mostra a barra de
+    confirmacao com numero REAL, nunca estimado.
+
+    `0` antes da primeira chamada de `atualizar`."""
+
+    janela_alvo_ns: int = 0
+    """Quanto tempo a confluencia pendente precisa se manter para causar a
+    PROXIMA transicao, ja escolhida entre as duas metades da histerese
+    assimetrica pelo proprio motor:
+
+    * ``persistencia_minima_ns`` quando o Ultra esta apagado e ha confluencia
+      pendente (esta ARMANDO);
+    * ``tempo_para_desligar_ns`` quando o Ultra esta aceso e a confluencia
+      quebrou ou virou (esta SEGURANDO);
+    * ``0`` quando nao ha transicao pendente — o estado corrente e estavel.
+
+    Quem desenha nao precisa (e nao deve) reimplementar essa escolha: fazer a
+    UI decidir qual das duas janelas se aplica seria uma segunda copia da
+    regra de histerese, que envelheceria em silencio no dia em que o motor
+    mudasse. O motor e quem sabe, entao e o motor quem diz."""
+
+    config: ConfigSinalUltra | None = None
+    """A configuracao DESTA instancia do motor, para que a UI exiba limiar e
+    janela lidos da fonte em vez de redigitados.
+
+    `nucleo.py` mostra "MAKER +0,58 / +0,50" e "JANELA DE 5,0 S": os dois
+    numeros da direita tem de ser os que o motor realmente aplicou. Um
+    `ConfigSinalUltra()` construido do lado da UI acerta por coincidencia
+    enquanto ninguem passar configuracao customizada ao motor, e passa a
+    mentir em silencio no dia em que alguem passar. `ConfigSinalUltra` e
+    frozen, entao publicar a referencia nao abre caminho para a UI mexer no
+    motor."""
+
 
 class MotorSinalUltra:
     """Puro — alimentado por chamada direta (`atualizar`), nunca assina o
@@ -189,4 +232,27 @@ class MotorSinalUltra:
             direcao=self._direcao_atual,
             confluencia_no_instante=alvo,
             ligado_desde_ns=self._ligado_desde_ns,
+            pendente_desde_ns=self._pendente_desde_ns,
+            janela_alvo_ns=self._janela_alvo_ns(),
+            config=self.config,
         )
+
+    def _janela_alvo_ns(self) -> int:
+        """Qual metade da histerese esta correndo agora — LEITURA, nao decisao.
+
+        Chamada DEPOIS que `atualizar` ja resolveu a transicao do quadro, e
+        derivada apenas do estado que ela deixou: nao ha ramo aqui que possa
+        ligar, desligar ou adiar o Ultra. Espelha exatamente as duas
+        comparacoes de `atualizar` (`persistencia_minima_ns` a partir de
+        apagado, `tempo_para_desligar_ns` a partir de aceso) — se um dia essas
+        comparacoes mudarem, este metodo tem de mudar junto, e e por isso que
+        ele mora aqui, ao lado delas, e nao na regiao que desenha.
+        """
+
+        if self._direcao_atual is DirecaoUltra.NENHUMA:
+            if self._direcao_pendente is DirecaoUltra.NENHUMA:
+                return 0
+            return self.config.persistencia_minima_ns
+        if self._direcao_pendente is self._direcao_atual:
+            return 0
+        return self.config.tempo_para_desligar_ns

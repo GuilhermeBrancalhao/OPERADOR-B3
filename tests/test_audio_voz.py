@@ -35,6 +35,52 @@ def test_reversao_direta_nao_e_confundida():
     assert "encerrado" not in texto.lower()
 
 
+def test_anuncio_diz_o_que_o_sinal_reproduz():
+    """O pedido do operador e que a voz fale "o que o sinal acima reproduz",
+    nao apenas o nome do sinal: o texto tem de citar as fontes que
+    concordaram e o que observar."""
+
+    texto = texto_para_transicao_ultra(DirecaoUltra.NENHUMA, DirecaoUltra.COMPRA).lower()
+    assert "renko" in texto
+    assert "maker" in texto
+    assert "observe" in texto
+
+
+def test_anuncio_carrega_a_ressalva_consultiva():
+    """O canal de audio nao pode perder a ressalva que a tela carrega — quem
+    so ouve o painel precisa ouvir que aquilo nao e ordem."""
+
+    for nova in (DirecaoUltra.COMPRA, DirecaoUltra.VENDA):
+        texto = texto_para_transicao_ultra(DirecaoUltra.NENHUMA, nova).lower()
+        assert "nao e ordem" in texto
+
+
+def test_anuncio_nunca_recomenda_execucao():
+    proibidos = ("compre", "entre", "alvo", "stop", "recomend", "lote", "contrato")
+    transicoes = (
+        (DirecaoUltra.NENHUMA, DirecaoUltra.COMPRA),
+        (DirecaoUltra.NENHUMA, DirecaoUltra.VENDA),
+        (DirecaoUltra.COMPRA, DirecaoUltra.NENHUMA),
+        (DirecaoUltra.VENDA, DirecaoUltra.NENHUMA),
+        (DirecaoUltra.COMPRA, DirecaoUltra.VENDA),
+    )
+    for anterior, nova in transicoes:
+        texto = (texto_para_transicao_ultra(anterior, nova) or "").lower()
+        for termo in proibidos:
+            assert termo not in texto, (anterior, nova, termo, texto)
+
+
+def test_encerramento_nomeia_o_lado_que_saiu():
+    """"Sinal Ultra encerrado" sozinho nao diz qual sinal caiu — quem so
+    ouve nao consegue distinguir o fim de uma compra do fim de uma venda."""
+
+    compra = texto_para_transicao_ultra(DirecaoUltra.COMPRA, DirecaoUltra.NENHUMA).lower()
+    venda = texto_para_transicao_ultra(DirecaoUltra.VENDA, DirecaoUltra.NENHUMA).lower()
+    assert "compra" in compra
+    assert "venda" in venda
+    assert compra != venda
+
+
 def test_config_inativa_nunca_sobe_thread():
     """ConfigVoz.ativo=False (o padrao) nao pode criar NENHUMA thread —
     e o que garante que montar o painel em teste/CI nunca dispara audio."""

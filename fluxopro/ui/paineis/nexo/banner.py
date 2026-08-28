@@ -277,21 +277,29 @@ def _desenhar_placa_alerta(
 
 
 def _desenhar_alerta_exaustao(painter: QPainter, rect: QRect, alerta: tuple[str, float]) -> None:
-    """Fluxo extremo e sustentado num sentido — pior preco pra ir contra ele.
+    """Fluxo extremo e sustentado num sentido — nomeia o ESTADO medido.
 
-    Mesma regra de disciplina do 4R (`fluxopro/analytics/renko.py`): nao
-    e ordem, e aviso pra esperar o fluxo enfraquecer ou um pullback antes
-    de considerar o lado oposto.
+    Mesma regra de disciplina do 4R (`fluxopro/analytics/renko.py`), e a
+    mesma leitura: um HORIZONTE saturado num lado e o pior lugar para ir
+    contra ele. A ressalva vive em COMO_LER_OS_INDICADORES.md, secao 9,
+    onde cabe a prosa.
+
+    Ate 28/08 o titulo era "CUIDADO COM COMPRAS AGORA" / "CUIDADO COM
+    VENDAS AGORA" — a maior frase desta metade da tela, imperativa e com
+    "AGORA" dentro, ou seja: momento de operar. O rodape da mesma coluna
+    carimba "NAO E ORDEM · NAO E RECOMENDACAO" e o documento do operador
+    promete o mesmo. O nome do estado diz o que foi medido; o subtitulo ja
+    carrega SUPORTE/RESISTENCIA MAXIMA e o numero do HORIZONTE.
     """
 
     direcao_extrema, magnitude = alerta
     if direcao_extrema == "COMPRA":
         cor = _asg._cor_nexo_direcao(_asg.DirecaoASG.COMPRA)
-        titulo = "CUIDADO COM VENDAS AGORA"
+        titulo = "FLUXO COMPRADOR EXTREMO"
         subtitulo = f"SUPORTE MAXIMO · HORIZONTE {magnitude * 100:+.0f}%"
     else:
         cor = _asg._cor_nexo_direcao(_asg.DirecaoASG.VENDA)
-        titulo = "CUIDADO COM COMPRAS AGORA"
+        titulo = "FLUXO VENDEDOR EXTREMO"
         subtitulo = f"RESISTENCIA MAXIMA · HORIZONTE {magnitude * 100:+.0f}%"
     _desenhar_placa_alerta(painter, rect, cor, "ALERTA", titulo, subtitulo)
 

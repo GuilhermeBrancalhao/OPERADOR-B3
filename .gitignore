@@ -37,6 +37,15 @@ __pycache__/
 # logs de pregao (gerados pela tarefa agendada)
 /logs/
 
+# Retratos intermediarios do gauntlet: sao ~100 PNGs de rodada a rodada, cada um
+# um andaime efemero de uma comparacao contra a barra que ja foi julgada e
+# registrada em .gauntlet_docx/PROGRESSO.md. Mesmo criterio que ja vale para
+# `design/_ab*`. Ficam versionados so os dois que provam a diferenca:
+# `r0_baseline.png` (antes) e `FINAL_sessao.png` (depois).
+/.gauntlet_docx/rodadas/*
+!/.gauntlet_docx/rodadas/r0_baseline.png
+!/.gauntlet_docx/rodadas/FINAL_sessao.png
+
 # banco de aprendizado (dados_aprendizado/asg.db) cresce todo dia, e derivado
 # 100% reconstruivel a partir de dados/ + logs/ — nao versiona binario que so
 # vai divergir a cada `fechar_pregao.py`.

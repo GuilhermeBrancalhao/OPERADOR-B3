@@ -31,19 +31,87 @@ from PySide6.QtCore import QRect
 
 # Nome da regiao -> (x0, y0, x1, y1) em fracao do quadro.
 #
-# Sangria total: a uniao das regioes cobre o quadro de borda a borda. Nao ha
-# vao, margem externa nem moldura entre regioes — a leitura e continua, como a
-# de um terminal de video, e nao uma grade de cartoes.
+# Sangria: a leitura e continua, como a de um terminal de video, e nao uma
+# grade de cartoes — nao ha margem externa nem moldura ENTRE regioes.
+#
+# ATENCAO — este comentario ja afirmou "a uniao das regioes cobre o quadro de
+# borda a borda, sem vao", e isso era FALSO: em 28/08/2026 a medicao acusou
+# 12,1% do quadro sem dono nenhum, incluindo um vao de ~440x216 px no meio da
+# coluna central. Uma declaracao de contrato que o proprio mapa desmente e
+# pior que nenhuma declaracao: ela faz o defeito passar despercebido em toda
+# revisao que confia no texto em vez de medir.
+#
+# O que vale hoje, medido e travado por `test_ui_nexo_vies.py`:
+#
+# * a coluna central (x 0,40-0,63) e coberta de ponta a ponta por
+#   `nucleo` + `vies`, que se encostam em y 0,42 sem vao nem sobreposicao;
+# * o resto do quadro AINDA tem area sem dono, e ela esta enumerada em
+#   `VAOS_SEM_DONO` abaixo. Cada entrada e um defeito conhecido a ser
+#   resolvido pelo dono da regiao vizinha — nao um vao decorativo.
+#
+# Quem mexer no mapa mexe nas DUAS coisas: o retangulo e esta lista.
+VAOS_SEM_DONO: tuple[tuple[str, tuple[float, float, float, float]], ...] = (
+    # (vizinho a quem a faixa naturalmente pertence, (x0, y0, x1, y1))
+    ("contexto", (0.34, 0.00, 0.63, 0.02)),
+    ("contexto", (0.34, 0.02, 0.40, 0.42)),
+    ("contexto/niveis", (0.34, 0.42, 0.40, 0.55)),
+    ("forca/candles", (0.63, 0.22, 1.00, 0.23)),
+    ("candles", (0.98, 0.23, 1.00, 0.85)),
+    ("candles/pressao", (0.62, 0.85, 1.00, 0.86)),
+    ("ladder", (0.00, 0.56, 0.02, 0.65)),
+    ("banner/estatistica", (0.00, 0.78, 0.42, 0.79)),
+)
 REGIOES: dict[str, tuple[float, float, float, float]] = {
-    "ladder": (0.00, 0.00, 0.06, 0.56),
-    "contexto": (0.06, 0.00, 0.34, 0.56),
+    # VAP alargado de 0,06 -> 0,11 do quadro (27/08/2026, pedido do operador:
+    # "o VAP precisa ter um visual mais moderno e completo"). Em 0,06 a regiao
+    # tinha ~115px para preco + barra + agressao: os precos saiam em 6pt e a
+    # barra ficava com menos de 60px, ilegivel no tamanho real. 0,11 (~210px em
+    # 1920) e a menor largura em que cabem, sem sobreposicao, a faixa de preco
+    # em 8pt, a barra dividida por agressao e o numero de volume do nivel.
+    # `contexto` cede o espaco porque a metade direita dela e area vazia de
+    # respiro; nenhuma outra regiao muda.
+    "ladder": (0.00, 0.00, 0.11, 0.56),
+    "contexto": (0.11, 0.00, 0.34, 0.56),
     "niveis": (0.02, 0.55, 0.40, 0.65),
     "banner": (0.00, 0.65, 0.40, 0.78),
     "estatistica": (0.00, 0.79, 0.40, 1.00),
     "nucleo": (0.40, 0.02, 0.63, 0.42),
-    "vies": (0.42, 0.62, 0.62, 1.00),
-    "forca": (0.63, 0.00, 1.00, 0.33),
-    "candles": (0.63, 0.34, 0.98, 0.85),
+    # 28/08/2026 — `vies` foi de (0,42 · 0,62 · 0,62 · 1,00) para colar no
+    # rodape de `nucleo` (y 0,42) e assumir a coluna central inteira
+    # (x 0,40-0,63, a MESMA de `nucleo`).
+    #
+    # O que havia antes: um vao de ~440x216 px sem dono nenhum entre o
+    # rodape do visor e o topo do OPERADOR IA — 94% cor de fundo, o maior
+    # campo morto da tela, e bem na fronteira das duas regioes que o
+    # operador chamou de "feias, muito simples". As duas regioes do par
+    # liam como dois blocos separados por um buraco em vez de um
+    # instrumento so. Contra `bar/02_superdom_a.png` e
+    # `bar/06_medidores_agressao_a.png`, que nao tem um centimetro sem
+    # leitura, o par perdia por causa do vao, nao do conteudo.
+    #
+    # As bordas laterais (0,40 e 0,63) sao as de `nucleo` de proposito: as
+    # duas regioes do par passam a ter a MESMA coluna, entao a fronteira
+    # entre elas e uma linha horizontal limpa e nao um degrau. Isso tambem
+    # fecha as duas tiras de ~38px e ~19px que sobravam ladeando o
+    # OPERADOR IA ate a base do quadro.
+    #
+    # O retangulo de `nucleo` NAO foi tocado.
+    "vies": (0.40, 0.42, 0.63, 1.00),
+    # 28/08/2026 — a caixa do Renko foi ENCOLHIDA de 0,33 para 0,22 e a das
+    # velas cresceu para cima (0,34 -> 0,23). Motivo: desde que o eixo do
+    # Renko passou a compartilhar o px/tick das velas
+    # (`nexo/forca.py`, FATOR_ESCALA_VS_CANDLE), a altura da caixa deixou de
+    # ser uma escolha de composicao e virou uma escolha de QUANTO PRECO a
+    # regiao enquadra. Com 0,33 ela enquadrava ~25 pontos para uma serie de
+    # micro que percorre 3 — 80% de area vazia, medida no retrato.
+    #
+    # Nenhuma vizinha perde: as duas unicas regioes desta coluna sao estas, e
+    # a diferenca inteira vai para `candles`, que tinha dado de sobra para o
+    # espaco (o pregao inteiro em 5M). O grafico de velas ganha ~115px de
+    # altura em 1920x1080, o que por sua vez AUMENTA o px/tick dele — e o
+    # tijolo do Renko acompanha, porque e a mesma escala.
+    "forca": (0.63, 0.00, 1.00, 0.22),
+    "candles": (0.63, 0.23, 0.98, 0.85),
     "pressao": (0.63, 0.86, 1.00, 1.00),
 }
 
@@ -97,6 +165,22 @@ class EstadoNexo:
     tijolos_renko: tuple[object, ...] = ()
     fase_renko: object = None
     alvos_renko: object | None = None
+    escala_candle_px_por_tick: float = 0.0
+    """Pixels por tick do eixo vertical da regiao de VELAS, medido no quadro
+    corrente por `nexo.candles.px_por_tick`.
+
+    Existe para uma coisa so: o Renko (`nexo/forca.py`) desenhar na MESMA
+    escala vertical do grafico logo abaixo. Achado do operador (27/08/2026):
+    "esses renkos precisam ficar em tamanhos proporcionais aos candles
+    abaixo". Medido em 28/08/2026 antes da amarracao: ~44,6 px/pt no Renko
+    contra ~13,7 px/pt no candle — 3,3x, entao o olho comparava amplitudes
+    falsas entre uma regiao e a vizinha.
+
+    Preenchido em `asg.py` no momento do desenho (e o unico ponto que conhece
+    os retangulos das duas regioes); `0.0` significa "ainda sem escala",
+    e quem consome degrada para a propria escala, nunca inventa numero.
+    """
+
     renko_tamanho_ticks: int = 0
     """Tamanho ATUAL do tijolo Renko em ticks (dinamico desde a Fase 1 — ver
     `fluxopro.analytics.renko.Renko.tamanho_tijolo_ticks`). Achado do
@@ -110,6 +194,11 @@ class EstadoNexo:
     """0 = sessao inteira; 5/15 = perfil recortado dos ultimos N minutos."""
     vap_val: int | None = None
     vap_vah: int | None = None
+    vap_volume_total: int = 0
+    """Volume total do perfil VAP ATIVO (sessao inteira quando
+    `vap_timeframe_min == 0`, senao o recorte de 5/15 min). Existe porque
+    `vap_niveis` e truncado nos 120 maiores niveis: somar as tuplas daria um
+    total quase certo e silenciosamente errado. Fonte: `VolumeProfile.volume_total`."""
     risco_volatilidade: float = 0.0
     alerta_exaustao: tuple[str, float] | None = None
     sinal_ultra: object | None = None
@@ -117,6 +206,24 @@ class EstadoNexo:
     Filtro adicional, construido do zero por este projeto — ver docstring de
     sinal_ultra.py. `None` so quando o painel que constroi EstadoNexo nao o
     calcula (compatibilidade com pontos de montagem antigos/testes)."""
+
+    regime: object | None = None
+    """``LinhaMatrizASG`` do REGIME do dia, ja COERENTE — ou None.
+
+    Existe para que a celula REGIME do visor central (`nucleo.py`) nao
+    precise decidir cor por conta propria. Ate 28/08/2026 aquele cartao
+    pintava o valor direcional (COMPRADOR/VENDEDOR) em ciano fixo,
+    independente da direcao: a palavra direcional mais destacada da tela
+    sem o eixo de cor do quadro, e o mesmo ciano significando tambem
+    "regime vendedor" (pendencia ja registrada por escrito em
+    `vies.py`).
+
+    Disciplina desta fronteira — a mesma de `leituras` — **um numero, um
+    sinal**: `regime.direcao`, `regime.forca` e `regime.valor` apontam
+    todos para o mesmo lado (garantido por `asg.leitura_e_coerente`), de
+    modo que quem desenha so precisa consumir
+    ``_asg._cor_nexo_direcao(estado.regime.direcao)`` em vez de escolher
+    um token. `None` quando o snapshot ainda nao tem a linha REGIME."""
 
     candles_timeframe_min: int = 5
     """5 ou 15 — qual agregador de candle esta selecionado (pedido do
@@ -130,6 +237,25 @@ class EstadoNexo:
     tras. `nexo/candles.py` fatia `candles_m15` por isto antes de recortar
     as ultimas N velas visiveis; nunca descarta o candle em si, so a
     janela de exibicao."""
+
+    candles_cursor: tuple[int, int] | None = None
+    """(x, y) do cursor DENTRO da regiao de candles, ou None. Alimenta o
+    crosshair e a leitura O/H/L/C da vela apontada (achado de 28/08/2026: o
+    operador conseguia ampliar a vela mas nao ler o preco dela). E so
+    posicao de mouse: nao entra em calculo, decisao ou gravacao."""
+
+    candles_velas_visiveis: int | None = None
+    """ZOOM DE TEMPO: quantas velas o operador quer ver na janela. `None` =
+    janela do pregao inteiro (o padrao). Vem da roda do mouse sobre o
+    grafico ou do arrasto horizontal sobre a escala de tempo (pedido do
+    operador, 27/08/2026: "eu podendo mexer no grafico na escala
+    arrastando"). `nexo/candles.py` limita entre VELAS_MIN e o pregao."""
+
+    candles_zoom_preco: float = 1.0
+    """ZOOM DE PRECO: fator sobre a faixa de precos visivel, ancorado no
+    centro dela. 1,0 = a faixa das velas cabe inteira; >1 amplia; <1 achata.
+    Vem do arrasto vertical sobre a escala de preco (ou da roda sobre ela).
+    So recorta a exibicao — nao altera candle, tick nem grade."""
 
 
 def retangulos(quadro: QRect) -> dict[str, QRect]:

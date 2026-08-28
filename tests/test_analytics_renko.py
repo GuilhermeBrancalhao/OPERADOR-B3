@@ -139,3 +139,48 @@ def test_retencao_nao_cresce_sem_teto_em_20_mil_eventos():
     assert tamanho_1k <= config.maxlen_tijolos
     assert tamanho_20k <= config.maxlen_tijolos
     assert tamanho_20k == tamanho_1k
+
+
+def test_aquecimento_destrava_tijolo_maior_que_a_amplitude_do_dia():
+    """Defeito de 28/08/2026: impasse de partida.
+
+    O tamanho de partida (4 pontos = 8 ticks no WDO) era maior que TODA a
+    amplitude da sessao real de 27/08 na janela capturada (2,5 pontos = 5
+    ticks). Nenhum tijolo fechava; e como a recalibragem dinamica so rodava
+    ao FECHAR um tijolo, ela nunca rodava. Resultado: a maior regiao do
+    painel ficava literalmente vazia com 519 negocios carregados.
+    """
+    renko = Renko(WDO_GRID, ConfigRenko(tamanho_tijolo_pontos=4.0))
+    assert renko.tamanho_tijolo_ticks == 8  # semente, antes de qualquer preco
+
+    # 200 negocios oscilando dentro de uma faixa de 5 ticks — exatamente o
+    # regime do pregao capturado.
+    base = 100_000
+    for i in range(200):
+        renko.registrar(i, base + (i % 6))
+
+    assert renko.tamanho_tijolo_ticks < 8, "o aquecimento tem de encolher o tijolo"
+    assert renko.tijolos, "com 200 negocios reais a regiao nao pode ficar vazia"
+
+
+def test_piso_do_tijolo_e_um_tick_do_papel_nao_um_numero_de_pontos():
+    """O piso vive em TICKS: em papel de tick fino, piso em pontos era maior
+    que a amplitude inteira e zerava o Renko."""
+    renko = Renko(WDO_GRID, ConfigRenko(tamanho_tijolo_pontos=4.0))
+    for i in range(200):
+        renko.registrar(i, 100_000 + (i % 3))
+    assert renko.tamanho_tijolo_ticks == 1
+
+
+def test_aquecimento_para_assim_que_o_primeiro_tijolo_fecha():
+    """Depois do primeiro fechamento vale so a recalibragem por tijolos —
+    mudar o tamanho a cada negocio quebraria a leitura da fase no meio do
+    movimento."""
+    config = ConfigRenko(tamanho_tijolo_pontos=1.0, recalibrar_a_cada_tijolos=10_000)
+    renko = Renko(WDO_GRID, config)
+    renko.registrar(0, 100_000)
+    renko.registrar(1, 100_002)  # fecha tijolo (1 ponto = 2 ticks)
+    tam = renko.tamanho_tijolo_ticks
+    for i in range(2, 400):
+        renko.registrar(i, 100_002 + (i % 2))
+    assert renko.tamanho_tijolo_ticks == tam
