@@ -22,6 +22,7 @@ centro, cercada por camadas, nunca por um disco fechado.
 from __future__ import annotations
 
 import math
+import re
 
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import (
@@ -208,6 +209,31 @@ def rotulo_regiao(represado_s: float) -> str:
     minutos, segundos = divmod(int(represado_s), 60)
     tempo = f"{minutos}M{segundos:02d}S" if minutos else f"{segundos}S"
     return f"{ROTULO_REGIAO} · AGRESSAO FRACA HA {tempo}"
+
+
+_PERCENTUAL_NA_LINHA = re.compile(r"([+-]\d+)%")
+
+
+def cor_da_linha_ranking(linha: str) -> QColor:
+    """Cor de direcao para UMA linha do ranking "1o/2o/3o" do MakerProxy.
+
+    Achado de 28/08/2026 (auditoria pos-entrega, item 24 do documento): as
+    tres linhas saiam sempre em cinza/branco neutro — nenhuma cor de direcao
+    — enquanto todo o resto da superficie e colorido por lado (verde/rosa).
+    Era a mesma familia de "um numero, um sinal" quebrada numa QUARTA porta
+    que o portao `asg.leitura_e_coerente` nao cobre, porque este texto e
+    string livre (`LinhaMatrizASG.detalhe`), nunca vira uma leitura formal.
+
+    Em vez de inventar um sinal novo, a cor e extraida do MESMO percentual
+    ja impresso na linha (`asg._ranking_componentes_maker`) — nao ha como os
+    dois divergirem, porque so existe uma fonte. Sinal ausente (linha sem
+    percentual, ex. um formato futuro) cai em NEUTRO, nunca em erro.
+    """
+
+    achado = _PERCENTUAL_NA_LINHA.search(linha)
+    if achado is None:
+        return tema_asg.NEXO_MUTED
+    return _asg._cor_nexo_direcao(_asg._direcao_de_score(float(achado.group(1))))
 
 
 def _com_alpha(cor: QColor, alpha: int) -> QColor:
@@ -398,7 +424,8 @@ def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor, ranking_m
         linhas_ranking = linhas_ranking[:linhas_que_cabem]
         painter.setFont(tokens.fonte_numero(8, QFont.Weight.DemiBold))
         for indice, linha in enumerate(linhas_ranking):
-            painter.setPen(tema_asg.NEXO_TEXTO if indice == 0 else tema_asg.NEXO_MUTED)
+            cor_linha = cor_da_linha_ranking(linha)
+            painter.setPen(cor_linha if indice == 0 else _com_alpha(cor_linha, 170))
             painter.drawText(
                 QRect(x_bloco, y_bloco + indice * altura_linha_ranking,
                      largura_bloco, altura_linha_ranking),

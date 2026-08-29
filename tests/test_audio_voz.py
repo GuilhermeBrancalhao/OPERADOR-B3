@@ -1,7 +1,13 @@
 import threading
 
 from fluxopro.asg.sinal_ultra import DirecaoUltra
-from fluxopro.audio.voz import ConfigVoz, LocutorASG, texto_para_transicao_ultra
+from fluxopro.audio.voz import (
+    ConfigVoz,
+    LocutorASG,
+    texto_para_perda_de_alinhamento,
+    texto_para_realinhamento,
+    texto_para_transicao_ultra,
+)
 
 
 def test_sem_transicao_nao_fala():
@@ -102,3 +108,65 @@ def test_volume_invalido_rejeitado():
 
     with pytest.raises(ValueError):
         ConfigVoz(volume=1.5)
+
+
+# --------------------------------------------------------------------------
+# Achado de auditoria (28/08/2026): "a voz nao anuncia a perda de
+# alinhamento do Ultra". Ate aqui so existia `texto_para_transicao_ultra`,
+# que fala em TRANSICAO DE DIRECAO — nunca quando o selo continua aceso do
+# mesmo lado mas a confluencia crua ja quebrou (fase SEGURANDO em
+# `nexo.vies.fase_do_filtro`). As duas funcoes abaixo fecham essa lacuna.
+# --------------------------------------------------------------------------
+
+
+def test_perda_de_alinhamento_avisa_sem_prometer_encerramento_imediato():
+    for direcao in (DirecaoUltra.COMPRA, DirecaoUltra.VENDA):
+        texto = texto_para_perda_de_alinhamento(direcao)
+        assert texto is not None
+        assert "continua aceso" in texto.lower()
+        assert "ja nao concordam" in texto.lower()
+        assert "nao e ordem" in texto.lower()
+
+
+def test_perda_de_alinhamento_nomeia_o_lado_certo():
+    assert "compra" in texto_para_perda_de_alinhamento(DirecaoUltra.COMPRA).lower()
+    assert "venda" in texto_para_perda_de_alinhamento(DirecaoUltra.VENDA).lower()
+
+
+def test_perda_de_alinhamento_sem_direcao_nao_fala():
+    """Nao ha o que "perder" quando o filtro ja nao estava aceso."""
+
+    assert texto_para_perda_de_alinhamento(DirecaoUltra.NENHUMA) is None
+
+
+def test_realinhamento_afirma_concordancia_de_volta():
+    for direcao in (DirecaoUltra.COMPRA, DirecaoUltra.VENDA):
+        texto = texto_para_realinhamento(direcao)
+        assert texto is not None
+        assert "concordar" in texto.lower()
+
+
+def test_realinhamento_sem_direcao_nao_fala():
+    assert texto_para_realinhamento(DirecaoUltra.NENHUMA) is None
+
+
+def test_perda_e_realinhamento_nunca_recomendam_execucao():
+    proibidos = ("compre", "entre", "alvo", "stop", "recomend", "lote", "contrato")
+    for direcao in (DirecaoUltra.COMPRA, DirecaoUltra.VENDA):
+        for texto in (
+            texto_para_perda_de_alinhamento(direcao) or "",
+            texto_para_realinhamento(direcao) or "",
+        ):
+            texto = texto.lower()
+            for termo in proibidos:
+                assert termo not in texto, (direcao, termo, texto)
+
+
+def test_perda_de_alinhamento_e_diferente_do_texto_de_transicao():
+    """As duas nao podem virar a mesma frase — sao eventos diferentes
+    (perder alinhamento nao e a mesma coisa que armar ou encerrar)."""
+
+    for direcao in (DirecaoUltra.COMPRA, DirecaoUltra.VENDA):
+        armado = texto_para_transicao_ultra(DirecaoUltra.NENHUMA, direcao)
+        perdeu = texto_para_perda_de_alinhamento(direcao)
+        assert armado != perdeu

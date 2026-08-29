@@ -155,6 +155,54 @@ def test_o_chip_tambem_desfaz_o_arrasto_lateral(qapp):
     assert painel._candles_velas_visiveis is None
 
 
+def test_rotulo_do_chip_no_estado_combinado_pan_e_zoom(qapp):
+    """Achado de auditoria (28/08/2026): nenhum critico havia verificado o
+    rotulo do chip com PAN e ZOOM ativos ao mesmo tempo — so os dois casos
+    isolados tinham prova. Prova pelo TEXTO pintado, nao pelo estado: com os
+    dois ajustes juntos, o clique desfaz mais do que "voltar ao presente"
+    (tambem restaura a escala de preco), entao o rotulo tem de dizer "AUTO",
+    nunca "AGORA" — palavra que prometeria so posicao."""
+
+    from PySide6.QtGui import QImage, QPainter
+
+    class _Espiao(QPainter):
+        def __init__(self, dispositivo):
+            super().__init__(dispositivo)
+            self.textos: list[str] = []
+
+        def drawText(self, *args):  # noqa: N802 — assinatura do Qt
+            for arg in args:
+                if isinstance(arg, str):
+                    self.textos.append(arg)
+            super().drawText(*args)
+
+    painel = _painel(qapp)
+    caixa = painel._retangulo_candles()
+    centro = caixa.center()
+    painel.mousePressEvent(_EventoFake(centro.x(), centro.y()))
+    painel.mouseMoveEvent(_EventoFake(centro.x() + 300, centro.y()))
+    painel.mouseReleaseEvent(_EventoFake(centro.x() + 300, centro.y()))
+    painel._candles_zoom_preco = 3.0
+    assert painel._candles_offset > 0
+    assert painel._candles_zoom_preco == 3.0
+
+    def textos():
+        imagem = QImage(caixa.right() + 2, caixa.bottom() + 2, QImage.Format.Format_ARGB32)
+        espiao = _Espiao(imagem)
+        modulo_candles.desenhar(espiao, caixa, painel._estado_nexo())
+        espiao.end()
+        return espiao.textos
+
+    pintado = textos()
+    assert any("AUTO" in t for t in pintado), pintado
+    assert not any("AGORA" in t for t in pintado), pintado
+
+    _clicar(painel, _chip(painel).center())
+    assert painel._candles_offset == 0
+    assert painel._candles_zoom_preco == 1.0
+    assert not any("AUTO" in t or "AGORA" in t for t in textos())
+
+
 def test_clique_no_chip_sem_nada_para_desfazer_nao_e_consumido(qapp):
     """Sem ajuste manual o chip nao esta na tela; o clique naquela area nao
     pode virar um controle invisivel — cai no comportamento normal (pan)."""

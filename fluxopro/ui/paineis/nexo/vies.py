@@ -220,15 +220,20 @@ CONFIRMANDO = "confirmando"
 SEM_SINAL = "sem_sinal"
 
 
-def fase_do_filtro(estado: EstadoNexo) -> str:
-    """Em que ponto da histerese o filtro esta neste quadro.
+def fase_do_filtro_de_sinal(ultra: object | None) -> str:
+    """A mesma resolucao de `fase_do_filtro`, mas recebendo so o
+    `SinalUltraSnapshot` — nao o `EstadoNexo` inteiro.
 
-    Ponto unico de resolucao: selo, leitura, narracao e linha do tempo saem
-    todos daqui, para nao existir a chance de uma faixa da regiao dizer
-    "armado" enquanto a vizinha diz "segurando".
+    Existe porque `asg.py` precisa desta fase para decidir quando a VOZ
+    anuncia perda/retomada de alinhamento (achado de auditoria, 28/08/2026:
+    "a voz nao anuncia a perda de alinhamento do Ultra"), e o painel nao tem
+    um `EstadoNexo` pronto no momento em que processa cada quadro — so o
+    snapshot do motor. Construir um `EstadoNexo` inteiro so para chamar esta
+    funcao exigiria preencher 8 campos obrigatorios que nao tem relacao
+    nenhuma com o Ultra. `fase_do_filtro` delega para aqui, entao continua
+    havendo UM SO lugar que decide "armado" vs "segurando".
     """
 
-    ultra = estado.sinal_ultra
     if ultra is None:
         return AUSENTE
     if ultra.direcao is not DirecaoUltra.NENHUMA:
@@ -241,6 +246,17 @@ def fase_do_filtro(estado: EstadoNexo) -> str:
     if ultra.confluencia_no_instante is not DirecaoUltra.NENHUMA:
         return CONFIRMANDO
     return SEM_SINAL
+
+
+def fase_do_filtro(estado: EstadoNexo) -> str:
+    """Em que ponto da histerese o filtro esta neste quadro.
+
+    Ponto unico de resolucao: selo, leitura, narracao e linha do tempo saem
+    todos daqui, para nao existir a chance de uma faixa da regiao dizer
+    "armado" enquanto a vizinha diz "segurando".
+    """
+
+    return fase_do_filtro_de_sinal(estado.sinal_ultra)
 
 
 def _lado(direcao: DirecaoUltra, feminino: bool = False) -> str:
@@ -336,13 +352,21 @@ def observar_agora(estado: EstadoNexo) -> tuple[str, ...]:
 
 
 def narracao_desatualizada(estado: EstadoNexo) -> bool:
-    """`True` quando a ultima frase anunciada ja nao descreve o instante.
+    """`True` quando a fase pede tratamento de AVISO na faixa de narracao,
+    em vez do anuncio normal de "armado".
 
-    Existe por causa do estado ``SEGURANDO``: a frase dita no momento em que
-    o filtro armou afirma alinhamento das fontes, e enquanto a histerese
-    segura o selo essa afirmacao ficou para tras. Repetir a frase sem esta
-    ressalva faria a regiao afirmar, pelo canal da narracao, exatamente o
-    alinhamento que a faixa de leitura acabou de negar.
+    ATE 28/08/2026 (auditoria pos-entrega) isto significava literalmente
+    "a frase mostrada ficou velha": em ``SEGURANDO`` a regiao repetia a
+    frase de ARMADO ("as fontes concordam"), que ja nao era verdade, e esta
+    funcao So existia para acrescentar a ressalva por cima da mentira.
+
+    Desde a correcao (`voz.texto_para_perda_de_alinhamento`, gatilho novo em
+    `asg._atualizar_sinal_ultra`) o locutor passou a falar uma frase PROPRIA
+    para ``SEGURANDO`` — nao mais a de ARMADO — e ``texto_narrado`` a segue.
+    A frase mostrada deixou de ser antiga; continua sendo um AVISO
+    (o selo pode encerrar a qualquer momento), e e por isso que a faixa
+    ainda pede destaque — so que por ser importante agora, nao por estar
+    desatualizada.
     """
 
     return fase_do_filtro(estado) == SEGURANDO
@@ -351,25 +375,29 @@ def narracao_desatualizada(estado: EstadoNexo) -> bool:
 def texto_narrado(estado: EstadoNexo) -> str | None:
     """A frase EXATA que o locutor falou neste estado, ou ``None``.
 
-    Sai de ``voz.texto_para_transicao_ultra`` — a MESMA funcao que alimenta
-    o ``LocutorASG``. Redigir uma segunda versao aqui faria a tela e o audio
-    divergirem em silencio.
+    Sai de ``voz`` — as MESMAS funcoes que alimentam o ``LocutorASG``
+    (`texto_para_transicao_ultra` para ARMADO/encerrado,
+    `texto_para_perda_de_alinhamento` para SEGURANDO). Redigir uma segunda
+    versao aqui faria a tela e o audio divergirem em silencio, que era
+    justamente o defeito antes desta funcao existir.
 
-    Como o locutor so fala em TRANSICAO, o que existe para narrar e a frase
-    da transicao que trouxe o quadro ao estado atual: entrar em COMPRA/VENDA
-    produz o mesmo texto qualquer que fosse o estado anterior (ver
-    ``voz.texto_para_transicao_ultra``), entao a frase abaixo e literalmente
-    a que foi dita quando o filtro armou. Sem filtro aceso nao houve
-    anuncio, e a funcao devolve ``None`` em vez de inventar uma fala.
+    CORRIGIDO em 28/08/2026 (auditoria pos-entrega, "a voz nao anuncia a
+    perda de alinhamento"): antes, em ``SEGURANDO``, esta funcao devolvia a
+    MESMA frase de ARMADO ("as fontes concordam"), porque o locutor ainda
+    nao tinha uma frase propria para esse estado — e a regiao cobria a
+    mentira com a ressalva de ``narracao_desatualizada``. Agora o locutor
+    realmente fala uma frase diferente ao ENTRAR em SEGURANDO, e esta funcao
+    devolve ela — nao mais o texto de ARMADO reciclado.
 
-    Em ``SEGURANDO`` a frase continua sendo a que foi dita — o que muda e
-    que ela deixa de valer para o instante, e ``narracao_desatualizada``
-    manda a faixa dizer isso.
+    Sem filtro aceso nao houve anuncio, e a funcao devolve ``None`` em vez
+    de inventar uma fala.
     """
 
     ultra = estado.sinal_ultra
     if ultra is None or ultra.direcao is DirecaoUltra.NENHUMA:
         return None
+    if fase_do_filtro(estado) == SEGURANDO:
+        return _voz.texto_para_perda_de_alinhamento(ultra.direcao)
     return _voz.texto_para_transicao_ultra(DirecaoUltra.NENHUMA, ultra.direcao)
 
 
@@ -639,10 +667,14 @@ def _desenhar_narracao(painter: QPainter, area: QRect, estado: EstadoNexo,
     ``FLUXOPRO_VOZ=1`` ela foi dita em voz alta; sem, ela e o que teria
     sido dito. Nunca afirma que falou quando o canal esta mudo.
 
-    Em ``SEGURANDO`` a frase e marcada como ANUNCIO ANTERIOR e ganha uma
-    ressalva explicita: ela afirma alinhamento das fontes, e o alinhamento
-    ja caiu. Sem isso a regiao negaria o alinhamento na faixa de leitura e o
-    reafirmaria duas faixas abaixo, pela voz.
+    CORRIGIDO em 28/08/2026: em ``SEGURANDO`` esta faixa reciclava a frase
+    de ARMADO ("as fontes concordam", ja falsa) sob o rotulo "ANUNCIO
+    ANTERIOR" — a unica forma de nao mentir era avisar que a propria frase
+    mostrada estava desatualizada. Agora ``texto_narrado`` devolve a frase
+    NOVA que o locutor realmente fala ao entrar em SEGURANDO
+    (`voz.texto_para_perda_de_alinhamento`), que ja e o aviso em si — nao
+    ha mais nada "anterior" para ressalvar. A faixa continua com destaque
+    (`tokens.ALERT`) por ser importante, nao por estar velha.
     """
 
     frase = texto_narrado(estado)
@@ -654,19 +686,14 @@ def _desenhar_narracao(painter: QPainter, area: QRect, estado: EstadoNexo,
             tema_asg.NEXO_MUTED, tema_asg.NEXO_MUTED, tamanho_corpo=9)
         return
 
-    velha = narracao_desatualizada(estado)
+    aviso = narracao_desatualizada(estado)
     canal = "FALADO" if _VOZ_LIGADA else "VOZ MUDA"
-    titulo = (f"NARRACAO · ANUNCIO ANTERIOR · {canal}" if velha
-              else f"NARRACAO · {canal}")
+    titulo = f"NARRACAO · AVISO · {canal}" if aviso else f"NARRACAO · {canal}"
     corpo = f"“{frase}”"
-    if velha:
-        corpo += ("\n\nEsta frase e do momento em que o filtro acendeu. As "
-                  "condicoes mudaram desde entao — vale a leitura acima, nao "
-                  "o alinhamento que ela afirma.")
 
     _desenhar_bloco_texto(painter, area, titulo, corpo,
-                          tokens.ALERT if velha else cor,
-                          tema_asg.NEXO_MUTED if velha else tema_asg.NEXO_TEXTO,
+                          tokens.ALERT if aviso else cor,
+                          tema_asg.NEXO_TEXTO,
                           tamanho_corpo=9)
 
 

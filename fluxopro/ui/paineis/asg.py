@@ -31,7 +31,13 @@ from fluxopro.asg.sinal_ultra import (
     EntradaSinalUltra,
     MotorSinalUltra,
 )
-from fluxopro.audio.voz import ConfigVoz, LocutorASG, texto_para_transicao_ultra
+from fluxopro.audio.voz import (
+    ConfigVoz,
+    LocutorASG,
+    texto_para_perda_de_alinhamento,
+    texto_para_realinhamento,
+    texto_para_transicao_ultra,
+)
 from fluxopro.analytics.volume_profile import VolumeProfile
 from fluxopro.core.eventos import AgressorSide, PriceGrid, Trade, WDO_GRID
 from fluxopro.ui import formato, tema_asg, tokens
@@ -2069,6 +2075,11 @@ class PainelNexoMercadoASG(_PainelASG):
         self._sinal_ultra = MotorSinalUltra(ConfigSinalUltra())
         self._ultimo_sinal_ultra = None
         self._direcao_ultra_anunciada = DirecaoUltra.NENHUMA
+        # Fase da histerese (ARMADO/SEGURANDO/...) na ultima vez que a voz
+        # olhou pra ela — ver `_atualizar_sinal_ultra`. `AUSENTE` porque
+        # ainda nao ha `SinalUltraSnapshot` no primeiro quadro, mesmo valor
+        # que `nexo.vies.fase_do_filtro_de_sinal(None)` devolveria.
+        self._fase_ultra_anunciada = "ausente"
         # Ver docstring de `_VOZ_ATIVA_POR_PADRAO` — desligado por padrao.
         self._locutor = LocutorASG(ConfigVoz(ativo=_VOZ_ATIVA_POR_PADRAO))
 
@@ -2128,10 +2139,28 @@ class PainelNexoMercadoASG(_PainelASG):
             )
         )
         nova_direcao = self._ultimo_sinal_ultra.direcao
+        fase_agora = nexo.modulo("vies").fase_do_filtro_de_sinal(self._ultimo_sinal_ultra)
         if nova_direcao is not self._direcao_ultra_anunciada:
+            # Transicao de DIRECAO (armou/encerrou) sempre manda no texto —
+            # o "armado" ja afirma "as fontes concordam", entao a fase deste
+            # mesmo instante fica batizada como ja anunciada, sem narrar
+            # separadamente (evita falar duas vezes na mesma virada).
             texto = texto_para_transicao_ultra(self._direcao_ultra_anunciada, nova_direcao)
             self._locutor.falar(texto)
             self._direcao_ultra_anunciada = nova_direcao
+            self._fase_ultra_anunciada = fase_agora
+        elif fase_agora != self._fase_ultra_anunciada:
+            # Achado de auditoria (28/08/2026): "a voz nao anuncia a perda
+            # de alinhamento do Ultra". A direcao nao mudou (o selo continua
+            # aceso do mesmo lado) mas a fase da histerese sim — e o visor
+            # central e o OPERADOR IA ja mostram essa mudanca na tela (ver
+            # `nexo/nucleo.py` e `nexo/vies.py`); so a voz ficava muda.
+            _vies = nexo.modulo("vies")
+            if fase_agora == _vies.SEGURANDO:
+                self._locutor.falar(texto_para_perda_de_alinhamento(nova_direcao))
+            elif fase_agora == _vies.ARMADO and self._fase_ultra_anunciada == _vies.SEGURANDO:
+                self._locutor.falar(texto_para_realinhamento(nova_direcao))
+            self._fase_ultra_anunciada = fase_agora
 
     def aplicar_mercado(self, retrato: Instantaneo) -> None:
         negocios = tuple(retrato.novos_trades)
@@ -3395,9 +3424,22 @@ def _ranking_componentes_maker(maker: object, top_n: int = 3) -> str:
     linhas = []
     for posicao, comp in enumerate(ordenados[:top_n], start=1):
         nome = str(getattr(comp, "componente", "?"))
-        pontuacao = float(getattr(comp, "pontuacao", 0.0))
+        # `_sem_zero_negativo`: achado de 28/08/2026 (auditoria pos-entrega) —
+        # esta linha usava `pontuacao` crua, entao um componente exatamente
+        # zero podia imprimir "-0%" (o mesmo defeito que ja saiu do
+        # EQUILIBRIO/PRESENCA/RITMO nesta sessao, so que renascido aqui,
+        # numa quarta porta que o portao `leitura_e_coerente` nao cobre
+        # porque este texto nunca vira LinhaMatrizASG, so string livre).
+        pontuacao = _sem_zero_negativo(float(getattr(comp, "pontuacao", 0.0)))
         giro = int(getattr(comp, "n_evidencias", 0))
-        linhas.append(f"{posicao}o {nome}  {pontuacao * 100:+.0f}%  giro {giro}")
+        # `_sem_zero_negativo` so zera o que JA e zero no float bruto — nao
+        # cobre o caso irmao, achado pelo proprio teste desta correcao: um
+        # score real e nao-zero (ex. -0,001, VENDA de verdade) que ARREDONDA
+        # para "0" na casa exibida (`:+.0f`) e sai como "-0%" mesmo assim.
+        # Aqui o corte e no valor JA ARREDONDADO, nao no bruto.
+        percentual = round(pontuacao * 100)
+        texto_percentual = "+0%" if percentual == 0 else f"{percentual:+d}%"
+        linhas.append(f"{posicao}o {nome}  {texto_percentual}  giro {giro}")
     # Uma linha por posicao — nao uma so string espremida — porque uma
     # unica linha de ~5px era, na pratica, ilegivel (achado do operador
     # olhando o app ao vivo: "onde esta os makers?" com o texto la, so que

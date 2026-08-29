@@ -371,10 +371,11 @@ def test_selo_em_segurando_nao_usa_a_cor_do_lado():
     assert cor != tokens.PALETA_COR.compra
 
 
-def test_narracao_em_segurando_e_marcada_como_desatualizada():
-    """A frase dita ao armar afirma alinhamento. Repeti-la sem ressalva
-    faria a regiao negar o alinhamento numa faixa e reafirma-lo na
-    seguinte, pelo canal da voz."""
+def test_narracao_em_segurando_pede_destaque_de_aviso():
+    """CORRIGIDO em 28/08/2026: antes, `narracao_desatualizada` sinalizava
+    que a frase mostrada em SEGURANDO era a de ARMADO reciclada (mentira).
+    Agora a frase e propria de SEGURANDO e ja e o aviso — a faixa continua
+    pedindo destaque, so que por importancia, nao por estar velha."""
 
     assert vies.narracao_desatualizada(_estado_segurando())
     assert not vies.narracao_desatualizada(_estado_armado())
@@ -386,8 +387,12 @@ def test_a_voz_afirma_alinhamento_apenas_quando_ele_existe():
 
     frase_armado = vies.texto_narrado(_estado_armado())
     assert "concordam" in frase_armado.lower()
-    # Em SEGURANDO a mesma frase existe, mas nunca sem a ressalva.
-    assert vies.narracao_desatualizada(_estado_segurando())
+    # CORRIGIDO em 28/08/2026 ("a voz nao anuncia a perda de alinhamento"):
+    # em SEGURANDO o locutor fala uma frase PROPRIA (nao mais a de ARMADO
+    # reciclada) que NEGA o alinhamento em vez de afirma-lo.
+    frase_segurando = vies.texto_narrado(_estado_segurando())
+    assert "ja nao concordam" in frase_segurando.lower()
+    assert frase_segurando != frase_armado
 
 
 def test_tempo_aceso_nao_e_inventado_sem_base():

@@ -51,6 +51,8 @@ __all__ = [
     "ConfigVoz",
     "LocutorASG",
     "texto_para_transicao_ultra",
+    "texto_para_perda_de_alinhamento",
+    "texto_para_realinhamento",
 ]
 
 
@@ -101,6 +103,46 @@ def texto_para_transicao_ultra(anterior: DirecaoUltra, nova: DirecaoUltra) -> st
             "o painel voltou a leitura sem sinal."
         )
     return None
+
+
+def texto_para_perda_de_alinhamento(direcao: DirecaoUltra) -> str | None:
+    """Achado de auditoria pos-entrega (28/08/2026): "a voz nao anuncia a
+    perda de alinhamento do Ultra". Ate aqui o locutor so falava em
+    TRANSICAO DE DIRECAO (`texto_para_transicao_ultra`); o selo podia
+    continuar aceso so pela histerese, com a confluencia crua ja quebrada
+    (fase ``SEGURANDO`` em ``fluxopro.ui.paineis.nexo.vies.fase_do_filtro``)
+    — o visor central e o OPERADOR IA ja mostravam isso na tela, mas quem so
+    ouvia continuava achando que as tres fontes seguiam concordando.
+
+    Mesma direcao do sinal que ja estava aceso: isto NUNCA e uma transicao
+    de compra/venda, e por isso e uma funcao separada de
+    `texto_para_transicao_ultra` — misturar os dois faria este caso
+    competir por texto com o "armado"/"encerrado", que sao eventos
+    diferentes. `direcao=NENHUMA` devolve `None`: nao ha o que "perder"
+    quando o filtro ja nao estava aceso.
+    """
+
+    if direcao not in (DirecaoUltra.COMPRA, DirecaoUltra.VENDA):
+        return None
+    lado = "compra" if direcao is DirecaoUltra.COMPRA else "venda"
+    return (
+        f"Atencao: o sinal ultra de {lado} continua aceso, mas as fontes "
+        "ja nao concordam neste instante. Ele segue por histerese e pode "
+        "encerrar em breve. Leitura consultiva, nao e ordem."
+    )
+
+
+def texto_para_realinhamento(direcao: DirecaoUltra) -> str | None:
+    """Contraparte de `texto_para_perda_de_alinhamento`: as fontes voltaram
+    a concordar antes da histerese desarmar o selo. Existe pela mesma
+    simetria que levou este projeto a distinguir ARMADO de SEGURANDO na
+    tela — sem ela, o operador que so ouve nunca saberia que o aviso de
+    "atencao" anterior deixou de valer."""
+
+    if direcao not in (DirecaoUltra.COMPRA, DirecaoUltra.VENDA):
+        return None
+    lado = "compra" if direcao is DirecaoUltra.COMPRA else "venda"
+    return f"As fontes voltaram a concordar. Sinal Ultra de {lado} realinhado."
 
 
 _ITEM_ENCERRAR = object()
