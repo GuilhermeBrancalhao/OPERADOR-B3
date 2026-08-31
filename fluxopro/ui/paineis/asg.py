@@ -2679,12 +2679,6 @@ class WorkspaceASG(QWidget):
         self.decisao.aplicar(snapshot.decisao)
         self.evidencias.aplicar(snapshot.evidencias)
 
-    @property
-    def snapshot(self) -> WorkspaceASGSnapshot | None:
-        """Retrato coerente atualmente exibido pelos consumidores ASG."""
-
-        return self._snapshot
-
     def aplicar_mercado(self, retrato: Instantaneo) -> None:
         """Distribui um unico retrato da ponte aos tres paineis reais."""
 
