@@ -1188,6 +1188,23 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
             for indice in range(3):
                 alturas[indice] += (-excesso) // 3
 
+        # 31/08/2026 — "O QUE OBSERVAR AGORA" e a NARRACAO cederam o espaco
+        # para a ANALISE DE MERCADO do Claude (pedido do operador: "uma
+        # interpretacao geral do mercado e uma analise explicando conforme
+        # os dados que a interface oferece").
+        #
+        # Os dois blocos aposentados diziam SEMPRE a mesma coisa enquanto o
+        # filtro Ultra estivesse apagado — que e a maior parte do pregao,
+        # por construcao do proprio filtro: "Nenhum alinhamento agora..." e
+        # "Sem anuncio: o locutor so fala quando o filtro muda de estado".
+        # Dois blocos de texto fixo ocupando 2/3 da altura util da regiao.
+        #
+        # "O QUE ESTE SINAL DIZ" fica: ele explica o FILTRO (por que o Ultra
+        # esta ou nao aceso), que e uma pergunta diferente da leitura de
+        # mercado e nao sai do lado esquerdo da tela.
+        from fluxopro.ui.paineis.nexo import analise as _analise_ui
+
+        altura_analise = alturas[1] + alturas[2] + VAO_BLOCO
         _desenhar_bloco_texto(
             painter, QRect(x, y, largura, alturas[0]),
             "O QUE ESTE SINAL DIZ", " ".join(leitura_do_sinal(estado)),
@@ -1195,15 +1212,10 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         )
         y += alturas[0] + VAO_BLOCO
 
-        _desenhar_bloco_texto(
-            painter, QRect(x, y, largura, alturas[1]),
-            "O QUE OBSERVAR AGORA", " ".join(observar_agora(estado)),
-            tema_asg.NEXO_MUTED, tema_asg.NEXO_TEXTO,
+        _analise_ui.desenhar_analise(
+            painter, QRect(x, y, largura, altura_analise),
+            getattr(estado, "analise_ia", None),
         )
-        y += alturas[1] + VAO_BLOCO
-
-        _desenhar_narracao(painter, QRect(x, y, largura, alturas[2]),
-                           estado, cor_selo)
 
     # 5. Rodape — vies do quadro em texto+glifo (a leitura nao pode depender
     # so do canal de cor) e a ressalva permanente de que nada aqui e ordem.

@@ -280,6 +280,13 @@ class EstadoNexo:
     calcula (compatibilidade com pontos de montagem antigos/testes)."""
 
     sr_snapshot: object | None = None
+    analise_ia: object | None = None
+    """Pacote da analise consultiva do Claude:
+    ``(EstadoAnalise, AnaliseMercado | None, motivo, idade_s)``, publicado
+    por `PainelNexoMercadoASG._pacote_analise`. `None` quando a analise
+    esta desligada (`FLUXOPRO_ANALISE_IA=0`). A chamada ao CLI acontece
+    numa thread propria (ver `fluxopro/analytics/analise_claude.py`) — este
+    campo carrega so o ULTIMO resultado ja pronto, nunca uma promessa."""
     """``SuporteResistenciaSnapshot`` (fluxopro.analytics.suporte_resistencia)
     do quadro, ou None. Motor construido do zero por este projeto a partir
     de `INSTRUCOES_CLAUDE_SUPORTE_RESISTENCIA.md` (pasta Codex, trazido pelo
