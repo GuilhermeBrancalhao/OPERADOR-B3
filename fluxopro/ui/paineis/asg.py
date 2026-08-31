@@ -2891,7 +2891,8 @@ class PainelNexoMercadoASG(_PainelASG):
             return
         pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
         quadro = QRect(0, 0, self.width(), max(1, self.height() - nexo.ALTURA_RESSALVA))
-        caixa = nexo.retangulos(quadro).get("estatistica")
+        from fluxopro.ui.paineis.nexo import assistente
+        caixa = assistente.caixas_integradas(quadro).get("estatistica")
         if caixa is None or not caixa.contains(pos):
             QToolTip.hideText()
             return

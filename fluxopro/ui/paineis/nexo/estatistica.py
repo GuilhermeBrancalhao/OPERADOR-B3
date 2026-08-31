@@ -436,9 +436,9 @@ def _cor_forca(forca: float):
     nao inventa paleta nova para a tira de barras.
     """
 
-    if forca > 0.05:
+    if forca >= 0.05:
         return _asg._cor_nexo_direcao(_asg.DirecaoASG.COMPRA)
-    if forca < -0.05:
+    if forca <= -0.05:
         return _asg._cor_nexo_direcao(_asg.DirecaoASG.VENDA)
     return _asg._cor_nexo_direcao(_asg.DirecaoASG.NEUTRA)
 
@@ -554,7 +554,9 @@ def texto_tooltip(rect: QRect, pos: QPoint, estado: EstadoNexo) -> str | None:
         "FORÇA OBSERVADA\n"
         "Cada posição é uma leitura cronológica da força composta.\n"
         "Acima da linha = compra · abaixo = venda.\n"
-        "Altura e quantidade de raios = intensidade; cor = direção.\n"
+        "Pilhas separadas de 0 a 5 raios = intensidade; cor = direcao.\n"
+        "Zero abaixo de 5%; 1 ate 20%, 2 ate 40%, 3 ate 60%, 4 ate 80%, 5 acima de 80%.\n"
+        "Percentual exato no cabecalho; altura em degraus. Nao e probabilidade.\n"
         "A série é histórica e não representa uma nova decisão."
     )
 
@@ -724,14 +726,14 @@ def _desenhar_placar(painter: QPainter, caixa: QRect, rotulo: str, peso: float,
 # Ordem no contorno, para que o raio continue legível mesmo quando a coluna
 # fica estreita (o poligono anterior se cruzava e acabava parecendo uma linha).
 _PONTOS_RAIO_UNITARIOS = (
-    (0.62, 0.00), (0.12, 0.48), (0.40, 0.48),
-    (0.08, 1.00), (0.78, 0.34), (0.50, 0.34),
+    (0.46, 0.00), (1.00, 0.00), (0.63, 0.40), (0.96, 0.40),
+    (0.12, 1.00), (0.36, 0.58), (0.00, 0.58),
 )
 
 
 def _poligono_raio(caixa: QRect, invertido: bool) -> QPolygon:
-    largura = max(1, caixa.width())
-    altura = max(1, caixa.height())
+    largura = max(0, caixa.width() - 1)
+    altura = max(0, caixa.height() - 1)
     pontos = []
     for ux, uy in _PONTOS_RAIO_UNITARIOS:
         y = (1.0 - uy) if invertido else uy
@@ -768,152 +770,117 @@ def _texto_periodo(segundos: float) -> str:
     return f"{segundos / 60:.0f} min"
 
 
+def caixas_pilha_raios(area: QRect, coluna: int, colunas: int, forca: float) -> tuple[QRect, ...]:
+    """Simbolos separados verticalmente; nenhuma multiplicacao ocupa a largura.
+
+    A altura passa a ser quantizada em 1..5 niveis. O percentual continuo e
+    mostrado no cabecalho; a formula da forca e seu limitador nao mudam.
+    """
+    quantidade = quantidade_raios_forca(forca)
+    if not quantidade or area.width() < colunas * 3 or area.height() < 24:
+        return ()
+    x0 = area.left() + coluna * area.width() // colunas
+    x1 = area.left() + (coluna + 1) * area.width() // colunas
+    largura = max(1, min(10, x1 - x0 - 1))
+    meio = area.center().y()
+    metade = min(meio - area.top(), area.bottom() - meio) - 2
+    vao = 2 if metade >= 28 else 1
+    altura = max(1, min(12, (metade - 4 * vao) // 5))
+    x = x0 + (x1 - x0 - largura) // 2
+    caixas = []
+    for indice in range(quantidade):
+        deslocamento = 2 + indice * (altura + vao)
+        y = meio - deslocamento - altura if forca > 0 else meio + deslocamento
+        caixas.append(QRect(x, y, largura, altura))
+    return tuple(caixas)
+
+
 def _desenhar_barras(painter: QPainter, rect: QRect,
                      serie: tuple[tuple[int, int, float, int], ...]) -> None:
-    """Tira de raios da forca observada, direto de ``estado.serie``.
+    """Historico cronologico com pilhas de 0..5 raios realmente separados.
 
-    Sem amostra o bloco declara ``SEM HISTORICO DE FORCA`` em vez de
-    desenhar barras inventadas — a mesma regra de estado honesto que vale
-    para book ausente no replay MT5.
-
-    Duas correcoes desta rodada, as duas medidas antes de escritas (evidencia
-    em ``.gauntlet_docx/rodadas/p9_serie.csv``, replay real de 2026-08-28):
-
-    * **a tira mostrava 24 copias do mesmo numero.** A forca de
-      ``estado.serie`` e um escalar por SNAPSHOT carimbado em cada negocio
-      (ver ``leituras_distintas``): patamar mediano de 32 amostras contra uma
-      janela visivel de 24. Agora cada raio e uma LEITURA distinta;
-    * **a media movel de 5 era inerte.** Com patamar de 32 amostras, a janela
-      de 5 vivia inteira DENTRO do patamar: ela nao suavizava o degrau, so
-      alisava o que ja era constante. No lugar dela entra um teto de variacao
-      medido da propria serie (``TETO_EM_SIGMAS``), que limita a TAXA em vez
-      de diluir o valor.
-
-    O rotulo e a legenda continuam em faixas reservadas, fora da area onde os
-    raios desenham — nunca por baixo de um raio (correcao da rodada anterior,
-    preservada).
+    Mantem deduplicacao, limitador por segundo e ultimas 24 leituras. Em
+    larguras extremas o rodape declara o subconjunto visivel. A quantidade
+    codifica a intensidade em degraus; nao muda o score publicado.
     """
-
+    painter.save()
+    painter.setClipRect(rect, Qt.ClipOperation.IntersectClip)
     painter.setPen(tema_asg.NEXO_GRADE)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.drawRect(rect.adjusted(0, 0, -1, -1))
 
+    def texto(caixa, conteudo, tamanho=8, cor=tema_asg.NEXO_MUTED):
+        painter.setFont(tokens.fonte_rotulo(tamanho))
+        painter.setPen(cor)
+        painter.drawText(caixa, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                         conteudo)
+
+    texto(QRect(rect.left() + 5, rect.top() + 2, rect.width() - 10, 14),
+          "FORÇA OBSERVADA", 9)
     if not serie:
-        painter.setFont(tokens.fonte_rotulo(7))
-        painter.setPen(tema_asg.NEXO_MUTED)
-        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "SEM HISTORICO DE FORCA")
+        texto(rect.adjusted(5, 18, -5, -4), "SEM HISTÓRICO", 8)
+        painter.restore()
         return
 
-    painter.setFont(tokens.fonte_rotulo(7))
-    painter.setPen(tema_asg.NEXO_MUTED)
-    painter.drawText(rect.adjusted(6, 3, -6, 0),
-                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
-                     "FORÇA OBSERVADA · 0–5 RAIOS = INTENSIDADE")
-
-    # Uma leitura por MUDANCA observada, e o teto medido sobre a serie
-    # INTEIRA (nunca so a janela visivel) — a primeira leitura visivel ja
-    # nasce com historico. So depois recorta as ultimas 24.
     leituras = leituras_distintas(serie)
     teto = teto_por_segundo(leituras)
     limitadas = suavizar_por_taxa(leituras, teto)
-    visiveis = leituras[-24:]
+    altura_cabecalho = 36
+    altura_rodape = 26
+    area = rect.adjusted(5, altura_cabecalho, -5, -altura_rodape)
+    capacidade = max(1, min(24, area.width() // 4))
+    visiveis = leituras[-capacidade:]
     exibidas = limitadas[-len(visiveis):]
+    atual = exibidas[-1]
+    quantidade = quantidade_raios_forca(atual)
+    lado = "COMPRA" if atual > 0 else "VENDA"
+    if quantidade == 0:
+        lado = "NEUTRO"
+    if rect.width() < 140:
+        lado = {"COMPRA": "C", "VENDA": "V", "NEUTRO": "N"}[lado]
+    percentual = f"{atual * 100:+.1f}%".replace(".", ",")
+    texto(QRect(rect.left() + 5, rect.top() + 17, rect.width() - 10, 15),
+          f"{lado} {percentual} · {quantidade}/5", 9, _cor_forca(atual))
+    meio = area.center().y()
+    metade = max(1, min(meio - area.top(), area.bottom() - meio) - 2)
+    limitou = any(abs(bruto - valor) > .01 for valor, (_, bruto) in zip(exibidas, visiveis)) and teto > 0
+
+    if area.height() >= 24 and area.width() >= len(exibidas) * 3:
+        # Linha de zero separa compra/venda; cada coluna continua sendo UMA
+        # leitura. Pilhas crescem para fora do eixo, sem formas coladas.
+        painter.setPen(QPen(tema_asg.NEXO_MUTED, 1))
+        painter.drawLine(area.left(), meio, area.right(), meio)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+        for indice, (valor, (_, bruto)) in enumerate(zip(exibidas, visiveis)):
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(_cor_forca(valor))
+            for caixa in caixas_pilha_raios(area, indice, len(exibidas), valor):
+                painter.drawPolygon(_poligono_raio(caixa, valor > 0))
+            # Marca crua ocupa a borda do slot, nao se funde com os raios.
+            if teto > 0 and abs(bruto - valor) > .01:
+                x = area.left() + (indice + 1) * area.width() // len(exibidas) - 1
+                y = meio - round(max(-1.0, min(1.0, bruto)) * metade)
+                painter.setPen(_cor_forca(bruto))
+                painter.drawPoint(x, y)
+    else:
+        texto(area, "AMPLIE O PAINEL", 8)
+
     periodo = periodo_coberto_s(visiveis)
-
-    faixa_grafico = QRect(rect.left(), rect.top() + ALTURA_ROTULO_BARRAS, rect.width(),
-                          max(10, rect.height() - ALTURA_ROTULO_BARRAS - ALTURA_LEGENDA_BARRAS))
-    area = faixa_grafico.adjusted(3, 1, -3, -1)
-    vao = 2
-    n = max(1, len(exibidas))
-    # A coluna pode chegar a poucos pixels no layout compacto. Nao aumentar
-    # artificialmente a coluna: o intervalo entre leituras e parte da escala
-    # temporal e nao pode ser sacrificado para esconder raios.
-    largura_barra = max(1, (area.width() - (n - 1) * vao) // n)
-    meio_y = area.center().y()
-    metade = max(4, area.height() // 2 - 2)
-
-    def _altura(valor: float) -> int:
-        # O valor continua governando a amplitude, mas uma leitura fraca não
-        # desaparece no painel compacto. A escala mínima é visual, não altera
-        # o score nem a procedência do snapshot.
-        magnitude = min(1.0, abs(valor))
-        return max(9, round((0.22 + 0.78 * magnitude) * metade))
-
-    limitou = False
-    x = area.left()
-    for forca, (_carimbo, bruto) in zip(exibidas, visiveis):
-        cor = _cor_forca(forca)
-        altura = _altura(forca)
-        quantidade = quantidade_raios_forca(forca)
-        if quantidade == 0:
-            x += largura_barra + vao
-            continue
-        # A quantidade calculada precisa ser a quantidade desenhada. Quando o
-        # slot nao comporta espacamento, os raios encostam sem desaparecer;
-        # ainda sao silhuetas individuais, contaveis e auditaveis.
-        quantidade_renderizada = quantidade
-        vao_raios = 1 if largura_barra >= quantidade * 2 - 1 else 0
-        largura_raio = max(1, (largura_barra - (quantidade_renderizada - 1) * vao_raios)
-                            // quantidade_renderizada)
-        if forca >= 0:
-            invertido = True
-        else:
-            invertido = False
-        # Preenchimento + contorno deixa a silhueta legível em slots estreitos
-        # e preserva a separação visual entre leituras consecutivas.
-        caneta_raio = QPen(cor.lighter(145))
-        caneta_raio.setWidth(1)
-        painter.setPen(caneta_raio)
-        painter.setBrush(cor)
-        for indice in range(quantidade_renderizada):
-            x_raio = x + indice * (largura_raio + vao_raios)
-            y_raio = meio_y - altura if forca >= 0 else meio_y
-            caixa_raio = QRect(x_raio, y_raio, largura_raio, altura)
-            painter.drawPolygon(_poligono_raio(caixa_raio, invertido))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        # Marca do custo: enquanto a leitura persegue um alvo maior que o
-        # teto, um tracinho na altura do valor CRU mostra para onde ela esta
-        # indo. Suavizar aqui nao pode esconder virada — o operador ve o
-        # alvo, nao so o valor freado.
-        if teto > 0 and abs(bruto - forca) > 0.01:
-            altura_bruta = _altura(bruto)
-            y_bruto = meio_y - altura_bruta if bruto >= 0 else meio_y + altura_bruta
-            y_bruto = max(area.top(), min(area.bottom(), y_bruto))
-            caneta_alvo = QPen(_cor_forca(bruto))
-            caneta_alvo.setWidth(1)
-            # Tracejada de proposito: linha cheia da mesma cor seria lida
-            # como MAIS UM raio. Tracejada le como "alvo", nao como leitura.
-            caneta_alvo.setStyle(Qt.PenStyle.DotLine)
-            painter.setPen(caneta_alvo)
-            painter.drawLine(x, y_bruto, x + largura_barra, y_bruto)
-            limitou = True
-        x += largura_barra + vao
-
-    caneta_eixo = QPen(tema_asg.NEXO_MUTED)
-    caneta_eixo.setWidth(2)
-    painter.setPen(caneta_eixo)
-    painter.drawLine(area.left(), meio_y, area.right(), meio_y)
-
-    # A legenda imprime o teto MEDIDO, em % da escala: e a "estatistica em
-    # que podemos nos basear" visivel na tela, nao so na docstring.
-    # A legenda declara as TRES coisas que a tira afirma: quantas leituras,
-    # sobre QUANTO TEMPO (lacuna da rodada 1 — sem periodo, "constantemente"
-    # nao e verificavel e o mesmo elemento representa 12 s numa hora e 48 s
-    # noutra) e o teto medido, ja em unidade de tempo.
     plural = "LEITURA" if len(visiveis) == 1 else "LEITURAS"
     legenda = f"{len(visiveis)} {plural}"
+    if capacidade < min(24, len(leituras)):
+        legenda += f"/{min(24, len(leituras))}"
     if periodo > 0:
         legenda += f" · {_texto_periodo(periodo)}"
     if teto > 0:
-        legenda += f" · TETO {teto * 100:.0f}%/s (1σ)"
+        taxa = teto * 100
+        taxa_texto = ("<0,01" if taxa < .01 else
+                      f"{taxa:.2f}".replace(".", ",") if taxa < 1 else f"{taxa:.0f}")
+        legenda += f"\nTETO {taxa_texto}%/s (1σ)"
         if limitou:
             legenda += " · LIMITADO"
     else:
-        legenda += " · SEM TETO (AMOSTRA CURTA)"
-    painter.setFont(tokens.fonte_rotulo(6))
-    painter.setPen(tema_asg.NEXO_MUTED)
-    painter.drawText(QRect(rect.left(), faixa_grafico.bottom(), rect.width() - 6,
-                          ALTURA_LEGENDA_BARRAS),
-                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                     legenda)
-
-
+        legenda += "\nSEM TETO (AMOSTRA CURTA)"
+    texto(QRect(rect.left() + 4, rect.bottom() - altura_rodape + 1,
+                rect.width() - 8, altura_rodape), legenda, 7)
+    painter.restore()

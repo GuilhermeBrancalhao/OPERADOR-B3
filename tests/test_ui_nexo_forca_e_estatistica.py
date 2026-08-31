@@ -11,7 +11,7 @@ import re
 
 import pytest
 from PySide6.QtCore import QRect
-from PySide6.QtGui import QPainter, QPixmap
+from PySide6.QtGui import QColor, QPainter, QPixmap
 
 from fluxopro.analytics.renko import FaseRenko
 from fluxopro.core.eventos import WDO_GRID
@@ -149,6 +149,57 @@ def test_desenho_nao_corta_raios_calculados(qapp, monkeypatch):
     assert len(chamadas) == 11
 
 
+@pytest.mark.parametrize("sinal", [1, -1])
+@pytest.mark.parametrize("magnitude,esperado", [
+    (0., 0), (.049, 0), (.05, 1), (.1, 1), (.3, 2), (.5, 3), (.7, 4), (.9, 5),
+])
+def test_pixels_tem_um_simbolo_separado_por_nivel(qapp, sinal, magnitude, esperado):
+    """Conta bandas de pixels coloridos, nao chamadas: detecta raios colados."""
+    pixmap = QPixmap(212, 185)
+    pixmap.fill(QColor("black"))
+    p = QPainter(pixmap)
+    estatistica._desenhar_barras(p, pixmap.rect(), _serie([sinal * magnitude]))
+    p.end()
+    imagem = pixmap.toImage()
+    bandas = 0
+    anterior = False
+    for y in range(36, 185 - 26):
+        acesa = False
+        for x in range(5, 212 - 5):
+            c = imagem.pixelColor(x, y)
+            if sinal > 0:
+                acesa |= c.green() > 150 and c.red() < 90 and c.blue() < c.green()
+            else:
+                acesa |= c.red() > 150 and c.green() < 90 and c.blue() < c.red()
+        if acesa and not anterior:
+            bandas += 1
+        anterior = acesa
+    assert bandas == esperado
+
+
+@pytest.mark.parametrize("largura,altura", [(160, 140), (212, 185), (300, 200)])
+def test_24_pilhas_nao_se_tocam_nem_invadem_vizinhas(qapp, monkeypatch, largura, altura):
+    caixas = []
+    original = estatistica._poligono_raio
+
+    def capturar(caixa, invertido):
+        poligono = original(caixa, invertido)
+        assert caixa.contains(poligono.boundingRect())
+        caixas.append(QRect(caixa))
+        return poligono
+
+    monkeypatch.setattr(estatistica, "_poligono_raio", capturar)
+    pixmap = QPixmap(largura, altura)
+    pixmap.fill(QColor("black"))
+    p = QPainter(pixmap)
+    estatistica._desenhar_barras(p, pixmap.rect(), _serie([.91, .92] * 12))
+    p.end()
+    assert len(caixas) == 120
+    for indice, caixa in enumerate(caixas):
+        assert pixmap.rect().contains(caixa)
+        assert all(not caixa.intersects(outra) for outra in caixas[indice + 1:])
+
+
 def test_legenda_declara_o_periodo_coberto(qapp):
     """LACUNA DA RODADA 1: a tira afirmava sequencia sem dizer sobre quanto
     tempo. O periodo tem de aparecer escrito, e mudar quando o tape muda de
@@ -180,6 +231,14 @@ def test_teto_por_segundo_e_medido_e_nao_cravado():
         _leituras([0.1 * (-1) ** i for i in range(40)], passo_s=0.5)
     )
     assert rapido == pytest.approx(2 * pequeno, rel=1e-6)
+
+
+@pytest.mark.parametrize("passo", [1000., 1_000_000.])
+def test_teto_positivo_pequeno_nao_e_rotulado_como_zero(qapp, passo):
+    textos = _textos_desenhados(_serie([.4, -.4] * 15, passo_s=passo))
+    legenda = next(t for t in textos if re.match(r"^\d+ LEITURAS?", t))
+    assert "TETO 0%/s" not in legenda
+    assert "TETO 0," in legenda or "TETO <0,01" in legenda
 
 
 def test_sem_amostra_suficiente_nao_ha_teto_e_o_cru_passa():

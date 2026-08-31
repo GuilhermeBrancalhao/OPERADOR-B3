@@ -418,6 +418,21 @@ def test_f6_area_clicavel_abre_dialogo_real(cenario, qapp):
     assert painel._dialogo_nexo_ai is not None and painel._dialogo_nexo_ai.isVisible()
 
 
+def test_tooltip_dos_raios_usa_regiao_real_do_compositor(cenario, qapp, monkeypatch):
+    from PySide6.QtWidgets import QToolTip
+    janela, _, _ = cenario
+    painel = janela.asg.nexo
+    regiao = assistente.caixas_integradas(quadro_painel(painel))["estatistica"]
+    pos = regiao.topRight()
+    pos.setX(pos.x() - 10)
+    pos.setY(pos.y() + 35)
+    textos = []
+    monkeypatch.setattr(QToolTip, "showText", lambda *args: textos.append(args[1]))
+    QTest.mouseMove(painel, pos)
+    qapp.processEvents()
+    assert textos and "Pilhas separadas" in textos[-1]
+
+
 def test_f7_preserva_objetos_candles_renko_snapshot_e_pixels_direitos(cenario, qapp):
     janela, sessao, _ = cenario
     historia = enriquecer_historia(janela, sessao)
