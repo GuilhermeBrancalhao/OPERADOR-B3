@@ -2000,7 +2000,7 @@ class PainelNexoMercadoASG(_PainelASG):
         self._atalho_nexo_classico = QShortcut(QKeySequence("F7"), self)
         self._atalho_nexo_classico.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self._atalho_nexo_classico.activated.connect(self._alternar_nexo_ai)
-        self.setAccessibleName("Operador B3 · NEXO AI. F6 detalhes; F7 composição clássica.")
+        self.setAccessibleName("Operador B3. F6 detalhes; F7 composição clássica.")
         self._snapshot = WorkspaceASGSnapshot(
             0,
             DadosASGSnapshot(0),
@@ -2577,13 +2577,13 @@ class PainelNexoMercadoASG(_PainelASG):
         # captura congelada; não mantém ponte para feed nem temporizador.
         if self._dialogo_nexo_ai is None:
             dialogo = QDialog(self)
-            dialogo.setWindowTitle("NEXO AI · Procedência e condições · snapshot congelado")
+            dialogo.setWindowTitle("Operador B3 · Procedência e condições · snapshot congelado")
             dialogo.resize(780, 600)
             layout = QVBoxLayout(dialogo)
             texto = QPlainTextEdit(dialogo)
             texto.setReadOnly(True)
             texto.setObjectName("nexo_ai_auditoria")
-            texto.setAccessibleName("Dados e condições do snapshot NEXO AI")
+            texto.setAccessibleName("Dados e condições do snapshot Operador B3")
             layout.addWidget(texto)
             self._dialogo_nexo_ai = dialogo
         texto = self._dialogo_nexo_ai.findChild(QPlainTextEdit, "nexo_ai_auditoria")

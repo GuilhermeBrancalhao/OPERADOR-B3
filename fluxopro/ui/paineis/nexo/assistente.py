@@ -289,7 +289,7 @@ def desenhar(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
 def _desenhar_conteudo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if rect.width() < 160 or rect.height() < 350:
-        _texto(p, rect, "NEXO AI · AMPLIE O PAINEL", 11, centro=True)
+        _texto(p, rect, "OPERADOR B3 · AMPLIE O PAINEL", 11, centro=True)
         return
     p.save()
     try:
@@ -300,7 +300,7 @@ def _desenhar_conteudo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         caixas = retangulos_internos(rect)
         modelo = compor(estado)
         _quadro(p, caixas["moldura"])
-        _texto(p, caixas["titulo"], "NEXO AI", 23, CIANO, True, True)
+        _texto(p, caixas["titulo"], "OPERADOR B3", 23, CIANO, True, True)
 
         # A arte aprovada é cenografia; o movimento adicional só usa o
         # timestamp congelado. Não há QTimer, thread ou chamada de modelo.
@@ -423,7 +423,7 @@ def desenhar_resumo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         if estado.risco_volatilidade >= nucleo.LIMIAR_ALTO_RISCO_VOL:
             alertas.append("VOLATILIDADE ALTA · PROXY")
         _texto(p, QRect(rect.left() + 8, rect.top() + 23, rect.width() - 16, 18),
-               " · ".join(alertas) if alertas else "CONDIÇÕES DETALHADAS NO NEXO AI [F6]", 10,
+               " · ".join(alertas) if alertas else "CONDIÇÕES DETALHADAS NO OPERADOR B3 [F6]", 10,
                AMBAR if alertas else CIANO)
         _texto(p, QRect(rect.left() + 8, rect.bottom() - 20, rect.width() - 16, 18),
                f"{modelo.procedencia} · {modelo.formula} · CONSULTIVO", 9, SECUNDARIO)
@@ -434,8 +434,8 @@ def desenhar_resumo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 def texto_auditoria(estado: EstadoNexo) -> str:
     m = compor(estado)
     if estado.snapshot is None:
-        return "NEXO AI — SEM DADOS\nNenhum snapshot recebido. Sem confirmação e sem envio de ordens."
-    linhas = ["NEXO AI — SNAPSHOT CONGELADO", f"Versão visual: {VERSAO}",
+        return "OPERADOR B3 — SEM DADOS\nNenhum snapshot recebido. Sem confirmação e sem envio de ordens."
+    linhas = ["OPERADOR B3 — SNAPSHOT CONGELADO", f"Versão visual: {VERSAO}",
               f"Timestamp: {m.timestamp_ns} ns", f"Fonte: {m.fonte}",
               f"Feed: {m.estado_feed} | confiança categórica: {m.confianca_feed}",
               f"Decisão: {m.titulo} | {m.fase}", f"Motivo: {m.motivo}",
