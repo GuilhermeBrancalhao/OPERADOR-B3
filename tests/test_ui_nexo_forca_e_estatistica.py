@@ -128,6 +128,27 @@ def test_quantidade_de_raios_cresce_com_a_forca_e_preserva_o_sinal():
     assert estatistica.quantidade_raios_forca(-0.6) == 3
 
 
+def test_desenho_nao_corta_raios_calculados(qapp, monkeypatch):
+    """O renderer deve desenhar 1+2+3+5 silhuetas, sem teto visual em 3."""
+    chamadas = []
+    original = estatistica._poligono_raio
+
+    def espiao(caixa, invertido):
+        chamadas.append(caixa)
+        return original(caixa, invertido)
+
+    monkeypatch.setattr(estatistica, "_poligono_raio", espiao)
+    pixmap = QPixmap(240, 120)
+    painter = QPainter(pixmap)
+    try:
+        estatistica._desenhar_barras(
+            painter, QRect(0, 0, 240, 120), _serie((0.1, 0.3, 0.6, 1.0)),
+        )
+    finally:
+        painter.end()
+    assert len(chamadas) == 11
+
+
 def test_legenda_declara_o_periodo_coberto(qapp):
     """LACUNA DA RODADA 1: a tira afirmava sequencia sem dizer sobre quanto
     tempo. O periodo tem de aparecer escrito, e mudar quando o tape muda de

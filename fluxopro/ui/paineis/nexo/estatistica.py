@@ -807,7 +807,7 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(rect.adjusted(6, 3, -6, 0),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
-                     "FORÇA OBSERVADA")
+                     "FORÇA OBSERVADA · 0–5 RAIOS = INTENSIDADE")
 
     # Uma leitura por MUDANCA observada, e o teto medido sobre a serie
     # INTEIRA (nunca so a janela visivel) — a primeira leitura visivel ja
@@ -824,7 +824,10 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
     area = faixa_grafico.adjusted(3, 1, -3, -1)
     vao = 2
     n = max(1, len(exibidas))
-    largura_barra = max(2, (area.width() - (n - 1) * vao) // n)
+    # A coluna pode chegar a poucos pixels no layout compacto. Nao aumentar
+    # artificialmente a coluna: o intervalo entre leituras e parte da escala
+    # temporal e nao pode ser sacrificado para esconder raios.
+    largura_barra = max(1, (area.width() - (n - 1) * vao) // n)
     meio_y = area.center().y()
     metade = max(4, area.height() // 2 - 2)
 
@@ -844,13 +847,12 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
         if quantidade == 0:
             x += largura_barra + vao
             continue
-        # Em 24 leituras, cinco raios em cada slot ficariam com 1–2 px e
-        # pareceriam uma barra lisa. Mantemos a função 0..5 e renderizamos até
-        # três silhuetas legíveis por leitura; a quantidade original continua
-        # determinando a intensidade e pode ser auditada no snapshot.
-        quantidade_renderizada = min(3, quantidade)
-        vao_raios = 1
-        largura_raio = max(2, (largura_barra - (quantidade_renderizada - 1) * vao_raios)
+        # A quantidade calculada precisa ser a quantidade desenhada. Quando o
+        # slot nao comporta espacamento, os raios encostam sem desaparecer;
+        # ainda sao silhuetas individuais, contaveis e auditaveis.
+        quantidade_renderizada = quantidade
+        vao_raios = 1 if largura_barra >= quantidade * 2 - 1 else 0
+        largura_raio = max(1, (largura_barra - (quantidade_renderizada - 1) * vao_raios)
                             // quantidade_renderizada)
         if forca >= 0:
             invertido = True
