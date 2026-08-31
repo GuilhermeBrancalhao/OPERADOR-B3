@@ -589,7 +589,9 @@ def test_ctrl_5_e_retorno_ao_fluxo_preservam_tamanho_da_janela(qapp) -> None:
 def test_retrato_workspaces_respeita_1480x900_e_docas_historicas(qapp) -> None:
     from fluxopro.ui.janela import JanelaFluxo
     from fluxopro.ui.ponte import PonteFluxo
-    from fluxopro.ui.workspace import WORKSPACES_DE_FABRICA, WORKSPACES_DISPONIVEIS
+    from fluxopro.ui.workspace import (
+        WORKSPACE_NEXO_AI, WORKSPACES_DE_FABRICA, WORKSPACES_DISPONIVEIS,
+    )
 
     barramento = Barramento()
     config = _config_asg()
@@ -611,8 +613,11 @@ def test_retrato_workspaces_respeita_1480x900_e_docas_historicas(qapp) -> None:
                     chave for chave, doca in janela.docas.items() if doca.isVisible()
                 }
                 assert visiveis == set(workspace.docas)
+            elif workspace is WORKSPACE_NEXO_AI:
+                assert janela._area_operacional.currentWidget() is janela.nexo_ai
             else:
                 assert janela._area_operacional.currentWidget() is janela.asg
+            if workspace not in WORKSPACES_DE_FABRICA:
                 assert not any(doca.isVisible() for doca in janela.docas.values())
     finally:
         janela.close()

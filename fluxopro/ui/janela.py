@@ -134,6 +134,7 @@ from fluxopro.ui.paineis.asg import (
     cor_estado as cor_estado_asg,
     rotulo_estado as rotulo_estado_asg,
 )
+from fluxopro.ui.paineis.nexo_ai_vertical import PainelNexoAIVertical
 from fluxopro.ui.paineis.delta_acumulado import PainelDeltaAcumulado, derivar_delta
 from fluxopro.ui.paineis.footprint import PainelFootprint, derivar_footprint
 from fluxopro.ui.paineis.metodo import PainelMetodo
@@ -1514,6 +1515,7 @@ class JanelaFluxo(QMainWindow):
         )
         self._area_operacional.addWidget(self._host)
         self._area_operacional.addWidget(self.asg)
+        self._area_operacional.addWidget(self.nexo_ai)
 
         self.tarja_replay = TarjaReplay()
         self.tarja_replay.instalar_em(self)
@@ -1631,6 +1633,7 @@ class JanelaFluxo(QMainWindow):
             paleta=p, grid=self.grid, symbol=self.simbolo, densidade=d,
             timeframe_ns=self.config.timeframe_ns,
         )
+        self.nexo_ai = PainelNexoAIVertical(simbolo=self.simbolo)
 
         self.controles_replay = ControlesReplay(densidade=d)
         self.controles_replay.buscou.connect(self._ao_buscar_replay)
@@ -1800,7 +1803,8 @@ class JanelaFluxo(QMainWindow):
         # em 1280x720. Os quatro workspaces historicos continuam usando
         # exatamente ``alvo.docas`` e o estado canonico congelado.
         eh_asg = alvo.nome_exibicao == "OPERADOR B3"
-        if eh_asg:
+        eh_nexo_ai = alvo.nome_exibicao == "NEXO AI"
+        if eh_asg or eh_nexo_ai:
             # O stack ASG so pode ficar visivel depois de receber o retrato
             # mais recente. Se a sessao ainda nao produziu um, o construtor
             # ja deixou um quadro AGUARDANDO legivel em vez de uma area vazia.
@@ -1810,10 +1814,12 @@ class JanelaFluxo(QMainWindow):
                 self._ultimo_instantaneo,
                 self._estado_operacional_asg if eh_asg else None,
             )
-        visiveis = set() if eh_asg else set(alvo.docas)
+        visiveis = set() if (eh_asg or eh_nexo_ai) else set(alvo.docas)
         for chave, doca in self.docas.items():
             doca.setVisible(chave in visiveis)
-        self._area_operacional.setCurrentWidget(self.asg if eh_asg else self._host)
+        self._area_operacional.setCurrentWidget(
+            self.nexo_ai if eh_nexo_ai else self.asg if eh_asg else self._host
+        )
         if eh_asg:
             # ``setCurrentWidget`` resolve a geometria final dos filhos e
             # invalida backings calculados enquanto a pagina estava oculta.
@@ -1822,12 +1828,13 @@ class JanelaFluxo(QMainWindow):
             self.asg.layout().activate()
             for painel in self.asg.todos_paineis:
                 painel._quadro()
-        self.trilho.setVisible(not eh_asg)
+        self.trilho.setVisible(not (eh_asg or eh_nexo_ai))
         self._workspace = alvo
         self.setWindowTitle(
+            f"NEXO AI — Operador B3 — {self.simbolo}"
+            if eh_nexo_ai else
             f"Operador B3 — NEXO consultivo — {self.simbolo}"
-            if alvo.nome_exibicao == "OPERADOR B3"
-            else f"FluxoPro — {self.simbolo}"
+            if eh_asg else f"FluxoPro — {self.simbolo}"
         )
         self._sincronizar_trilho()
         # Trocar workspace nunca e autorizacao para alterar a geometria da
@@ -1982,7 +1989,9 @@ class JanelaFluxo(QMainWindow):
         estado = self._host.saveState()
         visiveis = {c for c, dc in self.docas.items() if dc.isVisible()}
         asg_antigo = self.asg
+        nexo_ai_antigo = self.nexo_ai
         asg_ativo = self._workspace.nome_exibicao == "OPERADOR B3"
+        nexo_ai_ativo = self._workspace.nome_exibicao == "NEXO AI"
         antigos = [
             painel
             for chave, painel in self._paineis.items()
@@ -1995,7 +2004,7 @@ class JanelaFluxo(QMainWindow):
             painel.parar_relogio()
 
         self._montar_paineis(preservados=preservados)
-        if asg_ativo:
+        if asg_ativo or nexo_ai_ativo:
             self._hidratar_asg(self._ultimo_instantaneo)
         for chave, doca in self.docas.items():
             if chave == "asg":
@@ -2004,7 +2013,11 @@ class JanelaFluxo(QMainWindow):
                 doca.setWidget(self._paineis[chave])
         self._area_operacional.removeWidget(asg_antigo)
         self._area_operacional.addWidget(self.asg)
-        self._area_operacional.setCurrentWidget(self.asg if asg_ativo else self._host)
+        self._area_operacional.removeWidget(nexo_ai_antigo)
+        self._area_operacional.addWidget(self.nexo_ai)
+        self._area_operacional.setCurrentWidget(
+            self.nexo_ai if nexo_ai_ativo else self.asg if asg_ativo else self._host
+        )
         for painel in antigos:
             painel.setParent(None)
             painel.deleteLater()
@@ -2319,9 +2332,15 @@ class JanelaFluxo(QMainWindow):
     def _aplicar_asg(self, instantaneo: Instantaneo) -> EstadoASG | None:
         """Atualiza o workspace ASG visivel com o retrato unico do quadro."""
 
-        if "asg" not in self._workspace.docas:
+        if self._workspace.nome_exibicao not in {"OPERADOR B3", "NEXO AI"}:
             return None
-        return self._hidratar_asg(instantaneo) or self._estado_operacional_asg
+        if self._workspace.nome_exibicao == "NEXO AI":
+            self.nexo_ai.aplicar_mercado(instantaneo)
+        estado = self._hidratar_asg(instantaneo) or self._estado_operacional_asg
+        if self._workspace.nome_exibicao == "NEXO AI" and self.asg.snapshot is not None:
+            self.nexo_ai.aplicar(self.asg.snapshot)
+            self.nexo_ai.aplicar_mercado(instantaneo)
+        return estado
 
     def _aplicar_estado_global(
         self,

@@ -115,6 +115,7 @@ TITULO_DA_DOCA: dict[str, str] = {
     # A chave ``asg`` é uma ABI interna/persistida; a identidade exibida é
     # própria e não sugere vínculo, reprodução ou licença de terceiro.
     "asg": "OPERADOR B3 · NEXO",
+    "nexo_ai": "NEXO AI · PAINEL VERTICAL",
     "replay": "REPLAY",
     "trilha": "TRILHA DE EVENTOS",
 }
@@ -210,9 +211,17 @@ WORKSPACE_ASG = Workspace(
     "delta", "asg", "trilha"),
     "OPERADOR B3",
 )
+WORKSPACE_NEXO_AI = Workspace(
+    "NEXO AI",
+    6,
+    "painel vertical com núcleo, gráfico e três cartões de leitura",
+    (),
+    "NEXO AI",
+)
 WORKSPACES_DISPONIVEIS: tuple[Workspace, ...] = (
     *WORKSPACES_DE_FABRICA,
     WORKSPACE_ASG,
+    WORKSPACE_NEXO_AI,
 )
 NOMES_DISPONIVEIS: tuple[str, ...] = tuple(w.nome for w in WORKSPACES_DISPONIVEIS)
 NOMES_DE_ENTRADA: tuple[str, ...] = tuple(w.nome_exibicao for w in WORKSPACES_DISPONIVEIS)
