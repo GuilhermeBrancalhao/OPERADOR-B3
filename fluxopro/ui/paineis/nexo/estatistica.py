@@ -478,7 +478,12 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
                          "SEM LEITURA DERIVADA · AGUARDANDO SNAPSHOT")
         return
 
-    altura_resumo = max(46, round(corpo.height() * 0.60))
+    # 31/08/2026: 0,60 para o resumo deixava ~40% para o selo de S/R, e o
+    # selo tinha de caber titulo + alerta + micro/macro + as REGIOES com
+    # preco. Com as zonas na tela (correcao do dia) a faixa de baixo passa
+    # a carregar a informacao que o operador de fato usa, e fica com a
+    # metade maior.
+    altura_resumo = max(44, round(corpo.height() * 0.46))
     linha_resumo = QRect(corpo.left(), corpo.top(), corpo.width(), altura_resumo)
     linha_selo_sr = QRect(corpo.left(), linha_resumo.bottom() + VAO_LINHA, corpo.width(),
                           max(20, corpo.height() - altura_resumo - VAO_LINHA))

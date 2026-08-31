@@ -2092,12 +2092,26 @@ class PainelNexoMercadoASG(_PainelASG):
         # por isso vive aqui — um por painel, nunca recriado por quadro.
         self._motor_sr = MotorSuporteResistencia(stream_id="nexo")
         self._sr_sequencia = 0
+        # A sequencia dos motores conta EVENTO (snapshot novo), nunca
+        # QUADRO. Ate 31/08/2026 ela incrementava a cada `desenhar()` —
+        # 60 vezes por segundo — enquanto o `event_id` derivava do
+        # timestamp do snapshot, que muda MUITO mais devagar. Efeito
+        # medido no app real: o cache devolvia cedo sem registrar a
+        # sequencia, e quando enfim chegava um timestamp novo a sequencia
+        # tinha "saltado" ~20 posicoes; o motor lia isso como GAP, entrava
+        # em RECOVERING e o gap seguinte zerava o contador de recuperacao.
+        # Resultado: 128 de 138 quadros presos em RECOVERING e dominancia
+        # 100% INDISPONIVEL. Guardar o ultimo timestamp e so avancar a
+        # sequencia quando ele muda faz sequencia e event_id andarem
+        # juntos, que e a premissa do motor.
+        self._sr_ultimo_ts = -1
         # Dominância Comprador/Vendedor
         # (fluxopro/analytics/dominancia.py) — motor irmão do de Suporte/
         # Resistência, construído a partir de
         # INSTRUCOES_CLAUDE_DOMINANCIA_COMPRADOR_VENDEDOR.md (pasta Codex).
         self._motor_dominancia = MotorDominancia(stream_id="nexo")
         self._dominancia_sequencia = 0
+        self._dominancia_ultimo_ts = -1  # ver comentario em `_sr_ultimo_ts`
 
     def _calcular_sr_snapshot(self, estado_parcial: nexo.EstadoNexo):
         """Roda o motor de Suporte/Resistencia sobre o `EstadoNexo` do
@@ -2113,8 +2127,11 @@ class PainelNexoMercadoASG(_PainelASG):
         from fluxopro.ui.paineis.nexo import suporte_resistencia as nexo_sr
 
         entrada = nexo_sr.construir_entrada_sr(estado_parcial)
-        self._sr_sequencia += 1
         timestamp_ns = max(1, int(self._snapshot.timestamp_ns))
+        # Sequencia por EVENTO, nunca por quadro — ver `_sr_ultimo_ts`.
+        if timestamp_ns != self._sr_ultimo_ts:
+            self._sr_sequencia += 1
+            self._sr_ultimo_ts = timestamp_ns
         # REPLAY nao tem "atraso de parede" que signifique alguma coisa —
         # timestamps historicos comparados contra o relogio real dariam
         # idade de dias. So em AO_VIVO o relogio de parede mede staleness
@@ -2141,8 +2158,11 @@ class PainelNexoMercadoASG(_PainelASG):
         from fluxopro.ui.paineis.nexo import dominancia as nexo_dominancia
 
         entrada = nexo_dominancia.construir_entrada_dominancia(estado_parcial)
-        self._dominancia_sequencia += 1
         timestamp_ns = max(1, int(self._snapshot.timestamp_ns))
+        # Sequencia por EVENTO, nunca por quadro — ver `_sr_ultimo_ts`.
+        if timestamp_ns != self._dominancia_ultimo_ts:
+            self._dominancia_sequencia += 1
+            self._dominancia_ultimo_ts = timestamp_ns
         em_replay = getattr(self._snapshot, "estado_operacional", None) is EstadoASG.REPLAY
         agora_ns = timestamp_ns if em_replay else time.time_ns()
         idade_ms = 0.0 if em_replay else max(0.0, (agora_ns - timestamp_ns) / 1_000_000.0)

@@ -142,14 +142,53 @@ def angulo_macro(normalizado_macro: float) -> float:
 
 
 def contragiro(normalizado_micro: float, normalizado_macro: float) -> tuple[float, float]:
-    """``(delta_graus, normalizado)`` — a relação angular entre os dois
-    horizontes (seção 5). Leitura visual, nunca ordem nem estratégia: dois
-    horizontes que apontam para o mesmo lado giram "juntos" (delta pequeno);
-    horizontes discordantes abrem um delta grande, o que a cena chama de
-    contra-giro."""
+    """``(delta_graus, normalizado)`` — separação angular entre as duas
+    PONTAS DESENHADAS, na cena de arcos contra-rotativos.
+
+    ATENÇÃO ao que este número **não** é (defeito corrigido em
+    31/08/2026): como o arco MACRO contra-rotaciona por construção, esta
+    medida é máxima quando os horizontes CONCORDAM e vale ~0° quando eles
+    se opõem. Medido: ``contragiro(+1, +1) = -82,0°`` e
+    ``contragiro(+1, -1) = 0,0°``. É uma grandeza de LAYOUT (onde as duas
+    pontas caem na tela), útil para desenhar, e foi exibida por engano
+    como se fosse divergência — um operador lendo "CONTRA-GIRO +0,0°" com
+    micro +1,00 e macro -1,00 entendia "horizontes alinhados" no exato
+    momento da oposição máxima.
+
+    Para a leitura de divergência use `divergencia_horizontes`.
+    """
 
     delta = wrap180(angulo_micro(normalizado_micro) - angulo_macro(normalizado_macro))
     return delta, clamp(delta / AMPLITUDE_ARCO_GRAUS)
+
+
+def divergencia_horizontes(normalizado_micro: float,
+                           normalizado_macro: float) -> tuple[float, float]:
+    """``(delta_graus, normalizado)`` — o quanto MICRO e MACRO discordam.
+
+    Mede os dois horizontes na MESMA escala angular (a do micro), sem a
+    contra-rotação de cena, então:
+
+    * ``+1`` e ``+1`` (concordam)  -> ``0,0°``
+    * ``+1`` e ``-1`` (opostos)    -> ``-278,0°`` (amplitude cheia)
+    * o sinal diz QUEM está mais comprado: positivo = macro acima do
+      micro, negativo = micro acima do macro.
+
+    **Sem `wrap180` de propósito.** Divergência é uma grandeza LINEAR em
+    ``[-2, +2]`` (a distância entre dois normalizados), não um ângulo
+    circular. Como a amplitude da cena (278°) passa de 180°, envolver
+    quebraria a monotonicidade justamente nos extremos: medido antes da
+    correção, uma diferença de -1,0 dava -139° e a diferença MÁXIMA de
+    -2,0 dava +82° — magnitude menor e sinal trocado no pior caso, que é
+    exatamente o caso em que o operador mais precisa do número.
+
+    É a grandeza que a tela imprime; `contragiro` continua sendo o que
+    posiciona os desenhos.
+    """
+
+    diferenca = clamp(normalizado_macro, -1.0, 1.0) - clamp(normalizado_micro, -1.0, 1.0)
+    delta = (AMPLITUDE_ARCO_GRAUS / 2.0) * diferenca
+    return delta, clamp(diferenca / 2.0)
 
 
 def comprimento_aceso(normalizado: float) -> float:

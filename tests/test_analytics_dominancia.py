@@ -193,6 +193,20 @@ def _processar(motor, seq, ts, sinal_micro, sinal_macro, qualidade=0.95, confian
     )
 
 
+def test_modo_replay_chega_ao_snapshot_vivo_sem_excecao():
+    """Regressao: `Saude(EstadoFeed.REPLAY, ...)` nao existe no enum
+    compartilhado (`suporte_resistencia.EstadoFeed` so tem LIVE/STALE/GAP/
+    UNAVAILABLE/RECOVERING) e derrubava toda leitura ao vivo no app real,
+    porque nenhum teste ate aqui chamava `_processar(..., modo="REPLAY")`
+    passando pelo caminho de sucesso (linha `saude=Saude(...)` no fim de
+    `processar`)."""
+
+    motor = dom.MotorDominancia("t")
+    snap = _processar(motor, 1, 1, 0.5, 0.5, modo="REPLAY")
+    assert snap.saude.estado is dom.EstadoFeed.LIVE
+    assert snap.composite is not None
+
+
 def test_buy_mantem_no_limiar_de_manutencao_exato():
     motor = dom.MotorDominancia("t")
     # Primeiro leva o estado a BUY (composite bem acima de 0.12).

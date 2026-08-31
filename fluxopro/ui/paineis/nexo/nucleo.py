@@ -178,6 +178,14 @@ _FAIXA_POR_DIRECAO = {
 # um alerta de ALTO RISCO para "o mercado bateu de lado agora, sem direcao" —
 # que ate aqui nao tinha visual nenhum, so lateralizava como AGUARDAR/NEUTRA
 # igual a um dia calmo.
+LIMIAR_ALTO_RISCO_VOL = 0.70
+"""Acima disto `estado.risco_volatilidade` acende ALTO RISCO quando não há
+decisão. IMPRECISO — limiar de engenharia deste projeto: o próprio
+`risco_volatilidade` já é um proxy declarado (desvio-padrão dos preços
+sobre 6 ticks), então não existe "0,70 da fonte" a citar. Escolhido no
+topo da faixa para o aviso ser raro: um alerta que acende o tempo todo
+deixa de ser alerta."""
+
 GLIFO_ULTRA_COMPRA = "ultra_compra"
 GLIFO_ULTRA_VENDA = "ultra_venda"
 GLIFO_ALTO_RISCO = "alto_risco"
@@ -186,10 +194,21 @@ GLIFO_VENDA = "venda"
 GLIFO_NEUTRA = "neutra"
 GLIFO_AGUARDAR = "aguardar"
 
+GLIFO_MERCADO_COMPRA = "mercado_compra"
+GLIFO_MERCADO_VENDA = "mercado_venda"
+"""Direcao OBSERVADA do mercado sem decisao do filtro. Desenham o mesmo
+glifo direcional de `GLIFO_COMPRA`/`GLIFO_VENDA`, mas com rotulo proprio:
+"o mercado esta subindo" e "o filtro decidiu comprar" sao afirmacoes
+diferentes, e o visor nao pode escrever a segunda quando so mediu a
+primeira."""
+
 _ROTULO_LEITURA = {
     GLIFO_ULTRA_COMPRA: "ULTRA COMPRA",
     GLIFO_ULTRA_VENDA: "ULTRA VENDA",
     GLIFO_ALTO_RISCO: "ALTO RISCO",
+    GLIFO_MERCADO_COMPRA: "MERCADO COMPRADOR",
+    GLIFO_MERCADO_VENDA: "MERCADO VENDEDOR",
+    GLIFO_NEUTRA: "MERCADO LATERAL",
 }
 
 
@@ -222,7 +241,18 @@ def leitura_do_nucleo(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> str:
         return (GLIFO_ULTRA_COMPRA if ultra.direcao is DirecaoUltra.COMPRA
                 else GLIFO_ULTRA_VENDA)
 
-    if direcao not in (_asg.DirecaoASG.COMPRA, _asg.DirecaoASG.VENDA):
+    decidido = direcao in (_asg.DirecaoASG.COMPRA, _asg.DirecaoASG.VENDA)
+    if not decidido:
+        # "avisar momentos de alta volatilidade que o mercado esta sem
+        # direcional" (pedido do operador, 30/08/2026). Ate 31/08 isto
+        # olhava SO `FaseRenko.POSSIVEL_INVERSAO`, que e inversao de
+        # tijolo — parente da volatilidade, mas nao a mesma coisa, e o
+        # pedido dizia volatilidade com todas as letras. Agora o gatilho
+        # principal e `estado.risco_volatilidade` (desvio-padrao real dos
+        # precos observados, ver `asg._risco_volatilidade`), e a inversao
+        # de Renko continua valendo como segundo gatilho.
+        if float(getattr(estado, "risco_volatilidade", 0.0) or 0.0) >= LIMIAR_ALTO_RISCO_VOL:
+            return GLIFO_ALTO_RISCO
         if estado.fase_renko is FaseRenko.POSSIVEL_INVERSAO:
             return GLIFO_ALTO_RISCO
 
@@ -230,9 +260,43 @@ def leitura_do_nucleo(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> str:
         return GLIFO_COMPRA
     if direcao is _asg.DirecaoASG.VENDA:
         return GLIFO_VENDA
+
+    # Sem decisao do filtro, o visor ainda deve dizer PARA ONDE O MERCADO
+    # esta indo — "mostra a direcao do mercado mesmo que sem ultra" era
+    # metade do pedido, e ate 31/08/2026 o nucleo simplesmente escrevia
+    # "SEM DECISAO" com o mercado comprador a olho nu (regime COMPRADOR,
+    # maker +0,84, dominancia 51/49). A fonte e o motor de Dominancia, que
+    # e justamente quem mede direcao de mercado neste produto.
+    mercado = direcao_de_mercado(estado)
+    if mercado is not None:
+        return mercado
     if direcao is _asg.DirecaoASG.NEUTRA:
         return GLIFO_NEUTRA
     return GLIFO_AGUARDAR
+
+
+def direcao_de_mercado(estado: EstadoNexo) -> str | None:
+    """Glifo da direção OBSERVADA do mercado, do motor de Dominância.
+
+    `None` quando não há leitura de dominância publicada (aí o núcleo cai
+    para NEUTRA/AGUARDAR, que é o comportamento honesto de "não sei"). É
+    função pura e separada de `leitura_do_nucleo` para poder ser testada
+    sem montar um `EstadoNexo` inteiro de decisão.
+    """
+
+    snapshot = getattr(estado, "dominancia_snapshot", None)
+    if snapshot is None:
+        return None
+    from fluxopro.analytics.dominancia import EstadoDominancia
+
+    estado_dom = getattr(snapshot, "estado", None)
+    if estado_dom in (EstadoDominancia.COMPRA, EstadoDominancia.ULTRA_COMPRA):
+        return GLIFO_MERCADO_COMPRA
+    if estado_dom in (EstadoDominancia.VENDA, EstadoDominancia.ULTRA_VENDA):
+        return GLIFO_MERCADO_VENDA
+    if estado_dom is EstadoDominancia.BALANCEADO:
+        return GLIFO_NEUTRA
+    return None
 
 
 def _cor_da_leitura(leitura: str, direcao: "_asg.DirecaoASG"):
@@ -246,12 +310,14 @@ def _cor_da_leitura(leitura: str, direcao: "_asg.DirecaoASG"):
     de se distinguir a olho de "so esperando", nao repetir o mesmo tom.
     """
 
-    if leitura == GLIFO_ULTRA_COMPRA:
+    if leitura in (GLIFO_ULTRA_COMPRA, GLIFO_MERCADO_COMPRA):
         return tema_asg.NEXO_VERDE
-    if leitura == GLIFO_ULTRA_VENDA:
+    if leitura in (GLIFO_ULTRA_VENDA, GLIFO_MERCADO_VENDA):
         return tema_asg.NEXO_ROSA
     if leitura == GLIFO_ALTO_RISCO:
         return tokens.ABSORPTION
+    if leitura == GLIFO_NEUTRA:
+        return _asg._cor_nexo_direcao(_asg.DirecaoASG.NEUTRA)
     return _asg._cor_nexo_direcao(direcao)
 
 
@@ -919,6 +985,25 @@ def _desenhar_glifo(painter: QPainter, moldura: QRect, leitura: str,
         rx = _semi_eixo(largura_util, FRACAO_GLIFO_LARGURA)
         ry = _semi_eixo(altura_util, FRACAO_GLIFO_ALTURA)
         _glifo_alerta(painter, cx, cy, rx, ry, cor)
+        return
+
+    # A direcao OBSERVADA do mercado (sem decisao do filtro) desenha a
+    # MESMA seta da decisao direcional — quem separa as duas leituras e o
+    # rotulo ("MERCADO COMPRADOR" x o titulo da decisao), nao a forma.
+    # Este ramo tem de vir antes do teste por `direcao`, que aqui ainda e
+    # AGUARDAR e cairia no losango.
+    if leitura in (GLIFO_MERCADO_COMPRA, GLIFO_MERCADO_VENDA):
+        rx, ry = _dimensoes_seta(largura_util, altura_util)
+        para_cima = leitura == GLIFO_MERCADO_COMPRA
+        recuo = ry // 4
+        _glifo_seta(painter, cx, cy + (recuo if para_cima else -recuo), rx, ry,
+                    cor, para_cima=para_cima)
+        return
+
+    if leitura == GLIFO_NEUTRA:
+        rx = _semi_eixo(largura_util, FRACAO_GLIFO_LARGURA)
+        ry = _semi_eixo(altura_util, FRACAO_GLIFO_ALTURA)
+        _glifo_equilibrio(painter, cx, cy, rx, ry, cor)
         return
 
     if direcao in (_asg.DirecaoASG.COMPRA, _asg.DirecaoASG.VENDA):

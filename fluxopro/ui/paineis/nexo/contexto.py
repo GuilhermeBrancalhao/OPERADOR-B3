@@ -474,36 +474,54 @@ def _arco_duplo(
     ):
         tam_numero = max(TAM_FONTE_NUMERO_ARCO_MIN,
                          min(TAM_FONTE_NUMERO_ARCO_MAX, raio // 2 + 4))
+        # Hierarquia corrigida em 31/08/2026. O numero GRANDE era
+        # `linha.valor` — o bruto da matriz, que no MACRO e o delta do dia
+        # e chegava a "-31708" em cima de um arco cujo alcance e -1..+1.
+        # Cinco digitos como titulo de um medidor de VELOCIDADE nao se
+        # lê; e o normalizado, que e o que o arco realmente desenha,
+        # ficava em corpo 6 embaixo. Agora o titulo e a velocidade e o
+        # bruto continua na tela logo abaixo, como procedencia — nenhum
+        # dado foi removido, so trocaram de posto.
         painter.setFont(tokens.fonte_numero(tam_numero, QFont.Weight.Bold))
         painter.setPen(cor if ok else tema_asg.NEXO_MUTED)
+        texto_velocidade = "—" if not ok else f"{normalizado * 100:+.0f}%"
         painter.drawText(QRect(centro.x() - raio, centro.y() - 12, 2 * raio, 24),
-                         Qt.AlignmentFlag.AlignCenter, _texto_valor_horizonte(linha))
+                         Qt.AlignmentFlag.AlignCenter, texto_velocidade)
         painter.setFont(tokens.fonte_rotulo(TAM_FONTE_ROTULO_ARCO))
         painter.setPen(tema_asg.NEXO_TEXTO if ok else tema_asg.NEXO_MUTED)
         painter.drawText(QRect(centro.x() - raio, centro.y() + 10, 2 * raio, 12),
                          Qt.AlignmentFlag.AlignCenter, nome)
         painter.setFont(tokens.fonte_rotulo(6))
-        painter.setPen(cor if ok else tema_asg.NEXO_MUTED)
-        texto_sinal = "SEM DADO" if not ok else f"{normalizado:+.2f}"
+        painter.setPen(tema_asg.NEXO_MUTED)
+        bruto = _texto_valor_horizonte(linha)
+        texto_sinal = "SEM DADO" if not ok else bruto
         painter.drawText(QRect(centro.x() - raio, centro.y() + 21, 2 * raio, 11),
                          Qt.AlignmentFlag.AlignCenter, texto_sinal)
 
     _desenhar_composto(painter, rect, centro_micro, centro_macro, composto,
                        rotulo_composto, cor, disponivel,
-                       normalizado_micro, normalizado_macro)
+                       normalizado_micro, normalizado_macro,
+                       max(raio_micro, raio_macro))
 
 
 def _desenhar_composto(
     painter: QPainter, rect: QRect, centro_micro: QPoint, centro_macro: QPoint,
     composto: float, rotulo_composto: str, cor: QColor, disponivel: bool,
-    normalizado_micro: float, normalizado_macro: float,
+    normalizado_micro: float, normalizado_macro: float, raio_maximo: int = 0,
 ) -> None:
-    """Percentual composto + rótulo ALTA/BAIXA/BALANCO + contra-giro — o
+    """Percentual composto + rótulo ALTA/BAIXA/BALANCO + divergência — o
     painel de estado do meio, entre os dois arcos (seção 4/5)."""
 
-    caixa = QRect(min(centro_micro.x(), centro_macro.x()) - 10,
-                 max(centro_micro.y(), centro_macro.y()) + 2,
-                 abs(centro_macro.x() - centro_micro.x()) + 20, 44)
+    # 31/08/2026: a caixa nascia no X do centro mais a ESQUERDA e a apenas
+    # 2px abaixo do centro mais baixo — ou seja, DENTRO do raio do arco
+    # micro. Na tela real o "+16.0% MARKET / ALTA" saia escrito por cima
+    # do proprio arco, ilegivel. Agora ela e centrada entre os dois
+    # centros e comeca ABAIXO do maior raio, que e a unica posicao que nao
+    # colide com nenhum dos dois arcos.
+    largura = max(140, abs(centro_macro.x() - centro_micro.x()) + 120)
+    meio_x = (centro_micro.x() + centro_macro.x()) // 2
+    topo = max(centro_micro.y(), centro_macro.y()) + raio_maximo + 8
+    caixa = QRect(meio_x - largura // 2, topo, largura, 46)
     caixa = caixa.intersected(rect)
     if caixa.height() < 30 or caixa.width() < 40:
         return
@@ -522,10 +540,16 @@ def _desenhar_composto(
     painter.setFont(tokens.fonte_rotulo(6))
     painter.setPen(tema_asg.NEXO_MUTED)
     if disponivel:
-        delta, _ = _veldual.contragiro(normalizado_micro, normalizado_macro)
-        texto_giro = f"CONTRA-GIRO {delta:+.1f}°"
+        # `divergencia_horizontes`, NUNCA `contragiro`: o segundo mede a
+        # separacao das pontas na cena contra-rotativa e vale ~0 justamente
+        # quando micro e macro se OPOEM (ver a docstring dos dois). Ate
+        # 31/08/2026 a tela imprimia o contragiro sob o rotulo
+        # "CONTRA-GIRO", e com micro +1,00 / macro -1,00 mostrava +0,0°,
+        # que o operador le como "horizontes alinhados" na oposicao maxima.
+        delta, _ = _veldual.divergencia_horizontes(normalizado_micro, normalizado_macro)
+        texto_giro = f"DIVERGÊNCIA {abs(delta):.0f}°" if abs(delta) >= 1 else "HORIZONTES ALINHADOS"
     else:
-        texto_giro = "CONTRA-GIRO —"
+        texto_giro = "DIVERGÊNCIA —"
     painter.drawText(QRect(caixa.left(), caixa.top() + 32, caixa.width(), 11),
                      Qt.AlignmentFlag.AlignCenter, texto_giro)
 

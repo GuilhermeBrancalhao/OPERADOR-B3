@@ -499,6 +499,17 @@ def _fase(timestamp_ns: int, periodo_ns: int) -> float:
     return (timestamp_ns % periodo_ns) / periodo_ns
 
 
+EXTENSAO_ANEIS = 1.38
+"""Quanto o casco de anéis avança ALÉM do raio do núcleo do avatar.
+
+Público de propósito: quem faz o layout precisa reservar a extensão REAL
+do desenho, não o raio do núcleo. Defeito medido em 31/08/2026 — o
+cabeçalho reservava `raio` e posicionava o texto logo depois, mas o casco
+ia até `raio * 1,38`: o anel cruzava por cima do "OPERADOR IA" e ainda
+saía cortado em cima e embaixo, porque a altura também fora dimensionada
+pelo núcleo."""
+
+
 def _desenhar_aneis_reator(painter: QPainter, cx: int, cy: int, raio: int,
                            cor_anel: QColor, timestamp_ns: int) -> None:
     """Aneis concentricos do "reator" ao redor do nucleo — reforma de
@@ -545,7 +556,7 @@ def _desenhar_aneis_reator(painter: QPainter, cx: int, cy: int, raio: int,
     # nunca rotacionado (ver docstring: simetrico, girar nao muda nada).
     painter.setBrush(Qt.BrushStyle.NoBrush)
     painter.setPen(QPen(chrome, 2))
-    painter.drawEllipse(centro, raio * 1.38, raio * 1.38)
+    painter.drawEllipse(centro, raio * EXTENSAO_ANEIS, raio * EXTENSAO_ANEIS)
 
     # Abaixo de ~24px de raio (avatar comprimido, console estreito) o dial e
     # o tracejado viram ruido de subpixel em vez de leitura — degrau honesto
@@ -583,6 +594,71 @@ def _desenhar_aneis_reator(painter: QPainter, cx: int, cy: int, raio: int,
         cor_halo = QColor(cor_anel.red(), cor_anel.green(), cor_anel.blue(), alpha)
         painter.setPen(QPen(cor_halo, largura))
         painter.drawEllipse(centro, raio + 4, raio + 4)
+
+
+def _desenhar_nucleo_reator(painter: QPainter, cx: int, cy: int, raio: int,
+                            cor: QColor, timestamp_ns: int) -> None:
+    """Miolo do avatar: núcleo de reator (referência do operador), no lugar
+    do visor-com-fresta que havia até 31/08/2026.
+
+    O pedido de 30/08 era "trocar essa imagem do OPERADOR B3" pela do
+    reator (``jarvis-operador-b3-3d-4k.png``). A passada anterior só pôs
+    ANÉIS em volta e manteve o miolo antigo — uma fresta horizontal com
+    dois segmentos acesos que, do lado de fora, continuava lendo como um
+    rosto. Aqui o centro passa a ser o que a referência mostra: um poço
+    escuro, pás radiais girando, e um núcleo aceso com halo.
+
+    Geometria autoral em QPainter — nenhum pixel do PNG de referência
+    entra como asset, mesma regra do resto do arquivo. Gira pelo relógio
+    de MERCADO (`timestamp_ns`), sem QTimer novo, igual a
+    `_desenhar_aneis_reator`.
+    """
+
+    # Poço: cavidade escura onde o núcleo assenta — dá o degrau de
+    # profundidade que faz o miolo parecer embutido, não colado por cima.
+    poco = QRadialGradient(QPointF(cx, cy), raio * 0.72)
+    poco.setColorAt(0.0, QColor(0, 0, 0, 210))
+    poco.setColorAt(1.0, QColor(0, 0, 0, 90))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(poco)
+    painter.drawEllipse(QPointF(cx, cy), raio * 0.72, raio * 0.72)
+
+    # Pás radiais (a turbina do reator). Giram no sentido oposto ao dial
+    # externo, que é o que dá a leitura de "mecanismo" em vez de enfeite.
+    if raio >= 18:
+        painter.save()
+        painter.translate(QPointF(cx, cy))
+        painter.rotate(_fase(timestamp_ns, PERIODO_ROTACAO_DIAL_NS) * 360.0)
+        pa = QColor(cor)
+        pa.setAlpha(70)
+        painter.setPen(QPen(pa, max(1, raio // 14)))
+        for indice in range(8):
+            angulo = 2 * math.pi * indice / 8
+            seno, cosseno = math.sin(angulo), math.cos(angulo)
+            painter.drawLine(
+                QPointF(raio * 0.30 * cosseno, raio * 0.30 * seno),
+                QPointF(raio * 0.64 * cosseno, raio * 0.64 * seno),
+            )
+        painter.restore()
+
+    # Anel interno de contencao.
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    aro = QColor(cor)
+    aro.setAlpha(150)
+    painter.setPen(QPen(aro, max(1, raio // 18)))
+    painter.drawEllipse(QPointF(cx, cy), raio * 0.30, raio * 0.30)
+
+    # Nucleo aceso + halo: mesmo empilhamento de `_desenhar_aneis_reator`
+    # (este backing store nao tem blur barato).
+    for fracao, alpha in ((0.30, 45), (0.20, 95), (0.11, 220)):
+        halo = QColor(cor.red(), cor.green(), cor.blue(), alpha)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(halo)
+        painter.drawEllipse(QPointF(cx, cy), raio * fracao, raio * fracao)
+    nucleo = QColor(255, 255, 255, 210)
+    painter.setBrush(nucleo)
+    painter.drawEllipse(QPointF(cx, cy), raio * 0.05, raio * 0.05)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
 
 
 def _desenhar_avatar(painter: QPainter, cx: int, cy: int, raio: int,
@@ -629,39 +705,7 @@ def _desenhar_avatar(painter: QPainter, cx: int, cy: int, raio: int,
     painter.drawEllipse(QPointF(cx - raio * 0.4, cy - raio * 0.5),
                         raio * 0.5, raio * 0.34)
 
-    # Visor: uma FRESTA horizontal com dois segmentos acesos, no mesmo
-    # vocabulario do visor HUD central (nucleo.py).
-    #
-    # Nao ha olhos redondos nem boca: a versao anterior desenhava dois
-    # circulos e um arco, e no tamanho grande (a regiao passou a 612px de
-    # altura em 28/08/2026) aquilo lia como um SMILEY — simpatico e
-    # completamente fora do registro de um terminal de leitura de fluxo.
-    # Fresta + segmentos le como instrumento em qualquer tamanho.
-    meia = max(2, raio // 12)
-    fresta = QRect(cx - raio // 2, cy - raio // 6 - meia, raio, 2 * meia)
-    fundo_fresta = QColor(tema_asg.NEXO_FUNDO)
-    painter.setPen(Qt.PenStyle.NoPen)
-    painter.setBrush(fundo_fresta)
-    painter.drawRoundedRect(fresta, meia, meia)
-
-    painter.setBrush(cor_anel)
-    largura_seg = max(3, raio // 5)
-    for deslocamento in (-raio // 3, raio // 3):
-        painter.drawRoundedRect(
-            QRect(cx + deslocamento - largura_seg // 2, fresta.top() + 1,
-                  largura_seg, fresta.height() - 2),
-            meia // 2 or 1, meia // 2 or 1)
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-
-    # Barra de atividade sob a fresta: tres tracos curtos, decrescentes.
-    # E cromo de instrumento, nao leitura de dado — por isso fica no cinza
-    # de identidade e nunca na cor de direcao.
-    painter.setPen(QPen(tema_asg.NEXO_IDENTIDADE_ANEL, 1))
-    base = cy + raio // 4
-    for indice, fracao in enumerate((0.42, 0.30, 0.18)):
-        meia_barra = max(2, int(raio * fracao / 2))
-        painter.drawLine(cx - meia_barra, base + indice * 4,
-                         cx + meia_barra, base + indice * 4)
+    _desenhar_nucleo_reator(painter, cx, cy, raio, cor_anel, timestamp_ns)
 
     braco = max(4, raio // 3)
     painter.setPen(QPen(tema_asg.NEXO_IDENTIDADE_ANEL, 1))
@@ -938,12 +982,17 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # avatar grande que o operador pediu ("um robo moderno") em vez de tres
     # paragrafos esticados com campo morto entre eles.
     altura_cabecalho = ALTURA_CABECALHO + folga_cabecalho
-    raio_avatar = max(16, min(RAIO_MAX, (altura_cabecalho - 10) // 2))
-    _desenhar_avatar(painter, x + raio_avatar + 12, y + altura_cabecalho // 2,
+    # O raio do NUCLEO sai da altura disponivel ja descontando o casco de
+    # aneis (`EXTENSAO_ANEIS`) — dimensionar pelo nucleo fazia o casco
+    # estourar o cabecalho em cima/embaixo e invadir o texto a direita.
+    raio_avatar = max(12, min(RAIO_MAX,
+                              int((altura_cabecalho - 10) / (2 * EXTENSAO_ANEIS))))
+    extensao_avatar = int(round(raio_avatar * EXTENSAO_ANEIS))
+    _desenhar_avatar(painter, x + extensao_avatar + 12, y + altura_cabecalho // 2,
                      raio_avatar, cor_selo,
                      getattr(estado.snapshot, "timestamp_ns", 0))
 
-    texto_x = x + 2 * raio_avatar + 30
+    texto_x = x + 2 * extensao_avatar + 26
     centro = y + altura_cabecalho // 2
     painter.setPen(tema_asg.NEXO_TEXTO)
     painter.setFont(tokens.fonte_numero(15, QFont.Weight.Bold))

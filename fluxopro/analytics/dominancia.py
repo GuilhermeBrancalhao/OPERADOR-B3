@@ -632,7 +632,7 @@ class MotorDominancia:
             composite=composite, buy_percent=buy_pct, sell_percent=sell_pct, estado=estado,
             qualidade_agregada=qualidade_agregada, confianca_agregada=confianca_agregada,
             confluencia=confluencia, contra_giro=contra_giro,
-            saude=Saude(EstadoFeed.REPLAY if modo == "REPLAY" else EstadoFeed.LIVE, idade_ms, None),
+            saude=Saude(EstadoFeed.LIVE, idade_ms, None),
         )
         self._cache[event_id] = snapshot
         self._ultimo_valido = snapshot

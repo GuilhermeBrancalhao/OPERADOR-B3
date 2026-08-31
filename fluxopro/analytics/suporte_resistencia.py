@@ -216,11 +216,25 @@ def calcular_contexto(micro: float, macro: float) -> float:
 
 def calcular_forca_zona(reposicao: float, rejeicao: float,
                         desequilibrio_livro: float, toques: int) -> float:
-    """``força_zona = clamp(0.35R + 0.25J + 0.20|B| + 0.20*min(toques/5,1), 0, 1)``."""
+    """``força_zona = clamp(0.35|R| + 0.25|J| + 0.20|B| + 0.20*min(toques/5,1), 0, 1)``.
+
+    **Magnitude, nunca sinal** (corrigido em 31/08/2026). O documento
+    escreve ``0.35R + 0.25J``, mas força de zona é uma grandeza clampada
+    em ``[0, 1]``: quem dá o LADO é `classificar_lado`, a partir do
+    CONTEXTO — nunca esta função. Deixar R entrar com sinal fazia uma zona
+    fortemente defendida por VENDEDORES (reposição negativa) pontuar como
+    zona fraca, e a própria fórmula já denunciava a intenção ao usar
+    ``|B|`` na mesma linha.
+
+    Efeito medido no app real (replay de 2026-08-28, dia de queda): com R
+    negativo o score das zonas ficava em 0,00-0,22 contra o
+    `LIMIAR_FORCA_ZONA` de 0,55 — **nenhuma zona era confirmada em nenhum
+    quadro do pregão**, mesmo com 6 testes contados na região.
+    """
 
     contribuicao_toques = min(max(0, toques) / TOQUES_REFERENCIA, 1.0)
     bruto = (
-        PESO_FORCA_R * clamp(reposicao) + PESO_FORCA_J * clamp(rejeicao)
+        PESO_FORCA_R * abs(clamp(reposicao)) + PESO_FORCA_J * abs(clamp(rejeicao))
         + PESO_FORCA_B * abs(clamp(desequilibrio_livro))
         + PESO_FORCA_TOQUES * contribuicao_toques
     )
