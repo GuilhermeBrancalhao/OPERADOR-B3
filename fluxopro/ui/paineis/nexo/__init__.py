@@ -54,7 +54,7 @@ VAOS_SEM_DONO: tuple[tuple[str, tuple[float, float, float, float]], ...] = (
     # (vizinho a quem a faixa naturalmente pertence, (x0, y0, x1, y1))
     ("contexto", (0.34, 0.00, 0.63, 0.02)),
     ("contexto", (0.34, 0.02, 0.40, 0.42)),
-    ("contexto/niveis", (0.34, 0.42, 0.40, 0.55)),
+    ("contexto", (0.34, 0.42, 0.40, 0.56)),
     ("forca/candles", (0.63, 0.22, 1.00, 0.23)),
     ("candles", (0.98, 0.23, 1.00, 0.85)),
     ("candles/pressao", (0.62, 0.85, 1.00, 0.86)),
@@ -72,8 +72,13 @@ REGIOES: dict[str, tuple[float, float, float, float]] = {
     # respiro; nenhuma outra regiao muda.
     "ladder": (0.00, 0.00, 0.11, 0.56),
     "contexto": (0.11, 0.00, 0.34, 0.56),
-    "niveis": (0.02, 0.55, 0.40, 0.65),
-    "banner": (0.00, 0.65, 0.40, 0.78),
+    # 31/08/2026 — a faixa `niveis` (os cinco chips BID2/BID/ULT/ASK/ASK2)
+    # saiu a pedido do operador ("esse quadro e desnecessario"): os cinco
+    # precos ja estao no ladder (VAP) logo a esquerda, com volume e
+    # agressao por nivel, e no topo do quadro. Era a MESMA informacao
+    # ocupando 10% da altura da coluna. O espaco vai para `banner`, que
+    # carrega o alerta de fluxo extremo e vivia espremido.
+    "banner": (0.00, 0.56, 0.40, 0.78),
     "estatistica": (0.00, 0.79, 0.40, 1.00),
     "nucleo": (0.40, 0.02, 0.63, 0.42),
     # 28/08/2026 — `vies` foi de (0,42 · 0,62 · 0,62 · 1,00) para colar no
@@ -115,9 +120,8 @@ REGIOES: dict[str, tuple[float, float, float, float]] = {
     "pressao": (0.63, 0.86, 1.00, 1.00),
 }
 
-# Ordem de pintura. ``niveis`` entra depois de ``ladder``/``contexto`` porque a
-# faixa de chips avanca 0,01 do quadro sobre elas de proposito (o mesmo
-# encaixe do material de referencia), e quem chega por ultimo fica por cima.
+# Ordem de pintura. Regioes sem sobreposicao hoje: a faixa `niveis`, unica que
+# avancava sobre as vizinhas, saiu em 31/08/2026 (ver o comentario em REGIOES).
 ORDEM_DESENHO: tuple[str, ...] = (
     "ladder",
     "contexto",
@@ -127,7 +131,6 @@ ORDEM_DESENHO: tuple[str, ...] = (
     "vies",
     "estatistica",
     "banner",
-    "niveis",
     "pressao",
 )
 

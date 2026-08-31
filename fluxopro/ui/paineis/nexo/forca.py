@@ -89,17 +89,26 @@ abaixo, o oposto da nossa proporcao antiga. 0,62 e o MESMO fator de corpo que
 vela, e mais tijolo cabe por pixel sem esticar a escala vertical (que
 continua travada 1:1 ao candle, ver `FATOR_ESCALA_VS_CANDLE`)."""
 LARGURA_MIN_TIJOLO_PX = 3  # mesmo piso fisico do slot de vela (candles.LARGURA_MIN_SLOT)
-LARGURA_MAX_TIJOLO_PX = 8
-"""Teto da LARGURA, deliberadamente mais baixo que a altura maxima.
+LARGURA_MAX_TIJOLO_PX = 22
+"""Teto da LARGURA do tijolo.
 
-O eixo horizontal do Renko nao e um eixo de preco — nao deve nada a escala do
-candle, e o trabalho dele e caber o maximo de micro recente ainda legivel.
-Sem este teto, um tijolo alto (fator declarado > 1) puxava a largura junto
-pelo aspecto e a serie visivel caia de ~90 para ~30 tijolos: pagar historico
-por proporcao que o eixo horizontal nem tem. Baixado de 12 para 8 junto da
-mudanca de `ASPECTO_TIJOLO` (31/08/2026): teto largo demais anulava o
-aspecto esguio e devolvia tijolo quase quadrado quando a altura ja batia o
-teto vertical."""
+REVERTIDO EM 31/08/2026 (operador: "o grafico de renko esta desproporcional
+as candle, fora da logica que ja mandei").
+
+O teto foi a 8px mais cedo NESTA MESMA sessao, com o argumento de que o eixo
+horizontal do Renko "nao deve nada a escala do candle" e que valia trocar
+proporcao por historico. Medido na tela depois: com a escala vertical
+travada no candle, a altura do tijolo chega a ~30px, e o aspecto pedia
+`30 * 0,62 = 18px` de largura — o teto de 8 cortava pela METADE e a escada
+virava uma cerca de listras verticais, com ~68 tijolos espremidos onde a
+referencia do operador mostra blocos nitidos.
+
+O pedido original era proporcao COM AS VELAS, e um tijolo 4x mais alto que
+largo nao guarda proporcao com nada. 22px deixa o `ASPECTO_TIJOLO` governar
+de fato na faixa de alturas que a amarracao 1:1 produz (ate ~35px de altura),
+e o teto so volta a agir em dias de escala muito esticada. Menos tijolos e
+o custo aceito, e ele e explicito: a legenda ja imprime quantos de quantos
+estao na tela."""
 TIJOLOS_VISIVEIS_MAX = 240
 """Teto de tijolos na tela. Com o eixo vertical amarrado ao candle (ver
 `FATOR_ESCALA_VS_CANDLE`) a altura do tijolo deixou de ser negociavel, e a

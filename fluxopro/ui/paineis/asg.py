@@ -3296,8 +3296,12 @@ class WorkspaceASG(QWidget):
         modo = ("largo" if largura >= self.LIMIAR_LARGO else
                 "medio" if largura >= self.LIMIAR_MEDIO else "estreito")
         if modo == self._modo and not force:
-            if modo == "largo":
-                self._ajustar_altura_larga()
+            # O ajuste de altura roda em QUALQUER modo. Ate 31/08/2026 so
+            # o modo "largo" reajustava, entao numa janela estreita ou
+            # media uma mudanca so de ALTURA (maximizar, arrastar a borda
+            # de baixo) nao mexia em stretch nenhum e o painel ficava com
+            # a altura antiga.
+            self._ajustar_altura_larga()
             return
         self._modo = modo
         for painel in self.paineis + self.paineis_contexto + self.paineis_extras:
@@ -3327,17 +3331,29 @@ class WorkspaceASG(QWidget):
         self.nexo.raise_()
 
     def _ajustar_altura_larga(self) -> None:
-        """Da prioridade a superficie NEXO sem retirar os paineis tecnicos.
+        """Toda a altura do workspace vai para a superficie NEXO.
 
-        A composicao visual principal precisa de altura suficiente para os
-        tres blocos de referencia (contexto, nucleo e grafico). Matriz,
-        DOM/Tape/Bookmap e trilha continuam montados e visiveis nas faixas
-        inferiores, preservando o contrato dos workspaces existentes.
+        DEFEITO CORRIGIDO EM 31/08/2026 (relatado pelo operador: "a
+        interface nao ocupa a tela inteira, somente uma parte").
+
+        Esta funcao distribuia a altura em QUATRO faixas, com pesos
+        ``(9, 2, 2, 1)``, de quando o workspace era uma grade: NEXO em
+        cima e matriz / DOM-Tape-Bookmap / trilha nas linhas de baixo.
+        Essas faixas deixaram de existir — `_reorganizar` manda todos os
+        paineis tecnicos para ``(-10000, -10000)`` e monta o NEXO sozinho
+        em ``(0, 0, 1, 1)``. As linhas 1..3 ficaram VAZIAS mas continuaram
+        consumindo 5 de 14 do stretch, e o Qt reservou 36% da altura para
+        widget nenhum.
+
+        Medido na tela do operador (1536x816): workspace com 763px e
+        NEXO com 491 — exatamente ``763 * 9/14`` — e 272px de campo preto
+        embaixo. Como o NEXO e a unica coisa posicionada no grid, a linha
+        0 leva tudo e as demais vao a zero.
         """
 
-        pesos = (8, 2, 1, 1) if self.height() < 700 else (9, 2, 2, 1)
-        for linha, peso in enumerate(pesos):
-            self._layout.setRowStretch(linha, peso)
+        self._layout.setRowStretch(0, 1)
+        for linha in range(1, 8):
+            self._layout.setRowStretch(linha, 0)
 
 
 def _campo(objeto: object, nome: str, padrao: object = None) -> object:
