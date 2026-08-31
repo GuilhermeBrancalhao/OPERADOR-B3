@@ -6,8 +6,8 @@
     "2. python scripts/manifesto_dados.py --arquivo dados/ --verificar",
     "3. se os hashes baterem: python scripts/estudo_pregoes.py --arquivo dados/ --simbolo <sym>"
   ],
-  "n_dias": 37,
-  "n_eventos_total": 9244762,
+  "n_dias": 38,
+  "n_eventos_total": 9941953,
   "dias": [
     {
       "symbol": "WDOU26",
@@ -718,6 +718,33 @@
         "book_snapshots.csv": 511936,
         "book_deltas.csv": 614245,
         "falhas.csv": 366
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-08-31",
+      "schema_versao": 1,
+      "contagens": {
+        "Trade": 35902,
+        "BookSnapshot": 526602,
+        "BookDelta": 134404,
+        "FalhaCaptura": 283
+      },
+      "n_eventos_total": 697191,
+      "inicio_utc": "2026-08-31T06:24:56.188000+00:00",
+      "fim_utc": "2026-08-31T18:29:59.715537+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "trades.csv": "ada95f17a96e0cc8d43ef65207ab2dd0704e454a5c37ea531ed98ae1883daf6f",
+        "book_snapshots.csv": "e11f118388265c26d0c704454ca7571f0525194a5fa2b7f7c99771521f668f2c",
+        "book_deltas.csv": "22e7de0a87567788d39f859afa3784fa4b03afa04b1d66019dce7c62ad26704d",
+        "falhas.csv": "008cca2249a80f5087245fb9639dac700a0bb40271bb7349cd5c0c6c9f1cc38c"
+      },
+      "n_linhas_hasheadas": {
+        "trades.csv": 35902,
+        "book_snapshots.csv": 526602,
+        "book_deltas.csv": 134404,
+        "falhas.csv": 283
       }
     }
   ]
