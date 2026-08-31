@@ -7,7 +7,7 @@ ficavam fora e so apareciam arrastando, com o cabecalho ainda prometendo
 O que os testes exigem:
   - a PRIMEIRA vela do tape esta dentro da janela padrao, sem arrasto;
   - o rotulo so promete "JANELA DO PREGAO" quando isso e verdade;
-  - o zoom-out vai ate a primeira vela e para la;
+  - o zoom-out inclui a primeira vela e mantem a largura ao chegar dado;
   - e o remedio nao ressuscita o defeito da rodada 1: com o dia mal
     comecado, a vela NAO vira um bloco.
 """
@@ -74,7 +74,7 @@ def test_o_rotulo_so_promete_o_pregao_quando_o_dia_cabe(qapp):
     assert estreita == "ESCALA MANUAL" or estreita.startswith("JANELA PARCIAL")
 
 
-def test_zoom_out_alcanca_a_primeira_vela_e_para_nela(qapp):
+def test_zoom_out_preserva_a_primeira_vela_e_a_largura_ao_chegar_dado(qapp):
     painel = _painel(qapp, minutos=580)
     caixa = painel._retangulo_candles()
     total = len(_velas_do_dia(painel))
@@ -87,8 +87,23 @@ def test_zoom_out_alcanca_a_primeira_vela_e_para_nela(qapp):
 
     visiveis = modulo_candles.velas_no_quadro(caixa, painel._estado_nexo())
     assert len(visiveis) == total
-    # E nao passa disso: nao ha sessao alem da primeira vela.
-    assert painel._candles_velas_visiveis <= total + modulo_candles.MARGEM_SLOTS
+    assert visiveis[0].timestamp_ns == _velas_do_dia(painel)[0].timestamp_ns
+    # O antigo teto <=total+2 fazia a janela saltar ao cruzar o piso do
+    # pregao. Substituido por cobertura REAL e estabilidade, mantendo os
+    # limites AUTO/fisico: slots vazios nao sao velas inventadas.
+    slots = modulo_candles.janela_do_estado(caixa, painel._estado_nexo())
+    assert modulo_candles.VELAS_MIN <= slots <= modulo_candles.slots_da_janela(
+        caixa.width(), 5, None, total)
+    largura = modulo_candles.largura_slot_px(
+        caixa.width(), 5, painel._candles_velas_visiveis, total)
+    proximo_inicio = visiveis[-1].timestamp_ns + 5 * 60_000_000_000
+    painel._registrar_amostra(proximo_inicio, 100_002, 0.0, 1, AgressorSide.BUY)
+    depois = painel._estado_nexo()
+    assert len(depois.candles_m15) == total + 1
+    assert modulo_candles.janela_do_estado(caixa, depois) == slots
+    assert modulo_candles.largura_slot_px(
+        caixa.width(), 5, depois.candles_velas_visiveis, total + 1) == largura
+    assert modulo_candles.velas_no_quadro(caixa, depois) == depois.candles_m15
 
 
 def test_dia_recem_aberto_nao_volta_a_ter_vela_gigante(qapp):

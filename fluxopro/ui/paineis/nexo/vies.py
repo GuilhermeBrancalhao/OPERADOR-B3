@@ -719,6 +719,148 @@ def _desenhar_avatar(painter: QPainter, cx: int, cy: int, raio: int,
         painter.drawLine(px, py, px, py + dy * braco)
 
 
+def _numero_finito(valor: object) -> float | None:
+    """Converte um valor publico do snapshot sem inventar dado ausente."""
+
+    if isinstance(valor, bool):
+        return None
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return None
+    return numero if math.isfinite(numero) else None
+
+
+def _forca_do_objeto(objeto: object | None) -> float | None:
+    if objeto is None:
+        return None
+    for nome in ("composite", "forca", "pontuacao", "score"):
+        valor = _numero_finito(getattr(objeto, nome, None))
+        if valor is not None:
+            return max(-1.0, min(1.0, valor))
+    return None
+
+
+def _confianca_do_objeto(objeto: object | None) -> float | None:
+    """Retorna confiança 0..1 de linha Maker/feed, quando disponível."""
+
+    if objeto is None:
+        return None
+    valor = _numero_finito(getattr(objeto, "confianca", None))
+    if valor is not None:
+        return max(0.0, min(1.0, valor if valor <= 1.0 else valor / 100.0))
+    rotulo = str(getattr(getattr(objeto, "confianca", None), "value", "")).upper()
+    return {"CONF ALTA": 1.0, "CONF MEDIA": 0.65, "CONF BAIXA": 0.35}.get(rotulo)
+
+
+def _metricas_reator(estado: EstadoNexo) -> tuple[tuple[str, float | None, QColor], ...]:
+    """Métricas honestas para o HUD compacto do núcleo.
+
+    A prioridade é: dominância composta, Maker, regime e confiança do feed.
+    Cada valor continua vindo do snapshot imutável; quando a fonte não
+    publica o campo, o HUD mostra ``—`` em vez de estimar ou reutilizar um
+    número de outro painel.
+    """
+
+    dominancia = _forca_do_objeto(estado.dominancia_snapshot)
+    maker = _forca_do_objeto(estado.maker)
+    regime = _forca_do_objeto(estado.regime)
+    forca = dominancia if dominancia is not None else maker
+    if forca is None:
+        forca = regime
+    confianca = _confianca_do_objeto(estado.maker)
+    if confianca is None:
+        dados = getattr(estado.snapshot, "dados", None)
+        confianca = _confianca_do_objeto(dados)
+    cor_forca = estado.paleta.compra if (forca or 0.0) >= 0 else estado.paleta.venda
+    cor_maker = estado.paleta.compra if (maker or 0.0) >= 0 else estado.paleta.venda
+    return (
+        ("FORÇA", forca, cor_forca),
+        ("MAKER", maker, cor_maker),
+        ("CONF", confianca, tema_asg.NEXO_CIANO),
+    )
+
+
+def _desenhar_barra_reator(painter: QPainter, area: QRect, rotulo: str,
+                           valor: float | None, cor: QColor) -> None:
+    """Barra pequena com valor textual: o HUD não depende apenas de cor."""
+
+    painter.setFont(tokens.fonte_rotulo(7))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(QRect(area.left(), area.top(), 42, area.height()),
+                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                     rotulo)
+    trilho = QRect(area.left() + 44, area.top() + 4,
+                   max(16, area.width() - 80), max(6, area.height() - 8))
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(tema_asg.NEXO_GRADE)
+    painter.drawRoundedRect(trilho, 3, 3)
+    if valor is not None:
+        intensidade = abs(valor) if rotulo != "CONF" else valor
+        preenchido = QRect(trilho.left(), trilho.top(),
+                           max(2, int(round(trilho.width() * intensidade))),
+                           trilho.height())
+        preenchido.setLeft(trilho.right() - preenchido.width() + 1
+                           if valor < 0 and rotulo != "CONF" else trilho.left())
+        painter.setBrush(cor)
+        painter.drawRoundedRect(preenchido, 3, 3)
+        texto = (f"{valor:+.0%}" if rotulo != "CONF" else f"{valor:.0%}")
+    else:
+        texto = "—"
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(cor if valor is not None else tema_asg.NEXO_MUTED)
+    painter.setFont(tokens.fonte_numero(8, QFont.Weight.Bold))
+    painter.drawText(QRect(area.right() - 34, area.top(), 34, area.height()),
+                     Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight,
+                     texto)
+
+
+def _desenhar_hud_compacto(painter: QPainter, rect: QRect, estado: EstadoNexo,
+                           cor_selo: QColor) -> None:
+    """Versão compacta: o avatar passa a ser um HUD funcional, não ornamento."""
+
+    _fundo_console(painter, rect)
+    margem = 8
+    painter.setPen(tema_asg.NEXO_TEXTO)
+    painter.setFont(tokens.fonte_numero(10, QFont.Weight.Bold))
+    painter.drawText(QRect(rect.left() + margem, rect.top() + 5,
+                           rect.width() - 2 * margem, 14),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                     "NEXO AI")
+    fase = fase_do_filtro(estado)
+    fase_rotulo = {
+        AUSENTE: "MOTOR AUSENTE", ARMADO: "ARMADO", SEGURANDO: "SEGURANDO",
+        CONFIRMANDO: "CONFIRMANDO", SEM_SINAL: "AGUARDAR",
+    }.get(fase, "AGUARDAR")
+    painter.setPen(cor_selo)
+    painter.setFont(tokens.fonte_rotulo(7))
+    painter.drawText(QRect(rect.left() + margem, rect.top() + 19,
+                           rect.width() - 2 * margem, 12),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                     fase_rotulo)
+
+    raio = max(16, min(RAIO_MAX, int(min(rect.width() * 0.23, rect.height() * 0.20))))
+    _desenhar_avatar(painter, rect.center().x(), rect.top() + 42, raio,
+                     cor_selo, getattr(estado.snapshot, "timestamp_ns", 0))
+
+    base = rect.top() + 58 + int(raio * EXTENSAO_ANEIS)
+    altura_barra = 16
+    for indice, (rotulo, valor, cor) in enumerate(_metricas_reator(estado)):
+        topo = base + indice * altura_barra
+        if topo + altura_barra > rect.bottom() - 22:
+            break
+        _desenhar_barra_reator(painter, QRect(rect.left() + margem, topo,
+                                              rect.width() - 2 * margem,
+                                              altura_barra), rotulo, valor, cor)
+
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.setFont(tokens.fonte_rotulo(7))
+    painter.drawText(QRect(rect.left() + margem, rect.bottom() - 16,
+                           rect.width() - 2 * margem, 12),
+                     Qt.AlignmentFlag.AlignCenter,
+                     "LEITURA CONSULTIVA · SEM ORDENS")
+
+
 def _desenhar_selo(painter: QPainter, area: QRect, titulo: str, sub: str,
                    cor: QColor) -> None:
     """Selo de estado: chapa com gradiente na cor do estado, barra de acento
@@ -930,22 +1072,10 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     compacto = (rect.width() < LARGURA_MIN_CONSOLE
                 or rect.height() < ALTURA_MIN_CONSOLE)
     if compacto:
-        # Sem espaco para o console: entrega o avatar e a leitura de vies,
-        # que e o minimo honesto. Nunca versao "meio desenhada" com texto
-        # sobreposto.
-        raio = max(RAIO_MIN, min(RAIO_MAX, rect.width() // 4))
-        _desenhar_avatar(painter, rect.center().x(),
-                         rect.top() + raio + 14, raio, cor_selo,
-                         getattr(estado.snapshot, "timestamp_ns", 0))
-        painter.setPen(tema_asg.NEXO_TEXTO)
-        painter.setFont(tokens.fonte_numero(11, QFont.Weight.Bold))
-        painter.drawText(QRect(rect.left(), rect.bottom() - 30, rect.width(), 16),
-                         Qt.AlignmentFlag.AlignCenter, "OPERADOR IA")
-        painter.setPen(cor)
-        painter.setFont(tokens.fonte_rotulo(7))
-        painter.drawText(QRect(rect.left(), rect.bottom() - 14, rect.width(), 13),
-                         Qt.AlignmentFlag.AlignCenter,
-                         _asg.rotulo_direcao(estado.snapshot.decisao.direcao))
+        # Mesmo em coluna estreita, o núcleo entrega estado e força resumidos;
+        # ele deixa de ser uma esfera decorativa sem sacrificar a honestidade
+        # do snapshot. O console completo continua sendo usado quando há área.
+        _desenhar_hud_compacto(painter, rect, estado, cor_selo)
         return
 
     _fundo_console(painter, rect)

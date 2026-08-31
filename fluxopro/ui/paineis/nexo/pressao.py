@@ -60,9 +60,11 @@ padrao de composicao declarada).
 from __future__ import annotations
 
 import math
+from functools import lru_cache
+from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRect, Qt
-from PySide6.QtGui import QFont, QPainter, QPen
+from PySide6.QtCore import QPointF, QRect, QRectF, Qt
+from PySide6.QtGui import QColor, QFont, QImage, QPainter, QPen, QPolygonF, QPixmap
 
 from fluxopro.core.eventos import WDO_GRID, WIN_GRID
 from fluxopro.ui import tema_asg, tokens
@@ -87,6 +89,9 @@ ESPESSURA_ANEL = 1.6
 FRACAO_AGULHA = 0.34
 EXTENSAO_EIXO = 2
 LARGURA_EIXO = 2
+OPACIDADE_ANIMAL_ATIVO = 235
+OPACIDADE_ANIMAL_SECUNDARIO = 82
+OPACIDADE_ANIMAL_NEUTRO = 64
 
 _COR_CONFIANCA = {
     ConfiancaASG.ALTA: tema_asg.CONFIANCA_ALTA,
@@ -186,6 +191,136 @@ def pressao_composta(maker_forca: float, ritmo_forca: float) -> float:
 
     bruta = PESO_MAKER_PRESSAO * maker_forca + PESO_RITMO_PRESSAO * ritmo_forca
     return max(-1.0, min(1.0, bruta))
+
+
+def intensidades_animais(score: float, tem_leitura: bool) -> tuple[int, int]:
+    """Retorna opacidade de touro e urso a partir da MESMA pressão exibida.
+
+    Os animais não são uma segunda fórmula e não emitem ordem: são só uma
+    redundância visual acessível do par COMPRA/VENDA. Sem leitura publicável,
+    ambos ficam neutros para não sugerir uma direção inventada.
+    """
+
+    if not tem_leitura:
+        return (OPACIDADE_ANIMAL_NEUTRO, OPACIDADE_ANIMAL_NEUTRO)
+    score = max(-1.0, min(1.0, score))
+    compra = (score + 1.0) / 2.0
+    touro = round(OPACIDADE_ANIMAL_SECUNDARIO + (OPACIDADE_ANIMAL_ATIVO - OPACIDADE_ANIMAL_SECUNDARIO) * compra)
+    urso = round(OPACIDADE_ANIMAL_SECUNDARIO + (OPACIDADE_ANIMAL_ATIVO - OPACIDADE_ANIMAL_SECUNDARIO) * (1.0 - compra))
+    return (touro, urso)
+
+
+def _desenhar_animal_contorno(
+    painter: QPainter, rect: QRect, *, touro: bool, opacidade: int
+) -> None:
+    """Desenha um touro/urso geométrico original, leve e independente.
+
+    O traço é propositalmente feito em QPainter: não há imagem, avatar nem
+    ativo de terceiro para copiar, carregar ou animar fora do snapshot.
+    """
+
+    if rect.width() < 14 or rect.height() < 10:
+        return
+    cor_base = tema_asg.NEXO_VERDE if touro else tema_asg.NEXO_ROSA
+    cor = QColor(cor_base)
+    cor.setAlpha(max(0, min(255, opacidade)))
+    x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
+
+    def ponto(fx: float, fy: float) -> QPointF:
+        return QPointF(x + w * fx, y + h * fy)
+
+    # Silhuetas lineares próprias. O contorno ocupa quase toda a caixa para
+    # continuar reconhecível no quadro denso: antes o desenho usava poucas
+    # linhas e a leitura acabava parecendo um ícone genérico comprimido.
+    # Não tenta reproduzir ilustração, marca ou logotipo de terceiros.
+    if touro:
+        contorno = ((.02, .66), (.12, .43), (.30, .23), (.53, .24), (.69, .35), (.80, .19),
+                    (.76, .48), (.98, .56), (.86, .68), (.76, .70), (.70, .94), (.57, .94),
+                    (.53, .70), (.31, .72), (.25, .96), (.12, .96), (.15, .69), (.02, .66))
+        detalhes = (
+            ((.12, .43), (.31, .52), (.53, .24)),
+            ((.31, .23), (.40, .67), (.69, .35)),
+            ((.40, .67), (.53, .70), (.63, .47)),
+            ((.70, .48), (.86, .68)),
+            ((.06, .50), (.01, .35), (.15, .38)),
+        )
+    else:
+        contorno = ((.02, .66), (.10, .42), (.25, .31), (.34, .08), (.45, .30), (.64, .27),
+                    (.79, .39), (.96, .58), (.84, .69), (.76, .70), (.71, .95), (.58, .95),
+                    (.53, .70), (.33, .72), (.27, .96), (.14, .96), (.16, .69), (.02, .66))
+        detalhes = (
+            ((.10, .42), (.31, .55), (.45, .30)),
+            ((.25, .31), (.39, .68), (.64, .27)),
+            ((.39, .68), (.53, .70), (.61, .46)),
+            ((.61, .46), (.84, .69)),
+            ((.17, .39), (.09, .22), (.29, .26)),
+        )
+
+    painter.save()
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    # Halo curto, seguido pelo traço nítido: cria presença sem transformar
+    # o ícone em decoração independente ou poluir a leitura numérica.
+    halo = QColor(cor)
+    halo.setAlpha(max(18, cor.alpha() // 4))
+    painter.setPen(QPen(halo, 3.2))
+    painter.drawPolyline(QPolygonF([ponto(px, py) for px, py in contorno]))
+    painter.setPen(QPen(cor, 1.55))
+    painter.drawPolyline(QPolygonF([ponto(px, py) for px, py in contorno]))
+    painter.setPen(QPen(cor, 1.0))
+    for linha in detalhes:
+        painter.drawPolyline(QPolygonF([ponto(px, py) for px, py in linha]))
+    painter.restore()
+
+
+@lru_cache(maxsize=1)
+def _referencia_animais() -> QPixmap:
+    """Atlas aprovado, carregado uma vez na thread de UI, sem I/O por quadro."""
+    return QPixmap(str(Path(__file__).resolve().parents[2] / "assets" / "pressao_reference.png"))
+
+
+@lru_cache(maxsize=2)
+def _sprite_animal(touro: bool) -> QPixmap:
+    """Chave de cor nativa do Qt remove apenas o fundo neutro do atlas.
+
+    Processa ~6 mil pixels uma vez por animal; nunca durante cada tick.
+    A imagem aprovada fica intacta em disco para auditoria.
+    """
+    atlas = _referencia_animais()
+    if atlas.isNull():
+        return atlas
+    fonte = QRect(1080, 831, 94, 67) if touro else QRect(1289, 836, 69, 58)
+    imagem = atlas.copy(fonte).toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    for y in range(imagem.height()):
+        for x in range(imagem.width()):
+            cor = imagem.pixelColor(x, y)
+            contraste = (cor.green() - max(cor.red(), cor.blue())) if touro else (cor.red() - max(cor.green(), cor.blue()))
+            cor.setAlpha(min(255, max(0, contraste - 4) * 25))
+            imagem.setPixelColor(x, y, cor)
+    return QPixmap.fromImage(imagem)
+
+
+def _desenhar_animal_dominancia(
+    painter: QPainter, rect: QRect, *, touro: bool, opacidade: int
+) -> None:
+    """Usa apenas o animal do atlas aprovado; números continuam dados reais.
+
+    As coordenadas apontam para ilustrações sem texto. A chave de cor integra
+    a referência ao painel sem inserir números/candles do mockup.
+    """
+    atlas = _sprite_animal(touro)
+    if atlas.isNull():
+        _desenhar_animal_contorno(painter, rect, touro=touro, opacidade=opacidade)
+        return
+    fonte = QRectF(atlas.rect())
+    escala = min(rect.width() / fonte.width(), rect.height() / fonte.height())
+    largura, altura = fonte.width() * escala, fonte.height() * escala
+    destino = QRectF(rect.x() + (rect.width() - largura) / 2,
+                     rect.y() + (rect.height() - altura) / 2, largura, altura)
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+    painter.setOpacity(min(1.0, max(0.0, opacidade / 210.0)))
+    painter.drawPixmap(destino, atlas, fonte)
+    painter.restore()
 
 
 def _desenhar_trilho_pressao(
@@ -289,6 +424,10 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         compra = int(max(0.0, min(100.0, 50.0 + score * 50.0)))
         venda = 100 - compra
         estado_dominancia_txt = None
+    tem_ritmo = any(nome == "RITMO" for nome, _ in estado.leituras)
+    tem_leitura_animais = (
+        snapshot_dominancia is not None and snapshot_dominancia.composite is not None
+    ) or maker is not None or tem_ritmo
     confianca = getattr(maker, "confianca", None) if maker is not None else None
     cor_status = _COR_CONFIANCA.get(confianca, tema_asg.CONFIANCA_INDISPONIVEL)
 
@@ -308,6 +447,10 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     metade = coluna_pressao.width() // 2
     tamanho = max(12, min(24, rect.height() // 4))
     painter.setFont(tokens.fonte_numero(tamanho, QFont.Weight.Bold))
+    largura_numero = painter.fontMetrics().horizontalAdvance("100%") + 4
+    altura_animal = max(12, min(56, altura_percentual - 2))
+    largura_animal = max(0, min(80, metade - largura_numero - 4))
+    inicio_venda = coluna_pressao.right() + 1 - largura_numero - largura_animal
     painter.setPen(tema_asg.NEXO_VERDE)
     painter.drawText(
         QRect(coluna_pressao.left(), rect.top(), metade, altura_percentual),
@@ -316,9 +459,33 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     )
     painter.setPen(tema_asg.NEXO_ROSA)
     painter.drawText(
-        QRect(coluna_pressao.left() + metade, rect.top(), coluna_pressao.width() - metade, altura_percentual),
-        Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+        QRect(inicio_venda, rect.top(), largura_numero, altura_percentual),
+        Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
         f"{venda:02d}%",
+    )
+
+    # Os dois animais são uma segunda forma de ler EXATAMENTE o mesmo score
+    # dos percentuais/trilho. O lado mais forte ganha intensidade, mas os dois
+    # permanecem visíveis para comunicar que se trata de balanço relativo,
+    # nunca de uma chamada operacional. Com dados ausentes, os dois degradam
+    # juntos para o tom neutro e o rodapé continua declarando a procedência.
+    opacidade_touro, opacidade_urso = intensidades_animais(score, tem_leitura_animais)
+    # O painel é baixo, mas há largura entre percentuais e selo do ativo.
+    # Reservar altura e largura reais aqui dá aos animais peso semelhante ao
+    # dos números, em vez de deixá-los como glifos acessórios.
+    y_animal = rect.top() + max(1, (altura_percentual - altura_animal) // 2)
+    area_touro = QRect(
+        coluna_pressao.left() + largura_numero, y_animal, largura_animal, altura_animal
+    )
+    area_urso = QRect(
+        inicio_venda + largura_numero,
+        y_animal, largura_animal, altura_animal,
+    )
+    _desenhar_animal_dominancia(
+        painter, area_touro, touro=True, opacidade=opacidade_touro
+    )
+    _desenhar_animal_dominancia(
+        painter, area_urso, touro=False, opacidade=opacidade_urso
     )
 
     legenda = QRect(

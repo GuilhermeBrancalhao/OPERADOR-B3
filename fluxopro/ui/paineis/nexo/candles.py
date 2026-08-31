@@ -47,6 +47,25 @@ LARGURA_EIXO = 58
 # quem define o tamanho da janela e o DADO — a janela sempre alcanca a
 # primeira vela do tape.
 MINUTOS_PREGAO = 540
+HORIZONTE_AUTO_MULTIPLICADOR = 4 / 3
+"""Margem temporal visual do modo AUTOMATICO.
+
+O pregao regular continua sendo tratado como 540 minutos para fins de
+procedencia. O modo automatico usa uma faixa de 1,33x como janela de
+desenho: isso deixa espaco para o grafico crescer desde a abertura sem
+aumentar o corpo das primeiras velas. A margem e visual e nao altera dados.
+"""
+AMPLITUDE_MINIMA_AUTO_TICKS = 48
+"""Piso visual de amplitude na abertura, em ticks do proprio ativo.
+
+Quando ainda existem poucos negocios, enquadrar somente o primeiro candle
+faz o corpo ocupar quase toda a altura e mudar de tamanho a cada negocio.
+Este piso integra a faixa base tanto em AUTO quanto em manual; o zoom de
+preco e aplicado depois. Nao altera OHLC: quando a amplitude observada no
+intervalo visivel supera 48 ticks, a base usa a amplitude real. O nome da
+constante foi mantido por compatibilidade. E uma regra de legibilidade,
+nao formula de mercado.
+"""
 # Largura minima de um slot. 3px (corpo de 2px + respiro) e o piso fisico:
 # abaixo disso vela vira ruido. Era 5px, e num monitor mais estreito esse
 # limite sozinho ja cortava as velas da abertura — o teto de pixel tem de
@@ -61,6 +80,7 @@ LARGURA_ROTULO_NIVEL = 64
 LINHAS_GRADE = 6
 
 ALTURA_BARRA_CONTROLES = 16
+ALTURA_LEITURA_OHLC = 42  # três linhas: nenhuma métrica some em 720p
 LARGURA_CHIP_TIMEFRAME = 62
 LARGURA_CHIP_AGORA = 54
 
@@ -112,9 +132,9 @@ def slots_da_janela(largura_regiao: int, timeframe_min: int,
     disponivel (`total_velas`, quantas velas o dia realmente tem), nunca um
     teto de relogio. Qualquer outro valor vem do operador (roda do mouse ou
     arrasto na escala de tempo) e e limitado entre `VELAS_MIN` e esse mesmo
-    padrao — abaixo de `VELAS_MIN` a leitura vira lupa sem contexto; acima,
-    nao ha mais sessao para mostrar. O zoom-out, portanto, para exatamente
-    na primeira vela do tape, e nao antes dela.
+    padrao, que ja respeita o limite fisico de pixels. Os slots manuais
+    validos permanecem fixos quando chegam velas: o espaco ainda vazio e
+    preenchido pelo feed, sem mudar a largura nem inventar historico.
 
     Funcao PURA, compartilhada com `asg.py` para que o clique/arrasto e o
     desenho concordem sobre onde cada vela esta.
@@ -134,12 +154,18 @@ def slots_da_janela(largura_regiao: int, timeframe_min: int,
     # no dado daria velas gigantes que encolheriam o dia inteiro — que foi o
     # defeito da primeira rodada. O piso segura a largura da vela constante
     # desde o primeiro negocio; o dado so empurra a janela para CIMA.
-    piso_pregao = max(VELAS_MIN, MINUTOS_PREGAO // tf)
+    piso_pregao = max(
+        VELAS_MIN,
+        round(MINUTOS_PREGAO * HORIZONTE_AUTO_MULTIPLICADOR / tf),
+    )
     exigido_pelo_dado = int(total_velas or 0) + MARGEM_SLOTS
     teto_por_pixel = max(VELAS_MIN, largura_plot // LARGURA_MIN_SLOT)
     padrao = max(VELAS_MIN, min(max(piso_pregao, exigido_pelo_dado), teto_por_pixel))
     if velas_visiveis is None:
         return padrao
+    # Limitar ao total de velas mudava 144 slots para 109 na chegada da
+    # 107a vela M5. Preserve a escolha manual dentro do horizonte AUTO e
+    # do teto de pixels, mesmo quando o feed atravessa o piso do pregao.
     return max(VELAS_MIN, min(padrao, int(velas_visiveis)))
 
 
@@ -167,7 +193,7 @@ def retangulo_eixo_preco(rect: QRect) -> QRect:
     """Calha da escala de PRECO (direita). Arrastar aqui na vertical
     comprime/expande a escala de preco — e onde o operador espera pegar,
     igual ao eixo do Profit. Mesma conta do `gutter_eixo` de `desenhar`."""
-    topo = rect.top() + 14 + ALTURA_BARRA_CONTROLES
+    topo = rect.top() + 14 + ALTURA_BARRA_CONTROLES + ALTURA_LEITURA_OHLC
     return QRect(rect.right() - LARGURA_EIXO, topo, LARGURA_EIXO,
                  max(20, rect.bottom() - topo))
 
@@ -205,9 +231,9 @@ def retangulo_plot(rect: QRect) -> QRect:
     """
 
     return QRect(rect.left() + LARGURA_ROTULO_NIVEL,
-                 rect.top() + 14 + ALTURA_BARRA_CONTROLES,
+                 rect.top() + 14 + ALTURA_BARRA_CONTROLES + ALTURA_LEITURA_OHLC,
                  max(80, rect.width() - LARGURA_EIXO - LARGURA_ROTULO_NIVEL),
-                 max(60, rect.height() - 46 - ALTURA_BARRA_CONTROLES))
+                 max(60, rect.height() - 46 - ALTURA_BARRA_CONTROLES - ALTURA_LEITURA_OHLC))
 
 
 def velas_no_quadro(rect: QRect, estado: EstadoNexo) -> tuple:
@@ -296,16 +322,34 @@ def velas_fora_da_escala(rect: QRect, estado: EstadoNexo) -> int:
 def faixa_de_precos(rect: QRect, estado: EstadoNexo) -> tuple[int, int] | None:
     """(minimo, maximo) em ticks que o eixo de preco enquadra. Funcao PURA.
 
-    Enquadra o DADO OBSERVADO: a minima e a maxima de todas as velas
-    visiveis, mais uma margem de respiro. Sem recorte estatistico, sem
-    descarte de extremo — ver `velas_fora_da_escala`.
+    A base enquadra as velas visiveis e o buffer no mesmo intervalo, com
+    piso visual e margem de respiro; so depois aplica o zoom do operador.
+    Sem recorte estatistico nem descarte de extremo das velas visiveis —
+    ver `velas_fora_da_escala`.
     """
 
     velas = velas_no_quadro(rect, estado)
     if not velas:
         return None
     precos = [c.high for c in velas] + [c.low for c in velas]
+    # AUTO e manual compartilham a mesma base. O buffer so acrescenta
+    # contexto dentro dos buckets visiveis [inicio, fim): pan para o
+    # passado nao pode incorporar precos do presente. Sem timestamps,
+    # use apenas OHLC, pois nao ha intervalo verificavel para o buffer.
+    inicio = getattr(velas[0], "timestamp_ns", None)
+    ultimo_inicio = getattr(velas[-1], "timestamp_ns", None)
+    if inicio is not None and ultimo_inicio is not None:
+        timeframe_ns = max(1, int(estado.candles_timeframe_min or 5)) * 60_000_000_000
+        fim = ultimo_inicio + timeframe_ns
+        precos += [int(item[1]) for item in (estado.serie or ())
+                   if isinstance(item, (tuple, list)) and len(item) > 1
+                   and inicio <= item[0] < fim]
     minimo, maximo = min(precos), max(precos)
+    if maximo - minimo < AMPLITUDE_MINIMA_AUTO_TICKS:
+        centro = (maximo + minimo) / 2
+        meia = AMPLITUDE_MINIMA_AUTO_TICKS / 2
+        minimo = int(centro - meia)
+        maximo = int(centro + meia)
     margem = max(1, (maximo - minimo) // 12)
     minimo -= margem
     maximo += margem
@@ -833,7 +877,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         ("VAR", f"{variacao:+.2f}%", cor_variacao),
         ("VOL", f"{vela_lida.volume:,}".replace(",", "."), tema_asg.NEXO_TEXTO),
     )
-    faixa_leitura = QRect(area_plot.left(), area_plot.top() + 1, area_plot.width(), 13)
+    faixa_leitura = QRect(area_plot.left(), area_plot.top() - ALTURA_LEITURA_OHLC,
+                          area_plot.width(), ALTURA_LEITURA_OHLC)
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(tema_asg.NEXO_PAINEL)
     painter.drawRect(faixa_leitura)
@@ -848,30 +893,33 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     painter.setPen(tema_asg.NEXO_CIANO if apontada else tema_asg.NEXO_MUTED)
     painter.drawText(QRect(x_campo, faixa_leitura.top(),
                            metrica_campo.horizontalAdvance(prefixo) + 2,
-                           faixa_leitura.height()),
+                           14),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, prefixo)
     x_campo += metrica_campo.horizontalAdvance(prefixo) + 10
     # Larguras medidas com a fonte de CADA parte (rotulo pequeno, numero
     # maior): medir tudo com a fonte do rotulo encavalava o numero no
     # rotulo seguinte ("5.177,0MAX").
     metrica_numero = QFontMetrics(tokens.fonte_numero(7, QFont.Weight.Bold))
+    y_campo = faixa_leitura.top()
     for rotulo, texto_campo, cor_campo in campos:
         largura_campo = (metrica_campo.horizontalAdvance(rotulo) + 4
                          + metrica_numero.horizontalAdvance(texto_campo) + 12)
         if x_campo + largura_campo > faixa_leitura.right():
-            break
+            # Quebra de linha explícita: antes o break ocultava VAR/VOL.
+            x_campo = faixa_leitura.left() + 4
+            y_campo += 14
         painter.setFont(tokens.fonte_rotulo(6))
         painter.setPen(tema_asg.NEXO_MUTED)
-        painter.drawText(QRect(x_campo, faixa_leitura.top(),
+        painter.drawText(QRect(x_campo, y_campo,
                                metrica_campo.horizontalAdvance(rotulo) + 2,
-                               faixa_leitura.height()),
+                               14),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, rotulo)
         deslocamento = metrica_campo.horizontalAdvance(rotulo) + 4
         painter.setFont(tokens.fonte_numero(7, QFont.Weight.Bold))
         painter.setPen(cor_campo)
-        painter.drawText(QRect(x_campo + deslocamento, faixa_leitura.top(),
+        painter.drawText(QRect(x_campo + deslocamento, y_campo,
                                largura_campo - deslocamento,
-                               faixa_leitura.height()),
+                               14),
                          Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
                          texto_campo)
         x_campo += largura_campo

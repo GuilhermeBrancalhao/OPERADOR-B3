@@ -50,7 +50,7 @@ RAIL_NIVEIS_MAX = 17
 # (da mesma ordem do slot de vela em `nexo/candles.py`, LARGURA_MIN_SLOT=5,
 # de onde vem a proporcao pedida) e deriva-se dela a largura, a quantidade de
 # tijolos visiveis e a amplitude de preco enquadrada.
-ALTURA_TIJOLO_ALVO_PX = 13
+ALTURA_TIJOLO_ALVO_PX = 10
 ALTURA_TIJOLO_MIN_PX = 5
 FATOR_ESCALA_VS_CANDLE = 1.0
 """DECLARADO: 1 tick vale os MESMOS pixels aqui e no grafico de velas.
@@ -61,7 +61,7 @@ travado por teste (`tests/test_ui_nexo_forca_escala.py`). Mudar isto muda o
 significado visual do painel inteiro: qualquer valor diferente de 1,0 faz o
 Renko exagerar (ou achatar) amplitude em relacao ao vizinho."""
 
-ALTURA_TIJOLO_MAX_PX = 20
+ALTURA_TIJOLO_MAX_PX = 16
 """Teto da altura do tijolo. Existe para o caso de mercado parado (poucos
 niveis ocupados): sem ele a regra de ocupacao inflaria o tijolo ate virar o
 bloco gigante que o operador chamou de distorcido."""
@@ -80,7 +80,7 @@ OCUPACAO_VERTICAL_ALVO = 0.82
 sai daqui, nao de um numero de pixels cravado: e o que mantem o Renko na
 mesma ordem de grandeza do candle logo abaixo em vez de virar um bloco
 gigante (ou uma linha fina) conforme o dia esta agitado ou parado."""
-ASPECTO_TIJOLO = 0.62
+ASPECTO_TIJOLO = 0.55
 """largura / altura do tijolo. Era 0,9 (quase quadrado); a referencia visual
 trazida pelo operador (31/08/2026) mostra uma escada bem mais densa — muito
 mais pontos de Renko cabendo na mesma largura do que candles no grafico logo

@@ -35,7 +35,7 @@ regra das demais regioes do NEXO.
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QFont, QPainter, QPen, QPolygon
+from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen, QPolygon
 
 from fluxopro.ui import tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
@@ -483,7 +483,10 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # preco. Com as zonas na tela (correcao do dia) a faixa de baixo passa
     # a carregar a informacao que o operador de fato usa, e fica com a
     # metade maior.
-    altura_resumo = max(44, round(corpo.height() * 0.46))
+    # No classico em 1280px, 44px nao reservam numero de 16px mais a
+    # legenda compacta de duas linhas. Mantem a proporcao nos demais
+    # tamanhos; so aumenta o piso para impedir sobreposicao de texto.
+    altura_resumo = max(56, round(corpo.height() * 0.46))
     linha_resumo = QRect(corpo.left(), corpo.top(), corpo.width(), altura_resumo)
     linha_selo_sr = QRect(corpo.left(), linha_resumo.bottom() + VAO_LINHA, corpo.width(),
                           max(20, corpo.height() - altura_resumo - VAO_LINHA))
@@ -543,17 +546,41 @@ def _desenhar_placar(painter: QPainter, caixa: QRect, rotulo: str, peso: float,
     painter.drawText(caixa.adjusted(6, 4, -6, 0),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, rotulo)
 
-    painter.setFont(tokens.fonte_numero(max(16, min(30, caixa.height() // 2)),
-                                        QFont.Weight.Bold))
+    legenda = f"{contagem} DE {total} LEITURAS · CONVICCAO PONDERADA"
+    fonte_legenda = tokens.fonte_rotulo(6)
+    largura_texto = max(1, caixa.width() - 12)
+    compacta = QFontMetrics(fonte_legenda).horizontalAdvance(legenda) > largura_texto
+    altura_legenda = 11
+    flags_legenda = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom
+    if compacta:
+        # Mantem denominador e natureza ponderada. CONV. abrevia somente
+        # CONVICCAO; nao remove qualificadores nem trunca a palavra final.
+        # O layout largo continua com a legenda original em uma linha.
+        fonte_legenda = tokens.fonte_rotulo(7)
+        metrica = QFontMetrics(fonte_legenda)
+        qualificador = "CONVICCAO PONDERADA"
+        if metrica.horizontalAdvance(qualificador) > largura_texto:
+            qualificador = "CONV. PONDERADA"
+        legenda = f"{contagem} DE {total} LEITURAS\n{qualificador}"
+        flags_legenda |= Qt.TextFlag.TextWordWrap
+        altura_legenda = metrica.boundingRect(
+            QRect(0, 0, largura_texto, caixa.height()), flags_legenda, legenda).height()
+
+    area_numero = caixa.adjusted(6, 12, -6, -altura_legenda - 3)
+    tamanho_numero = max(16, min(30, caixa.height() // 2))
+    fonte_numero = tokens.fonte_numero(tamanho_numero, QFont.Weight.Bold)
+    while compacta and tamanho_numero > 16 and QFontMetrics(fonte_numero).height() > area_numero.height():
+        tamanho_numero -= 1
+        fonte_numero = tokens.fonte_numero(tamanho_numero, QFont.Weight.Bold)
+    painter.setFont(fonte_numero)
     painter.setPen(cor)
-    painter.drawText(caixa.adjusted(6, 12, -6, -14), Qt.AlignmentFlag.AlignCenter,
+    painter.drawText(area_numero, Qt.AlignmentFlag.AlignCenter,
                      f"{round(peso * 100)}%")
 
-    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setFont(fonte_legenda)
     painter.setPen(tema_asg.NEXO_MUTED)
-    painter.drawText(caixa.adjusted(6, 0, -6, -3),
-                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
-                     f"{contagem} DE {total} LEITURAS · CONVICCAO PONDERADA")
+    painter.drawText(QRect(caixa.left() + 6, caixa.bottom() - altura_legenda - 2,
+                          largura_texto, altura_legenda), flags_legenda, legenda)
 
 
 # Silhueta de raio/relampago (pedido do operador, 27/08/2026: "deve ser
