@@ -34,6 +34,8 @@ regra das demais regioes do NEXO.
 
 from __future__ import annotations
 
+import math
+
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen, QPolygon
 
@@ -608,6 +610,23 @@ def _poligono_raio(caixa: QRect, invertido: bool) -> QPolygon:
     return QPolygon(pontos)
 
 
+RAIOS_MAX_POR_LEITURA = 5
+
+
+def quantidade_raios_forca(forca: float) -> int:
+    """Converte a intensidade absoluta [-1,1] em 0..5 raios visuais.
+
+    A força continua sendo a altura do conjunto; a quantidade é uma segunda
+    codificação visual monotônica do mesmo snapshot. Zero não fabrica raio e
+    valores muito pequenos ainda ganham um único marcador legível.
+    """
+
+    magnitude = max(0.0, min(1.0, abs(float(forca))))
+    if magnitude < 0.05:
+        return 0
+    return min(RAIOS_MAX_POR_LEITURA, max(1, math.ceil(magnitude * RAIOS_MAX_POR_LEITURA)))
+
+
 def _texto_periodo(segundos: float) -> str:
     """Periodo coberto pela tira, em unidade legivel de relance.
 
@@ -688,15 +707,23 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
     for forca, (_carimbo, bruto) in zip(exibidas, visiveis):
         cor = _cor_forca(forca)
         altura = _altura(forca)
+        quantidade = quantidade_raios_forca(forca)
+        if quantidade == 0:
+            x += largura_barra + vao
+            continue
+        vao_raios = 1
+        largura_raio = max(1, (largura_barra - (quantidade - 1) * vao_raios) // quantidade)
         if forca >= 0:
-            caixa_raio = QRect(x, meio_y - altura, largura_barra, altura)
             invertido = True
         else:
-            caixa_raio = QRect(x, meio_y, largura_barra, altura)
             invertido = False
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(cor)
-        painter.drawPolygon(_poligono_raio(caixa_raio, invertido))
+        for indice in range(quantidade):
+            x_raio = x + indice * (largura_raio + vao_raios)
+            y_raio = meio_y - altura if forca >= 0 else meio_y
+            caixa_raio = QRect(x_raio, y_raio, largura_raio, altura)
+            painter.drawPolygon(_poligono_raio(caixa_raio, invertido))
         painter.setBrush(Qt.BrushStyle.NoBrush)
         # Marca do custo: enquanto a leitura persegue um alvo maior que o
         # teto, um tracinho na altura do valor CRU mostra para onde ela esta

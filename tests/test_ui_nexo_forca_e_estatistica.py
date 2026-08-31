@@ -121,6 +121,13 @@ def test_periodo_coberto_e_o_tempo_real_entre_a_primeira_e_a_ultima():
     assert estatistica.periodo_coberto_s(_leituras([0.1])) == 0.0
 
 
+def test_quantidade_de_raios_cresce_com_a_forca_e_preserva_o_sinal():
+    quantidades = [estatistica.quantidade_raios_forca(valor)
+                   for valor in (0.0, 0.1, 0.3, 0.6, 1.0)]
+    assert quantidades == [0, 1, 2, 3, 5]
+    assert estatistica.quantidade_raios_forca(-0.6) == 3
+
+
 def test_legenda_declara_o_periodo_coberto(qapp):
     """LACUNA DA RODADA 1: a tira afirmava sequencia sem dizer sobre quanto
     tempo. O periodo tem de aparecer escrito, e mudar quando o tape muda de
