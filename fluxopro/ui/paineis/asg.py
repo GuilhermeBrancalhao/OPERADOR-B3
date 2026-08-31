@@ -26,6 +26,7 @@ from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
 
 from fluxopro.analytics.candle_temporal import CandleTemporal, ConfigCandleTemporal
 from fluxopro.analytics.renko import ConfigRenko, FaseRenko, Renko
+from fluxopro.analytics.analise_claude import MotorAnaliseClaude, ligado_por_ambiente
 from fluxopro.analytics.dominancia import MotorDominancia
 from fluxopro.analytics.suporte_resistencia import MotorSuporteResistencia
 from fluxopro.asg.sinal_ultra import (
@@ -2112,6 +2113,11 @@ class PainelNexoMercadoASG(_PainelASG):
         self._motor_dominancia = MotorDominancia(stream_id="nexo")
         self._dominancia_sequencia = 0
         self._dominancia_ultimo_ts = -1  # ver comentario em `_sr_ultimo_ts`
+        # Analise consultiva do Claude (fluxopro/analytics/analise_claude.py).
+        # A chamada mede 14-30 s e vive numa thread propria: este painel
+        # apenas PEDE a cada quadro e le o ultimo resultado pronto. Nunca
+        # espera, nunca bloqueia os 60 fps.
+        self._motor_analise = MotorAnaliseClaude() if ligado_por_ambiente() else None
 
     def _calcular_sr_snapshot(self, estado_parcial: nexo.EstadoNexo):
         """Roda o motor de Suporte/Resistencia sobre o `EstadoNexo` do
@@ -2148,6 +2154,33 @@ class PainelNexoMercadoASG(_PainelASG):
             agora_ns=agora_ns,
             **entrada,
         )
+
+    def _pacote_analise(self, estado_parcial: nexo.EstadoNexo):
+        """Pede uma analise (o motor decide se e a hora) e devolve o ultimo
+        resultado pronto: ``(estado, analise, motivo, idade_s)``.
+
+        Import tardio de `nexo.analise` pelo mesmo motivo dos demais
+        modulos de regiao — so o pacote raiz `nexo` entra no topo deste
+        arquivo.
+        """
+
+        if self._motor_analise is None:
+            return None
+        from fluxopro.ui.paineis.nexo import analise as nexo_analise
+
+        try:
+            dados = nexo_analise.dados_do_estado(estado_parcial)
+            # So pede analise quando ha mercado para analisar — sem o gate,
+            # a primeira chamada saia no quadro zero e ocupava a tela por
+            # 90 s dizendo que nao havia dados (ver `dados_suficientes`).
+            if nexo_analise.dados_suficientes(dados):
+                self._motor_analise.solicitar(dados)
+        except Exception:  # noqa: BLE001
+            # Uma analise decorativa NUNCA pode derrubar o quadro. Se a
+            # extracao de dados falhar, a regiao desenha "sem analise".
+            return None
+        estado_a, analise, motivo = self._motor_analise.ultima()
+        return estado_a, analise, motivo, self._motor_analise.idade_s()
 
     def _calcular_dominancia_snapshot(self, estado_parcial: nexo.EstadoNexo):
         """Roda o motor de Dominância Comprador/Vendedor sobre o
@@ -2846,8 +2879,11 @@ class PainelNexoMercadoASG(_PainelASG):
             sinal_ultra=self._ultimo_sinal_ultra,
         )
         estado = dataclass_replace(estado, sr_snapshot=self._calcular_sr_snapshot(estado))
-        return dataclass_replace(
+        estado = dataclass_replace(
             estado, dominancia_snapshot=self._calcular_dominancia_snapshot(estado))
+        # A analise entra por ULTIMO: ela le dominancia e S/R ja publicados,
+        # entao fala dos mesmos numeros que a tela mostra.
+        return dataclass_replace(estado, analise_ia=self._pacote_analise(estado))
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
         """Aloca retangulos e delega. Este metodo nao pinta conteudo.
