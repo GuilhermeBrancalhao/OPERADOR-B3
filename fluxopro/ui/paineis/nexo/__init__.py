@@ -267,6 +267,25 @@ class EstadoNexo:
     Vem do arrasto vertical sobre a escala de preco (ou da roda sobre ela).
     So recorta a exibicao — nao altera candle, tick nem grade."""
 
+    dominancia_snapshot: object | None = None
+    """``DominanciaSnapshot`` (fluxopro.analytics.dominancia) do quadro, ou
+    None. Motor determinístico construído a partir de
+    ``INSTRUCOES_CLAUDE_DOMINANCIA_COMPRADOR_VENDEDOR.md`` (pasta Codex,
+    trazido pelo operador) — read-only, ULTRA com histerese multi-condição,
+    Q6. Ver `nexo/dominancia.py` para o mapeamento e `nexo/pressao.py` para
+    o desenho. `None` só quando o painel que constrói `EstadoNexo` não o
+    calcula (compatibilidade com pontos de montagem antigos/testes)."""
+
+    sr_snapshot: object | None = None
+    """``SuporteResistenciaSnapshot`` (fluxopro.analytics.suporte_resistencia)
+    do quadro, ou None. Motor construido do zero por este projeto a partir
+    de `INSTRUCOES_CLAUDE_SUPORTE_RESISTENCIA.md` (pasta Codex, trazido pelo
+    operador) — read-only, nunca gera intencao de ordem. `None` so quando o
+    painel que constroi EstadoNexo nao o calcula (compatibilidade com
+    pontos de montagem antigos/testes); ver `nexo/estatistica.py` para o
+    desenho e `fluxopro/ui/paineis/asg.py::_montar_entrada_sr` para o
+    mapeamento dos 8 componentes a partir do que o projeto ja calcula."""
+
 
 def retangulos(quadro: QRect) -> dict[str, QRect]:
     """Traduz o mapa de fracoes em retangulos inteiros dentro de ``quadro``.

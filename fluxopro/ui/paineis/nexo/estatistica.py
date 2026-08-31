@@ -16,9 +16,17 @@ Estrutura (rodada 1 desta regiao):
   ``estado.serie`` (a mesma serie de forca ja congelada no snapshot — nenhum
   dado novo e inferido aqui). Sem amostra, a tira declara o estado
   indisponivel em vez de desenhar barras falsas;
-* os quatro ladrilhos de leitura (HORIZONTE/PULSO/PRESENCA/RITMO), agora com
-  moldura inteira colorida pela direcao (nao so uma lasca na borda esquerda)
-  e um chip de confianca no canto, lido de ``linha.confianca``.
+* o selo de Suporte/Resistência (31/08/2026, substitui os quatro ladrilhos
+  de leitura HORIZONTE/PULSO/PRESENCA/RITMO): o operador apontou que esta
+  faixa estava "muito pobre visualmente e com lógicas sem confiança" — os
+  quatro ladrilhos só reimprimiam ``estado.leituras`` sem nenhuma leitura
+  nova, e HORIZONTE/PULSO já migraram para o Dual Market Velocity Gauge em
+  `nexo/contexto.py`. No lugar entra `estado.sr_snapshot`
+  (``fluxopro.analytics.suporte_resistencia``), o motor determinístico de
+  suporte/resistência construído a partir de
+  ``INSTRUCOES_CLAUDE_SUPORTE_RESISTENCIA.md`` (pasta Codex, trazido pelo
+  operador) — ver `nexo/suporte_resistencia.py` para o mapeamento e o
+  desenho.
 
 Nada aqui e clicavel nem envia ordem: e leitura consultiva, com a mesma
 regra das demais regioes do NEXO.
@@ -32,21 +40,13 @@ from PySide6.QtGui import QFont, QPainter, QPen, QPolygon
 from fluxopro.ui import tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
 from fluxopro.ui.paineis.nexo import EstadoNexo
+from fluxopro.ui.paineis.nexo import suporte_resistencia as _sr_ui
 
 VAO_LADRILHO = 4
 VAO_LINHA = 4
 ALTURA_TITULO = 14
 ALTURA_ROTULO_BARRAS = 9
 ALTURA_LEGENDA_BARRAS = 10
-
-# Cor do chip de confianca, por nivel declarado em ``LinhaMatrizASG.confianca``.
-# Vem inteiramente de ``tema_asg`` — nenhuma cor literal nova.
-_MAPA_CONFIANCA = {
-    _asg.ConfiancaASG.ALTA: tema_asg.CONFIANCA_ALTA,
-    _asg.ConfiancaASG.MEDIA: tema_asg.CONFIANCA_MEDIA,
-    _asg.ConfiancaASG.BAIXA: tema_asg.CONFIANCA_BAIXA,
-    _asg.ConfiancaASG.INDISPONIVEL: tema_asg.CONFIANCA_INDISPONIVEL,
-}
 
 # Achado do operador (27/08/2026): "por que mudancas tao abruptas sempre,
 # precisa ser algo mais tecnico". Ate 26/08/2026 o placar contava 1-a-1
@@ -61,12 +61,21 @@ _MAPA_CONFIANCA = {
 # continua o denominador honesto, nunca removido), mas o NUMERO GRANDE em
 # cada caixa passa a ser um placar PONDERADO por confianca — continuo, nao
 # discreto — em vez do inteiro 0-4.
-_PESO_CONFIANCA_PLACAR = {
+PESO_CONFIANCA = {
     _asg.ConfiancaASG.ALTA: 1.0,
     _asg.ConfiancaASG.MEDIA: 0.6,
     _asg.ConfiancaASG.BAIXA: 0.3,
     _asg.ConfiancaASG.INDISPONIVEL: 0.0,
 }
+"""Peso de confiabilidade por nível de `ConfiancaASG` — tabela ÚNICA para
+qualquer regiao que precise ponderar uma leitura pela confiança declarada
+na matriz (usada aqui e pelo medidor duplo MICRO/MACRO em
+`nexo/contexto.py`). Publica de propósito: duplicar esta tabela em outro
+arquivo é o mesmo risco de "dois pesos, uma leitura" que a bancada deste
+projeto já pegou noutro contexto."""
+_PESO_CONFIANCA_PLACAR = PESO_CONFIANCA
+"""Alias — mantido só para não reescrever cada uso já existente neste
+arquivo. Consumidor NOVO deve importar `PESO_CONFIANCA`."""
 
 
 def placar_ponderado(leituras: tuple[tuple[str, object], ...]) -> float:
@@ -471,8 +480,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     altura_resumo = max(46, round(corpo.height() * 0.60))
     linha_resumo = QRect(corpo.left(), corpo.top(), corpo.width(), altura_resumo)
-    linha_ladrilhos = QRect(corpo.left(), linha_resumo.bottom() + VAO_LINHA, corpo.width(),
-                            max(20, corpo.height() - altura_resumo - VAO_LINHA))
+    linha_selo_sr = QRect(corpo.left(), linha_resumo.bottom() + VAO_LINHA, corpo.width(),
+                          max(20, corpo.height() - altura_resumo - VAO_LINHA))
 
     largura_contagem = max(120, round(linha_resumo.width() * 0.44))
     bloco_contagem = QRect(linha_resumo.left(), linha_resumo.top(), largura_contagem,
@@ -483,7 +492,7 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     _desenhar_contagem(painter, bloco_contagem, leituras, total)
     _desenhar_barras(painter, bloco_barras, estado.serie)
-    _desenhar_ladrilhos(painter, linha_ladrilhos, leituras)
+    _sr_ui.desenhar_selo(painter, linha_selo_sr, estado.sr_snapshot)
 
 
 def _desenhar_contagem(painter: QPainter, rect: QRect,
@@ -704,52 +713,3 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
                      legenda)
 
 
-def _desenhar_ladrilhos(painter: QPainter, corpo: QRect,
-                        leituras: tuple[tuple[str, object], ...]) -> None:
-    largura = max(40, (corpo.width() + VAO_LADRILHO) // len(leituras) - VAO_LADRILHO)
-    for indice, (nome, linha) in enumerate(leituras):
-        caixa = QRect(corpo.left() + indice * (largura + VAO_LADRILHO), corpo.top(),
-                      largura, corpo.height())
-        cor = _asg._cor_nexo_direcao(linha.direcao)
-
-        painter.fillRect(caixa, tema_asg.NEXO_PAINEL_ALTO)
-        caneta = QPen(cor)
-        caneta.setWidth(1)
-        painter.setPen(caneta)
-        painter.drawRect(caixa.adjusted(0, 0, -1, -1))
-
-        painter.setFont(tokens.fonte_rotulo(7))
-        painter.setPen(tema_asg.NEXO_MUTED)
-        painter.drawText(caixa.adjusted(6, 4, -5, 0),
-                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, nome)
-
-        painter.setFont(tokens.fonte_numero(max(12, min(20, caixa.height() // 4)),
-                                            QFont.Weight.Bold))
-        painter.setPen(cor)
-        painter.drawText(caixa.adjusted(6, 0, -5, -16), Qt.AlignmentFlag.AlignCenter,
-                         f"{linha.forca * 100:+.0f}%")
-
-        painter.setFont(tokens.fonte_rotulo(6))
-        painter.setPen(tema_asg.NEXO_MUTED)
-        painter.drawText(caixa.adjusted(6, 0, -5, -3),
-                         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
-                         linha.valor[:12])
-
-        _desenhar_chip_confianca(painter, caixa, linha.confianca)
-
-
-def _desenhar_chip_confianca(painter: QPainter, caixa: QRect, confianca) -> None:
-    """Chip de status no canto do ladrilho, lido de ``linha.confianca``.
-
-    Cor e texto vem do enum ``ConfiancaASG`` ja existente na matriz — nao e
-    rotulo novo, e a mesma classificacao que os outros paineis ASG usam.
-    """
-
-    cor = _MAPA_CONFIANCA.get(confianca, tema_asg.CONFIANCA_INDISPONIVEL)
-    texto = confianca.value.replace("CONF ", "").replace("—", "SEM CONF")
-    largura_chip = min(max(20, caixa.width() - 8), 8 + 5 * len(texto))
-    chip = QRect(caixa.right() - largura_chip - 4, caixa.top() + 3, largura_chip, 10)
-    painter.fillRect(chip, cor)
-    painter.setFont(tokens.fonte_rotulo(5))
-    painter.setPen(tema_asg.CHIP_TEXTO)
-    painter.drawText(chip, Qt.AlignmentFlag.AlignCenter, texto)

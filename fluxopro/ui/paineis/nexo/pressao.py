@@ -68,6 +68,7 @@ from fluxopro.core.eventos import WDO_GRID, WIN_GRID
 from fluxopro.ui import tema_asg, tokens
 from fluxopro.ui.paineis.asg import ConfiancaASG
 from fluxopro.ui.paineis.nexo import EstadoNexo
+from fluxopro.ui.paineis.nexo import dominancia as _dominancia_ui
 
 PESO_MAKER_PRESSAO = 0.70
 PESO_RITMO_PRESSAO = 0.30
@@ -267,9 +268,27 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     maker = estado.maker
     forca_maker = maker.forca if maker is not None else 0.0
     forca_ritmo = _forca_ritmo(estado)
-    score = pressao_composta(forca_maker, forca_ritmo)
-    compra = int(max(0.0, min(100.0, 50.0 + score * 50.0)))
-    venda = 100 - compra
+
+    # Dominância Comprador/Vendedor (31/08/2026,
+    # INSTRUCOES_CLAUDE_DOMINANCIA_COMPRADOR_VENDEDOR.md, pasta Codex):
+    # quando o motor determinístico publica um composto válido (LIVE ou
+    # REPLAY), o placar BUY/SELL vem DELE — Q6, arredondamento half-away-
+    # from-zero, histerese ULTRA — em vez do blend simples 70/30 antigo.
+    # Sem leitura válida (STALE/GAP/RECOVERING/UNAVAILABLE), a região
+    # degrada para o proxy antigo em vez de travar — mesma regra de
+    # honestidade do resto do NEXO: nunca mostrar um placar quebrado, mas
+    # também nunca sumir com o único número que a região sempre teve.
+    snapshot_dominancia = estado.dominancia_snapshot
+    if snapshot_dominancia is not None and snapshot_dominancia.composite is not None:
+        score = snapshot_dominancia.composite
+        compra = int(round(snapshot_dominancia.buy_percent))
+        venda = 100 - compra
+        estado_dominancia_txt = _dominancia_ui.rotulo_estado(snapshot_dominancia.estado)
+    else:
+        score = pressao_composta(forca_maker, forca_ritmo)
+        compra = int(max(0.0, min(100.0, 50.0 + score * 50.0)))
+        venda = 100 - compra
+        estado_dominancia_txt = None
     confianca = getattr(maker, "confianca", None) if maker is not None else None
     cor_status = _COR_CONFIANCA.get(confianca, tema_asg.CONFIANCA_INDISPONIVEL)
 
@@ -325,11 +344,14 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     compra_placar, venda_placar = pesos_por_lado(estado.leituras)
     coerencia = rotulo_coerencia(score, compra_placar - venda_placar)
-    painter.drawText(
-        rodape, Qt.AlignmentFlag.AlignCenter,
-        f"MAKER {PESO_MAKER_PRESSAO*100:.0f}% + RITMO {PESO_RITMO_PRESSAO*100:.0f}%"
-        f" · {coerencia} · PROXY",
-    )
+    if estado_dominancia_txt is not None:
+        rotulo_rodape = f"DOMINÂNCIA {estado_dominancia_txt} · {coerencia} · PROXY"
+    else:
+        rotulo_rodape = (
+            f"MAKER {PESO_MAKER_PRESSAO*100:.0f}% + RITMO {PESO_RITMO_PRESSAO*100:.0f}%"
+            f" · {coerencia} · {snapshot_dominancia.saude.estado.value if snapshot_dominancia else 'PROXY'}"
+        )
+    painter.drawText(rodape, Qt.AlignmentFlag.AlignCenter, rotulo_rodape)
 
     # --- bloco do instrumento ----------------------------------------------
     banda_superior = QRect(

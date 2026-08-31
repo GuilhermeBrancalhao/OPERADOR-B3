@@ -80,16 +80,26 @@ OCUPACAO_VERTICAL_ALVO = 0.82
 sai daqui, nao de um numero de pixels cravado: e o que mantem o Renko na
 mesma ordem de grandeza do candle logo abaixo em vez de virar um bloco
 gigante (ou uma linha fina) conforme o dia esta agitado ou parado."""
-ASPECTO_TIJOLO = 0.9  # largura / altura — tijolo levemente em pe, como no Profit
-LARGURA_MIN_TIJOLO_PX = 4
-LARGURA_MAX_TIJOLO_PX = 12
+ASPECTO_TIJOLO = 0.62
+"""largura / altura do tijolo. Era 0,9 (quase quadrado); a referencia visual
+trazida pelo operador (31/08/2026) mostra uma escada bem mais densa — muito
+mais pontos de Renko cabendo na mesma largura do que candles no grafico logo
+abaixo, o oposto da nossa proporcao antiga. 0,62 e o MESMO fator de corpo que
+`nexo/candles.py` usa (`FRACAO_CORPO`), entao o tijolo fica esguio como a
+vela, e mais tijolo cabe por pixel sem esticar a escala vertical (que
+continua travada 1:1 ao candle, ver `FATOR_ESCALA_VS_CANDLE`)."""
+LARGURA_MIN_TIJOLO_PX = 3  # mesmo piso fisico do slot de vela (candles.LARGURA_MIN_SLOT)
+LARGURA_MAX_TIJOLO_PX = 8
 """Teto da LARGURA, deliberadamente mais baixo que a altura maxima.
 
 O eixo horizontal do Renko nao e um eixo de preco — nao deve nada a escala do
 candle, e o trabalho dele e caber o maximo de micro recente ainda legivel.
 Sem este teto, um tijolo alto (fator declarado > 1) puxava a largura junto
 pelo aspecto e a serie visivel caia de ~90 para ~30 tijolos: pagar historico
-por proporcao que o eixo horizontal nem tem."""
+por proporcao que o eixo horizontal nem tem. Baixado de 12 para 8 junto da
+mudanca de `ASPECTO_TIJOLO` (31/08/2026): teto largo demais anulava o
+aspecto esguio e devolvia tijolo quase quadrado quando a altura ja batia o
+teto vertical."""
 TIJOLOS_VISIVEIS_MAX = 240
 """Teto de tijolos na tela. Com o eixo vertical amarrado ao candle (ver
 `FATOR_ESCALA_VS_CANDLE`) a altura do tijolo deixou de ser negociavel, e a
@@ -97,7 +107,12 @@ UNICA forma legitima de aproveitar o quadro passou a ser mostrar mais
 HISTORICO — o que tambem faz a escada percorrer mais preco e ocupar mais da
 vertical. Esticar o tijolo para preencher espaco seria voltar a mentir sobre
 amplitude."""
-ALFA_CORPO_TIJOLO = 105  # corpo translucido + borda solida (mesmo tratamento das velas)
+ALFA_CORPO_TIJOLO = 140
+"""Corpo translucido + borda solida (mesmo tratamento das velas). Subido de
+105 (31/08/2026): com o tijolo mais esguio (`ASPECTO_TIJOLO`) o preenchimento
+fraco lia como trilho fino cinza; a referencia do operador mostra blocos bem
+saturados. Ainda translucido — a grade de preco por tras continua visivel —
+so mais cheio."""
 
 _ROTULO_FASE = {
     FaseRenko.TENDENCIA: "TENDENCIA",

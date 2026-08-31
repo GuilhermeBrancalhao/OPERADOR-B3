@@ -1,22 +1,46 @@
-"""Regiao CONTEXTO (x 0,06-0,34 · y 0,00-0,56).
+"""Regiao CONTEXTO (x 0,06-0,34 · y 0,00-0,56) — Dual Market Velocity Gauge.
 
-Esqueleto extraido da metade superior de
-``PainelNexoMercadoASG._desenhar_contexto_nexo``: arcos concentricos com a
-leitura dominante, prisma de pressao e as quatro leituras derivadas. Sem
-moldura de cartao — a cena sangra no fundo do quadro.
+Reforma de 31/08/2026: o operador trouxe uma referência (print + guia de
+integração ``CLAUDE_INTEGRATION_DUAL_MARKET_VELOCITY_GAUGE.md`` e o
+protótipo ``dual_market_velocity_gauge.html``, pasta Codex/outputs) e
+apontou que a cena anterior (um arco único com o score já suavizado do
+MakerProxy) "não reflete como é feito na ASG, que mostra a macro e a
+micro": a matriz ASG já calcula dois horizontes distintos — MACRO
+(``estado.leituras`` apelido ``HORIZONTE``) e MICRO (apelido ``PULSO``,
+ver ``asg._linhas_contexto_nexo``) — e a cena antiga só desenhava o score
+do MakerProxy (um TERCEIRO sinal, ``PRESENCA``), nunca os dois horizontes.
 
-O numero dominante e o termometro de agressao ja passado pelo volante —
-ver `asg.VolanteGauge` para a formula, os rotulos das constantes e o custo
-medido. Esta regiao nao calcula nada: ela e funcao pura de `estado`.
+O que esta regiao passa a mostrar:
 
-Prisma e arcos sao forma, nao asset: a direcao viaja em cor **e** em texto,
-para sobreviver ao modo sem cor. Nada aqui e clicavel.
+1. **dois arcos em contra-rotação** (`_arco_duplo`) — MICRO e MACRO, cada
+   um com seu próprio valor bruto, normalizado [-1,+1] e leitura de
+   confiança, nunca uma média cega; a matemática (amplitude 278°, pesos
+   0,58/0,42, contra-giro) é a MESMA do documento de referência — ver
+   ``fluxopro/analytics/velocidade_dual.py``, que porta as fórmulas para
+   Python puro e testável;
+2. **candle prismático de contexto** (`_prisma`, mantido: já era um corpo
+   único extrudado em 3 faces, sem costura, o que o documento de
+   referência pede na seção 6) — agora com órbitas MICRO/MACRO e cor pelo
+   COMPOSTO dos dois horizontes, não mais pelo MakerProxy isolado; o
+   ranking "1o/2o/3o" do MakerProxy continua ao lado dele — é informação
+   real que já existia e não tem por que sumir só porque o desenho central
+   mudou de fonte;
+3. **selo de frescor** (`frescor_do_quadro`) — ``LIVE``/``REPLAY``/
+   ``STALE``/``UNAVAILABLE``, lido do MESMO ``estado_operacional`` que
+   ``nexo/indisponivel.py`` já usa (nunca um heartbeat/IPC — este é um
+   processo único, não um produtor e consumidor separados). ``GAP`` do
+   documento de referência não é implementado: nenhum sinal deste projeto
+   hoje distingue "buraco no feed" de "atrasado"/"indisponível", e inventar
+   essa distinção sem fonte seria o mesmo defeito que este projeto existe
+   para evitar.
 
-``arcos concentricos`` e o contrato do modulo, nao so o nome: nenhum anel
-desta cena fecha 360 graus. O anel mais externo (moldura), o anel de direcao
-e o anel de intensidade dividem o MESMO vao angular (`ARCO_INICIO_GRAUS` +
-`ARCO_EXTENSAO_GRAUS`) em raios decrescentes — a leitura dominante fica no
-centro, cercada por camadas, nunca por um disco fechado.
+As quatro leituras da matriz (`HORIZONTE`/`PULSO`/`PRESENCA`/`RITMO`)
+continuam as MESMAS quatro de sempre — MACRO e MICRO só migraram de uma
+lista de texto para os dois arcos; `PRESENCA`/`RITMO` continuam na coluna
+lateral (`_leituras`).
+
+Nada aqui e clicavel. Cor e forma andam sempre juntas (setas/rótulos de
+sinal, nunca só o hue) para sobreviver ao modo sem cor.
 """
 
 from __future__ import annotations
@@ -35,9 +59,11 @@ from PySide6.QtGui import (
     QRadialGradient,
 )
 
+from fluxopro.analytics import velocidade_dual as _veldual
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
 from fluxopro.ui.paineis.nexo import EstadoNexo
+from fluxopro.ui.paineis.nexo.estatistica import PESO_CONFIANCA
 
 # O numero grande desta cena NAO e o score do instante: e a posicao do
 # volante (`asg.VolanteGauge`), que tem inercia em tempo e escala relativa
@@ -75,19 +101,27 @@ ROTULO_REGIAO = "CONTEXTO · SUAVIZADO"
 # quando aparece. Rotulo: IMPRECISO, derivado da medicao acima.
 SEGUNDOS_PARA_AVISAR_REPRESAMENTO = 15.0
 
-FRACAO_CENTRO_X = 0.40
-FRACAO_CENTRO_Y = 0.40
-RAIO_MIN = 32
-RAIO_MAX = 92
-ARCO_INICIO_GRAUS = 25
-ARCO_EXTENSAO_GRAUS = 238
+# Geometria dos DOIS arcos (MICRO/MACRO) — seção 5 do documento de
+# referência. MICRO fica maior e mais baixo (o horizonte primário, mesma
+# hierarquia do protótipo); MACRO menor e mais alto. `FRACAO_CENTRO_*` são
+# fração da REGIAO INTEIRA (não só da metade onde o arco mora), porque os
+# dois centros dividem o mesmo espaço horizontal com o prisma.
+FRACAO_CENTRO_MICRO_X = 0.30
+FRACAO_CENTRO_MICRO_Y = 0.30
+FRACAO_CENTRO_MACRO_X = 0.66
+FRACAO_CENTRO_MACRO_Y = 0.20
+RAIO_MICRO_MIN, RAIO_MICRO_MAX = 30, 60
+RAIO_MACRO_MIN, RAIO_MACRO_MAX = 24, 50
+LARGURA_TRACO_ARCO_DUAL = 5
+RAIO_MARCADOR_ARCO_DUAL = 3
 
 # Hierarquia tipografica explicita: todo par (numero, rotulo-que-o-legenda)
 # mantem numero > rotulo, na ordem em que aparecem na cena. Nomeada em vez de
 # literal solto para que a proxima edicao nao inverta a escala por descuido.
-TAM_FONTE_NUMERO_DOMINANTE_MIN = 16
-TAM_FONTE_NUMERO_DOMINANTE_MAX = 30
-TAM_FONTE_ROTULO_DIRECAO = 9
+TAM_FONTE_NUMERO_ARCO_MIN = 12
+TAM_FONTE_NUMERO_ARCO_MAX = 20
+TAM_FONTE_ROTULO_ARCO = 7
+TAM_FONTE_COMPOSTO = 20
 TAM_FONTE_ROTULO_REGIAO = 8
 TAM_FONTE_PRECO_TOPO = 10
 TAM_FONTE_NUMERO_PRISMA = 11
@@ -109,13 +143,7 @@ FRACAO_COLUNA_ROTULO_LEITURA = 0.46
 ESPACO_REGUA_LEITURA = 6
 METADE_REGUA_LEITURA = 5
 
-# Espessura dos tres aneis concentricos, moldura -> direcao -> intensidade.
-# Crescente para dentro: o anel que carrega o dado mais quente (intensidade)
-# e o mais grosso, a moldura decorativa e o mais fino.
 LARGURA_TRACO_MOLDURA = 1
-LARGURA_TRACO_DIRECAO = 2
-LARGURA_TRACO_INTENSIDADE = 4
-RAIO_TIP_INTENSIDADE = 3
 
 # Sombreamento do prisma: mesma cor de direcao, tres luminancias + tres
 # opacidades para simular tres faces solidas sob uma unica luz de cima —
@@ -152,19 +180,87 @@ FRACAO_ALTURA_PRISMA_MIN = 0.5
 RAIO_GRADIENTE_MARGEM = 1.35
 
 
+_APELIDOS_ARCO = ("HORIZONTE", "PULSO")  # MACRO, MICRO — ver `asg._linhas_contexto_nexo`
+
+_ESTADO_OPERACIONAL_PARA_FRESCOR = {
+    "AO_VIVO": "LIVE",
+    "REPLAY": "REPLAY",
+    "ATRASADO": "STALE",
+    # SEM_BOOK nao degrada ESTE medidor: MICRO/MACRO vem da leitura de fluxo
+    # (`leitura.macro`/`leitura.micro`), nunca do livro L2 — a auséncia de
+    # book e assunto de `pressao.py`/`ladder.py`, cobertos por
+    # `nexo/indisponivel.py`.
+    "SEM_BOOK": "LIVE",
+    "ERRO": "UNAVAILABLE",
+    "DESCONHECIDO": "UNAVAILABLE",
+    "AGUARDANDO": "UNAVAILABLE",
+}
+
+_COR_POR_FRESCOR = {
+    "LIVE": tema_asg.ESTADO_AO_VIVO,
+    "REPLAY": tema_asg.ESTADO_REPLAY,
+    "STALE": tema_asg.ESTADO_ATRASADO,
+    "UNAVAILABLE": tema_asg.NEXO_MUTED,
+}
+
+
+def frescor_do_quadro(estado: EstadoNexo) -> str:
+    """``LIVE``/``REPLAY``/``STALE``/``UNAVAILABLE`` — ver docstring do
+    modulo sobre por que ``GAP`` nao existe aqui. Funcao pura, testavel sem
+    QPainter: le so ``estado.snapshot.estado_operacional``, o MESMO campo
+    que ``nexo/indisponivel.py`` ja consulta para a mesma finalidade (nunca
+    uma segunda fonte de verdade sobre a saude do quadro).
+    """
+
+    operacional = getattr(getattr(estado, "snapshot", None), "estado_operacional", None)
+    nome = getattr(operacional, "name", None)
+    return _ESTADO_OPERACIONAL_PARA_FRESCOR.get(nome, "UNAVAILABLE")
+
+
+def _linha_por_apelido(leituras: tuple[tuple[str, object], ...], apelido: str):
+    for nome, linha in leituras:
+        if nome == apelido:
+            return linha
+    return None
+
+
+def _normalizado_de(linha) -> float:
+    return 0.0 if linha is None else _veldual.clamp(getattr(linha, "forca", 0.0))
+
+
+def _confiabilidade_de(linha) -> float:
+    if linha is None:
+        return 0.0
+    return PESO_CONFIANCA.get(getattr(linha, "confianca", None), 0.0)
+
+
 def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if rect.width() < 80 or rect.height() < 80:
         return
-    maker = estado.maker
-    score = maker.forca if maker is not None else 0.0
-    direcao = maker.direcao if maker is not None else _asg.DirecaoASG.NEUTRA
-    cor = _asg._cor_nexo_direcao(direcao)
 
-    centro = QPoint(rect.left() + int(rect.width() * FRACAO_CENTRO_X),
-                    rect.top() + int(rect.height() * FRACAO_CENTRO_Y))
-    raio = max(RAIO_MIN, min(RAIO_MAX, min(rect.width(), rect.height()) // 4))
+    leituras = estado.leituras
+    linha_macro = _linha_por_apelido(leituras, "HORIZONTE")
+    linha_micro = _linha_por_apelido(leituras, "PULSO")
+    normalizado_macro = _normalizado_de(linha_macro)
+    normalizado_micro = _normalizado_de(linha_micro)
+    confiab_macro = _confiabilidade_de(linha_macro)
+    confiab_micro = _confiabilidade_de(linha_micro)
+    disponivel = confiab_macro > 0.0 or confiab_micro > 0.0
 
-    _fundo_profundidade(painter, rect, centro, raio)
+    composto = _veldual.composto_micro_macro(
+        normalizado_micro, confiab_micro, normalizado_macro, confiab_macro
+    )
+    rotulo_composto = _veldual.rotulo_direcao(composto) if disponivel else "SEM DADO"
+    direcao_composta = {
+        "ALTA": _asg.DirecaoASG.COMPRA,
+        "BAIXA": _asg.DirecaoASG.VENDA,
+    }.get(rotulo_composto, _asg.DirecaoASG.NEUTRA)
+    cor = _asg._cor_nexo_direcao(direcao_composta)
+    frescor = frescor_do_quadro(estado)
+
+    centro_cena = rect.center()
+    raio_fundo = max(RAIO_MICRO_MAX, RAIO_MACRO_MAX)
+    _fundo_profundidade(painter, rect, centro_cena, raio_fundo)
 
     painter.setFont(tokens.fonte_rotulo(TAM_FONTE_ROTULO_REGIAO))
     painter.setPen(tema_asg.NEXO_MUTED)
@@ -172,10 +268,15 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
                      rotulo_regiao(getattr(estado, "represado_s", 0.0)))
 
-    _aneis_leitura(painter, centro, raio, score, direcao, cor)
+    _desenhar_frescor(painter, rect, frescor)
 
-    ranking_maker = maker.detalhe if maker is not None else ""
-    _prisma(painter, rect, score, cor, ranking_maker)
+    _arco_duplo(painter, rect, linha_micro, linha_macro, normalizado_micro,
+               normalizado_macro, confiab_micro, confiab_macro,
+               composto, rotulo_composto, cor, disponivel)
+
+    ranking_maker = estado.maker.detalhe if estado.maker is not None else ""
+    _prisma(painter, rect, composto, cor, ranking_maker,
+           normalizado_micro, normalizado_macro, disponivel)
 
     ultimo = estado.serie[-1][1] if estado.serie else None
     if ultimo is not None:
@@ -188,12 +289,27 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     # A coluna de leituras encosta na borda direita da regiao; o prisma fica a
     # esquerda dela, em faixa propria, para que os dois nao se sobreponham em
-    # nenhuma largura de janela.
+    # nenhuma largura de janela. MACRO/PULSO saíram daqui — agora tem arco
+    # próprio (`_arco_duplo`); a coluna mostra o que sobra (PRESENCA/RITMO).
+    leituras_coluna = tuple((nome, linha) for nome, linha in leituras
+                            if nome not in _APELIDOS_ARCO)
     largura_leituras = max(76, min(110, rect.width() // 4))
     _leituras(painter, QRect(rect.right() - largura_leituras,
                              rect.top() + int(rect.height() * 0.34),
                              largura_leituras,
-                             min(120, rect.height() // 3)), estado)
+                             min(120, rect.height() // 3)), leituras_coluna)
+
+
+def _desenhar_frescor(painter: QPainter, rect: QRect, frescor: str) -> None:
+    """Selo de frescor, canto superior esquerdo, sob o rotulo da regiao —
+    texto SEMPRE presente (nunca so cor), como qualquer leitura de estado
+    do NEXO."""
+
+    cor = _COR_POR_FRESCOR.get(frescor, tema_asg.NEXO_MUTED)
+    caixa = QRect(rect.left() + 4, rect.top() + 14, rect.width() - 8, 12)
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(cor)
+    painter.drawText(caixa, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, frescor)
 
 
 def rotulo_regiao(represado_s: float) -> str:
@@ -260,69 +376,164 @@ def _fundo_profundidade(painter: QPainter, rect: QRect, centro: QPoint, raio: in
     painter.fillRect(rect, QBrush(gradiente))
 
 
-def _aneis_leitura(painter: QPainter, centro: QPoint, raio: int, score: float,
-                   direcao, cor: QColor) -> None:
-    """Tres aneis concentricos, todos parciais, do mais externo (moldura)
-    ao mais interno (intensidade). Nenhum fecha 360 graus — e o que
-    distingue um mostrador de um disco.
+def _ponto_no_arco(centro: QPoint, raio: float, graus: float) -> QPoint:
+    """Ponto na circunferencia de ``raio`` ao redor de ``centro``, na MESMA
+    convencao angular do `QPainter.drawArc` (0°=leste, positivo=anti-
+    horario NA TELA) — mesma formula de `nexo/nucleo.py::_ponto_elipse`."""
+
+    rad = math.radians(graus)
+    return QPoint(centro.x() + round(raio * math.cos(rad)),
+                 centro.y() - round(raio * math.sin(rad)))
+
+
+def _desenhar_um_arco(
+    painter: QPainter, centro: QPoint, raio: int, *, angulo_base: float,
+    theta: float, cor: QColor, cor_indisponivel: QColor,
+    disponivel: bool, cresce_no_sentido_positivo: bool,
+) -> None:
+    """Um horizonte (MICRO ou MACRO): trilho apagado no vão inteiro de
+    `AMPLITUDE_ARCO_GRAUS`, arco aceso do lado de ``angulo_base`` até
+    ``theta``, marcador na ponta. ``cresce_no_sentido_positivo`` decide se o
+    span do arco aceso é positivo (MICRO, sentido anti-horário no
+    `drawArc`) ou negativo (MACRO, sentido horário) — ver
+    `fluxopro.analytics.velocidade_dual.angulo_micro`/`angulo_macro`.
     """
 
-    intensidade = max(0.0, min(1.0, abs(score)))
+    caixa = QRect(centro.x() - raio, centro.y() - raio, 2 * raio, 2 * raio)
+    painter.setPen(QPen(tema_asg.NEXO_GRADE, LARGURA_TRACO_ARCO_DUAL))
+    painter.drawArc(caixa, round(angulo_base * 16),
+                    round(_veldual.AMPLITUDE_ARCO_GRAUS * 16)
+                    * (1 if cresce_no_sentido_positivo else -1))
 
-    # Anel 1 — moldura, sempre no mesmo vao angular, so decorativa.
-    r1 = raio + 15
-    painter.setPen(QPen(tema_asg.NEXO_GRADE, LARGURA_TRACO_MOLDURA))
-    painter.drawArc(QRect(centro.x() - r1, centro.y() - r1, 2 * r1, 2 * r1),
-                    ARCO_INICIO_GRAUS * 16, ARCO_EXTENSAO_GRAUS * 16)
+    if not disponivel:
+        return
 
-    # Anel 2 — direcao: vao angular fixo, cor do lado dominante. Carrega
-    # "para onde", nao "quanto".
-    r2 = raio + 7
-    painter.setPen(QPen(cor, LARGURA_TRACO_DIRECAO))
-    painter.drawArc(QRect(centro.x() - r2, centro.y() - r2, 2 * r2, 2 * r2),
-                    ARCO_INICIO_GRAUS * 16, ARCO_EXTENSAO_GRAUS * 16)
+    cor_arco = cor if disponivel else cor_indisponivel
+    span = theta - angulo_base
+    painter.setPen(QPen(cor_arco, LARGURA_TRACO_ARCO_DUAL))
+    painter.drawArc(caixa, round(angulo_base * 16), round(span * 16))
 
-    # Anel 3 — intensidade: trilho apagado no vao inteiro, preenchimento
-    # colorido proporcional a |score|. Carrega "quanto".
-    painter.setPen(QPen(tema_asg.NEXO_MUTED, LARGURA_TRACO_INTENSIDADE))
-    painter.drawArc(QRect(centro.x() - raio, centro.y() - raio, 2 * raio, 2 * raio),
-                    ARCO_INICIO_GRAUS * 16, ARCO_EXTENSAO_GRAUS * 16)
-    extensao_valor = ARCO_EXTENSAO_GRAUS * intensidade
-    if extensao_valor > 0.5:
-        painter.setPen(QPen(cor, LARGURA_TRACO_INTENSIDADE))
-        painter.drawArc(QRect(centro.x() - raio, centro.y() - raio, 2 * raio, 2 * raio),
-                        ARCO_INICIO_GRAUS * 16, round(extensao_valor * 16))
-        angulo_fim = math.radians(ARCO_INICIO_GRAUS + extensao_valor)
-        ponta = QPoint(
-            centro.x() + round(raio * math.cos(angulo_fim)),
-            centro.y() - round(raio * math.sin(angulo_fim)),
-        )
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(cor)
-        painter.drawEllipse(ponta, RAIO_TIP_INTENSIDADE, RAIO_TIP_INTENSIDADE)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-
-    # Numero dominante, centrado nos tres aneis.
-    tam_numero = max(TAM_FONTE_NUMERO_DOMINANTE_MIN,
-                     min(TAM_FONTE_NUMERO_DOMINANTE_MAX, raio // 2 + 4))
-    painter.setPen(cor)
-    painter.setFont(tokens.fonte_numero(tam_numero, QFont.Weight.Bold))
-    painter.drawText(QRect(centro.x() - raio, centro.y() - 17, 2 * raio, 34),
-                     Qt.AlignmentFlag.AlignCenter, f"{score * 100:+.0f}%")
-
-    # Legenda da leitura dominante — sempre por fora do anel-moldura (r1),
-    # nunca sobreposta a ele.
-    painter.setFont(tokens.fonte_rotulo(TAM_FONTE_ROTULO_DIRECAO))
-    painter.setPen(tema_asg.NEXO_TEXTO)
-    rotulo_direcao = ("COMPRA" if direcao is _asg.DirecaoASG.COMPRA else
-                      "VENDA" if direcao is _asg.DirecaoASG.VENDA else "EQUILIBRIO")
-    painter.drawText(QRect(centro.x() - r1 - 20, centro.y() + r1 + 4,
-                           2 * (r1 + 20), 16), Qt.AlignmentFlag.AlignCenter,
-                     rotulo_direcao)
+    ponta = _ponto_no_arco(centro, raio, theta)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(cor_arco)
+    painter.drawEllipse(ponta, RAIO_MARCADOR_ARCO_DUAL, RAIO_MARCADOR_ARCO_DUAL)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
 
 
-def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor, ranking_maker: str = "") -> None:
-    """Volume isometrico da pressao observada — forma, nao logotipo.
+def _texto_valor_horizonte(linha) -> str:
+    if linha is None:
+        return "—"
+    valor = getattr(linha, "valor", "")
+    return "—" if valor in ("", "SEM DADOS") else str(valor)
+
+
+def _arco_duplo(
+    painter: QPainter, rect: QRect, linha_micro, linha_macro,
+    normalizado_micro: float, normalizado_macro: float,
+    confiab_micro: float, confiab_macro: float,
+    composto: float, rotulo_composto: str, cor: QColor, disponivel: bool,
+) -> None:
+    """Os dois arcos em contra-rotação (seção 5 do documento de referência)
+    mais o composto no meio — a peça central da regiao. MICRO (maior, mais
+    baixo) é o horizonte primário; MACRO (menor, mais alto) o secundário,
+    mesma hierarquia visual do protótipo.
+
+    Redundância não cromática exigida pelo documento: sinal (+/-) junto do
+    normalizado, nome com seta (``↻ MICRO``/``↺ MACRO``), e o próprio arco
+    percorrido/posição do marcador — a leitura nunca depende só da cor.
+    """
+
+    centro_micro = QPoint(rect.left() + int(rect.width() * FRACAO_CENTRO_MICRO_X),
+                          rect.top() + int(rect.height() * FRACAO_CENTRO_MICRO_Y))
+    centro_macro = QPoint(rect.left() + int(rect.width() * FRACAO_CENTRO_MACRO_X),
+                          rect.top() + int(rect.height() * FRACAO_CENTRO_MACRO_Y))
+    raio_micro = max(RAIO_MICRO_MIN, min(RAIO_MICRO_MAX, min(rect.width(), rect.height()) // 7))
+    raio_macro = max(RAIO_MACRO_MIN, min(RAIO_MACRO_MAX, min(rect.width(), rect.height()) // 9))
+
+    disponivel_micro = disponivel and confiab_micro > 0.0
+    disponivel_macro = disponivel and confiab_macro > 0.0
+    theta_micro = _veldual.angulo_micro(normalizado_micro)
+    theta_macro = _veldual.angulo_macro(normalizado_macro)
+
+    _desenhar_um_arco(
+        painter, centro_micro, raio_micro,
+        angulo_base=_veldual.ANGULO_BASE_MICRO_GRAUS, theta=theta_micro,
+        cor=cor, cor_indisponivel=tema_asg.NEXO_MUTED,
+        disponivel=disponivel_micro, cresce_no_sentido_positivo=True,
+    )
+    _desenhar_um_arco(
+        painter, centro_macro, raio_macro,
+        angulo_base=_veldual.ANGULO_BASE_MACRO_GRAUS, theta=theta_macro,
+        cor=cor, cor_indisponivel=tema_asg.NEXO_MUTED,
+        disponivel=disponivel_macro, cresce_no_sentido_positivo=False,
+    )
+
+    for centro, raio, linha, normalizado, ok, nome in (
+        (centro_micro, raio_micro, linha_micro, normalizado_micro, disponivel_micro, "↻ MICRO"),
+        (centro_macro, raio_macro, linha_macro, normalizado_macro, disponivel_macro, "↺ MACRO"),
+    ):
+        tam_numero = max(TAM_FONTE_NUMERO_ARCO_MIN,
+                         min(TAM_FONTE_NUMERO_ARCO_MAX, raio // 2 + 4))
+        painter.setFont(tokens.fonte_numero(tam_numero, QFont.Weight.Bold))
+        painter.setPen(cor if ok else tema_asg.NEXO_MUTED)
+        painter.drawText(QRect(centro.x() - raio, centro.y() - 12, 2 * raio, 24),
+                         Qt.AlignmentFlag.AlignCenter, _texto_valor_horizonte(linha))
+        painter.setFont(tokens.fonte_rotulo(TAM_FONTE_ROTULO_ARCO))
+        painter.setPen(tema_asg.NEXO_TEXTO if ok else tema_asg.NEXO_MUTED)
+        painter.drawText(QRect(centro.x() - raio, centro.y() + 10, 2 * raio, 12),
+                         Qt.AlignmentFlag.AlignCenter, nome)
+        painter.setFont(tokens.fonte_rotulo(6))
+        painter.setPen(cor if ok else tema_asg.NEXO_MUTED)
+        texto_sinal = "SEM DADO" if not ok else f"{normalizado:+.2f}"
+        painter.drawText(QRect(centro.x() - raio, centro.y() + 21, 2 * raio, 11),
+                         Qt.AlignmentFlag.AlignCenter, texto_sinal)
+
+    _desenhar_composto(painter, rect, centro_micro, centro_macro, composto,
+                       rotulo_composto, cor, disponivel,
+                       normalizado_micro, normalizado_macro)
+
+
+def _desenhar_composto(
+    painter: QPainter, rect: QRect, centro_micro: QPoint, centro_macro: QPoint,
+    composto: float, rotulo_composto: str, cor: QColor, disponivel: bool,
+    normalizado_micro: float, normalizado_macro: float,
+) -> None:
+    """Percentual composto + rótulo ALTA/BAIXA/BALANCO + contra-giro — o
+    painel de estado do meio, entre os dois arcos (seção 4/5)."""
+
+    caixa = QRect(min(centro_micro.x(), centro_macro.x()) - 10,
+                 max(centro_micro.y(), centro_macro.y()) + 2,
+                 abs(centro_macro.x() - centro_micro.x()) + 20, 44)
+    caixa = caixa.intersected(rect)
+    if caixa.height() < 30 or caixa.width() < 40:
+        return
+
+    texto_pct = "—" if not disponivel else f"{composto * 100:+.1f}%"
+    painter.setFont(tokens.fonte_numero(TAM_FONTE_COMPOSTO, QFont.Weight.Bold))
+    painter.setPen(cor if disponivel else tema_asg.NEXO_MUTED)
+    painter.drawText(QRect(caixa.left(), caixa.top(), caixa.width(), 22),
+                     Qt.AlignmentFlag.AlignCenter, texto_pct)
+
+    painter.setFont(tokens.fonte_rotulo(8))
+    painter.setPen(cor if disponivel else tema_asg.NEXO_MUTED)
+    painter.drawText(QRect(caixa.left(), caixa.top() + 20, caixa.width(), 12),
+                     Qt.AlignmentFlag.AlignCenter, f"MARKET / {rotulo_composto}")
+
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    if disponivel:
+        delta, _ = _veldual.contragiro(normalizado_micro, normalizado_macro)
+        texto_giro = f"CONTRA-GIRO {delta:+.1f}°"
+    else:
+        texto_giro = "CONTRA-GIRO —"
+    painter.drawText(QRect(caixa.left(), caixa.top() + 32, caixa.width(), 11),
+                     Qt.AlignmentFlag.AlignCenter, texto_giro)
+
+
+def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor,
+           ranking_maker: str = "", normalizado_micro: float = 0.0,
+           normalizado_macro: float = 0.0, disponivel: bool = True) -> None:
+    """Candle prismático de contexto — seção 6 do documento de referência.
 
     Caixa extrudada FECHADA, tres faces da MESMA cor de direcao: topo
     (a face de topo projetada na diagonal cima-direita — luz direta, a
@@ -331,17 +542,24 @@ def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor, ranking_m
     direita da frente — a mais escura, sombra propria). Topo e lado
     compartilham o vertice da frente com quem se encaixam, entao a caixa
     fecha sem costura: nao ha friso solto nem par de faces que se abrem a
-    partir de uma dobra ambigua.
+    partir de uma dobra ambigua — exatamente o corpo continuo que a seção 6
+    exige ("não empilhe cubos e não crie uma emenda larga no meio").
 
-    A altura vem de |score| (mesma intensidade do anel 3), entre um piso
-    (a caixa nunca murcha a zero) e um teto — e cresce a partir de uma
-    LINHA DE BASE desenhada (o "chao"), para que a magnitude se leia no
-    proprio volume, nao so no texto abaixo dele. Uma sombra de contato sob
-    o rodape da caixa prende o volume ao chao (sem ela a caixa parece
-    flutuar).
+    A altura vem de |composto| (o MESMO score dos dois arcos — antes era o
+    MakerProxy isolado), entre um piso (a caixa nunca murcha a zero) e um
+    teto — e cresce a partir de uma LINHA DE BASE desenhada (o "chao"),
+    para que a magnitude se leia no proprio volume, nao so no texto abaixo
+    dele. Uma sombra de contato sob o rodape da caixa prende o volume ao
+    chao (sem ela a caixa parece flutuar).
+
+    Duas órbitas (`_orbita`) ao redor da base — MICRO por dentro, MACRO por
+    fora, mesma hierarquia dos dois arcos — nomeiam de onde a altura do
+    prisma vem, sem virar um terceiro número sem contrato (a seção 6 pede
+    isso explicitamente: "não use a altura do cubo como número adicional
+    sem contrato").
     """
 
-    intensidade = max(0.0, min(1.0, abs(score)))
+    intensidade = max(0.0, min(1.0, abs(score))) if disponivel else 0.0
 
     largura = max(34, rect.width() // 9)
     prof_x = max(10, round(largura * FATOR_PROFUNDIDADE_X))
@@ -354,6 +572,20 @@ def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor, ranking_m
     x = rect.left() + int(rect.width() * 0.56)
     chao_y = rect.top() + int(rect.height() * 0.56) + altura_teto
     topo_y = chao_y - altura
+
+    if disponivel:
+        centro_orbita = QPoint(x + (largura + prof_x) // 2, chao_y + 4)
+        largura_base = largura + prof_x
+        # MACRO por fora (mais larga, mais apagada) — mesma hierarquia dos
+        # dois arcos (macro secundário). MICRO por dentro. Nenhuma das duas
+        # e um numero adicional: e so a NOMEACAO de onde a altura do prisma
+        # vem (seção 6 pede exatamente isto).
+        painter.setPen(QPen(_com_alpha(cor, 90), 1))
+        painter.drawEllipse(centro_orbita, round(largura_base * 0.62),
+                            round(largura_base * 0.20))
+        painter.setPen(QPen(_com_alpha(cor, 150), 1, Qt.PenStyle.DotLine))
+        painter.drawEllipse(centro_orbita, round(largura_base * 0.46),
+                            round(largura_base * 0.14))
 
     # Rodape (linha de base): o "zero" contra o qual a altura se mede. Sem
     # esta linha o operador nao tem de onde partir o olho para julgar
@@ -389,18 +621,20 @@ def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor, ranking_m
     painter.setBrush(Qt.BrushStyle.NoBrush)
 
     painter.setFont(tokens.fonte_numero(TAM_FONTE_NUMERO_PRISMA, QFont.Weight.Bold))
-    painter.setPen(cor)
+    painter.setPen(cor if disponivel else tema_asg.NEXO_MUTED)
     painter.drawText(QRect(x - 12, chao_y + 10, largura + prof_x + 40, 16),
                      # MESMO formato do numero do mostrador logo acima: e o
-                     # MESMO score, impresso duas vezes na mesma regiao. Com
-                     # `+.1f` o prisma era o unico percentual da tela inteira
-                     # com casa decimal — e com separador `.`, num quadro que
-                     # escreve preco em `5.174,5`. Mesma leitura, mesma forma.
-                     Qt.AlignmentFlag.AlignCenter, f"{score * 100:+.0f}%")
+                     # MESMO composto, impresso duas vezes na mesma regiao.
+                     # Com `+.1f` o prisma era o unico percentual da tela
+                     # inteira com casa decimal — e com separador `.`, num
+                     # quadro que escreve preco em `5.174,5`. Mesma leitura,
+                     # mesma forma.
+                     Qt.AlignmentFlag.AlignCenter,
+                     "—" if not disponivel else f"{score * 100:+.0f}%")
     painter.setFont(tokens.fonte_rotulo(TAM_FONTE_ROTULO_PRISMA))
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(QRect(x - 18, topo_y + prof_y - 15, largura + prof_x + 52, 14),
-                     Qt.AlignmentFlag.AlignCenter, "MAKER PROXY")
+                     Qt.AlignmentFlag.AlignCenter, "CONTEXT / MARKET CORE")
 
     # Ranking dos componentes do MakerProxy por magnitude ("Maker 1o/2o/3o"
     # pedido pelo operador) — nunca uma entidade nova, so o mesmo sinal
@@ -410,12 +644,21 @@ def _prisma(painter: QPainter, rect: QRect, score: float, cor: QColor, ranking_m
     # UMA LINHA POR POSICAO, fonte legivel — achado ao vivo pelo operador
     # ("onde esta os makers?"): a versao anterior espremia as 3 posicoes
     # numa unica linha a ~5px, tecnicamente presente mas ilegivel na pratica.
+    #
+    # O rotulo "MAKER PROXY" migrou para AQUI (era o titulo do prisma
+    # inteiro antes desta reforma): o cubo agora representa o COMPOSTO
+    # MICRO/MACRO, e o ranking continua sendo especificamente do MakerProxy
+    # — os dois sinais nao podem compartilhar um titulo so.
     if ranking_maker:
+        painter.setFont(tokens.fonte_rotulo(6))
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(QRect(x - 30, chao_y + 22, max(largura + prof_x + 70, 150), 10),
+                         Qt.AlignmentFlag.AlignLeft, "MAKER PROXY · RANKING")
         linhas_ranking = ranking_maker.split("\n")
         altura_linha_ranking = 13
         largura_bloco = max(largura + prof_x + 70, 150)
         x_bloco = x - 30
-        y_bloco = chao_y + 24
+        y_bloco = chao_y + 33
         # Nunca desenhar por cima da PROXIMA regiao: se a caixa nao tem
         # altura para as 3 linhas (janela pequena, cubo baixo na regiao),
         # corta as linhas de baixo em vez de invadir o vizinho — achado ao
@@ -450,15 +693,19 @@ def _tom_valor_leitura(cor: QColor) -> QColor:
     )
 
 
-def _leituras(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
+def _leituras(painter: QPainter, rect: QRect,
+              linhas: tuple[tuple[str, object], ...]) -> None:
     """Coluna ROTULO -> VALOR com dois degraus de luminancia (valor perto do
     branco, rotulo abaixo do cinza neutro) e uma regua fina por linha que
     prende cada valor ao rotulo que o legenda — sem a regua, o degrau de
     brilho por si so faria rotulo e valor lerem como dois blocos soltos em
     vez de um par leitura->numero.
+
+    Recebe as leituras já FILTRADAS por quem chama (`desenhar` remove
+    HORIZONTE/PULSO, que migraram para `_arco_duplo`) — esta função não
+    decide o que aparece na coluna, só desenha o que recebeu.
     """
 
-    linhas = estado.leituras
     if not linhas or rect.height() < 42:
         return
     altura = max(16, rect.height() // len(linhas))

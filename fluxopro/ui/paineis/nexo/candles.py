@@ -29,7 +29,7 @@ ordem.
 from __future__ import annotations
 
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QFont, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QBrush, QFont, QFontMetrics, QLinearGradient, QPainter, QPen
 
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.paineis.nexo import EstadoNexo
@@ -399,6 +399,28 @@ def _pilula_preco(
     painter.drawText(area, Qt.AlignmentFlag.AlignCenter, texto)
 
 
+def _pintar_corpo_3d(painter: QPainter, corpo: QRect, cor) -> None:
+    """Corpo do candle com relevo (pedido do operador, 31/08/2026, a partir de
+    referencia visual): um preenchimento chapado lia como retangulo plano;
+    a referencia mostra um corpo com brilho central e sombra nas bordas,
+    como um cilindro. O gradiente horizontal simula esse relevo sem trocar a
+    matiz — ``cor.lighter()``/``cor.darker()`` preservam o mesmo hue de
+    ``NEXO_VERDE``/``NEXO_ROSA``, so variando luminancia, entao a leitura
+    direcional (alta/baixa) continua sendo so a cor-base, nao o efeito.
+
+    Continua usando ``fillRect``/``drawRect`` (nunca ``drawRoundedRect``) —
+    e o que os testes de largura e de proporcao interceptam para medir o
+    corpo pintado.
+    """
+    gradiente = QLinearGradient(corpo.left(), 0, corpo.right(), 0)
+    gradiente.setColorAt(0.0, cor.darker(150))
+    gradiente.setColorAt(0.5, cor.lighter(140))
+    gradiente.setColorAt(1.0, cor.darker(150))
+    painter.fillRect(corpo, QBrush(gradiente))
+    painter.setPen(QPen(cor.darker(130), 1))
+    painter.drawRect(corpo.adjusted(0, 0, -1, -1))
+
+
 def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if rect.height() < 60 or rect.width() < 120:
         return
@@ -640,7 +662,7 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
             painter.setPen(QPen(cor, 1))
             painter.drawLine(x - largura // 2, topo_corpo, x + largura // 2, topo_corpo)
         else:
-            painter.fillRect(QRect(x - largura // 2, topo_corpo, largura, altura_corpo), cor)
+            _pintar_corpo_3d(painter, QRect(x - largura // 2, topo_corpo, largura, altura_corpo), cor)
         volume = candle.volume
         altura_volume = max(2, round(volume * max(1, area_volume.height() - 2) / max_volume))
         painter.fillRect(QRect(x - largura // 2, area_volume.bottom() - altura_volume,

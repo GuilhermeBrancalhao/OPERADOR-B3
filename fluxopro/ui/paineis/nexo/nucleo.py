@@ -67,6 +67,7 @@ from fluxopro.asg.sinal_ultra import ConfigSinalUltra, DirecaoUltra
 from fluxopro.ui import formato, tema_asg, tokens
 from fluxopro.ui.paineis import asg as _asg
 from fluxopro.ui.paineis.nexo import EstadoNexo
+from fluxopro.ui.paineis.nexo import vies as _vies
 
 # Configuracao de ULTIMO RECURSO, usada so quando nao ha snapshot do motor
 # neste quadro (`estado.sinal_ultra is None`: montagem antiga ou teste).
@@ -167,6 +168,105 @@ _FAIXA_POR_DIRECAO = {
     _asg.DirecaoASG.NEUTRA: tema_asg.NEXO_CIANO_FAIXA,
 }
 
+# ==========================================================================
+# Leitura do glifo central — 31/08/2026
+# ==========================================================================
+# Achado do operador: o visor so distinguia COMPRA/VENDA/NEUTRA/AGUARDAR (a
+# direcao "crua" da decisao). Faltavam duas leituras que o resto do motor JA
+# calcula mas o glifo nunca mostrava: (1) o Sinal Ultra armado — a leitura de
+# MAIOR confianca do produto, hoje so um anel fino sobre a mesma seta — e (2)
+# um alerta de ALTO RISCO para "o mercado bateu de lado agora, sem direcao" —
+# que ate aqui nao tinha visual nenhum, so lateralizava como AGUARDAR/NEUTRA
+# igual a um dia calmo.
+GLIFO_ULTRA_COMPRA = "ultra_compra"
+GLIFO_ULTRA_VENDA = "ultra_venda"
+GLIFO_ALTO_RISCO = "alto_risco"
+GLIFO_COMPRA = "compra"
+GLIFO_VENDA = "venda"
+GLIFO_NEUTRA = "neutra"
+GLIFO_AGUARDAR = "aguardar"
+
+_ROTULO_LEITURA = {
+    GLIFO_ULTRA_COMPRA: "ULTRA COMPRA",
+    GLIFO_ULTRA_VENDA: "ULTRA VENDA",
+    GLIFO_ALTO_RISCO: "ALTO RISCO",
+}
+
+
+def leitura_do_nucleo(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> str:
+    """Classifica o glifo central. Funcao PURA, testavel sem QPainter.
+
+    Prioridade, da leitura mais confirmada para a mais generica:
+
+    1. **Sinal Ultra ARMADO** — nao "aceso" (que inclui SEGURANDO, so
+       histerese sem alinhamento vivo, ver `vies.fase_do_filtro_de_sinal`):
+       especificamente as condicoes fechando AGORA. Mostrar o raio tambem em
+       SEGURANDO repetiria o defeito que `vies.py` ja corrigiu uma vez (selo
+       aceso sem alinhamento parecendo igual ao aceso COM alinhamento) — em
+       SEGURANDO o glifo cai para a leitura de decisao normal, e quem conta a
+       histerese e a faixa do Ultra logo abaixo (`_desenhar_faixa_ultra`).
+    2. **ALTO RISCO** — sem decisao confirmada (AGUARDAR ou NEUTRA) e o Renko
+       acabou de INVERTER uma sequencia de 2+ tijolos
+       (`FaseRenko.POSSIVEL_INVERSAO`, ja calculada por
+       `fluxopro/analytics/renko.py`) — o mercado bateu de lado agora, nao
+       apenas "sem sinal ainda". IMPRECISO: e o mesmo proxy de engenharia que
+       ja vale para `FaseRenko` inteiro (ver docstring de `renko.py`), nao
+       formula da fonte original.
+    3. **COMPRA/VENDA** — decisao confirmada, Ultra nao armado agora.
+    4. **NEUTRA** — balanco sem vies (`DirecaoASG.NEUTRA`).
+    5. **AGUARDAR** — default, nenhuma leitura.
+    """
+
+    ultra = estado.sinal_ultra
+    if _vies.fase_do_filtro_de_sinal(ultra) == _vies.ARMADO:
+        return (GLIFO_ULTRA_COMPRA if ultra.direcao is DirecaoUltra.COMPRA
+                else GLIFO_ULTRA_VENDA)
+
+    if direcao not in (_asg.DirecaoASG.COMPRA, _asg.DirecaoASG.VENDA):
+        if estado.fase_renko is FaseRenko.POSSIVEL_INVERSAO:
+            return GLIFO_ALTO_RISCO
+
+    if direcao is _asg.DirecaoASG.COMPRA:
+        return GLIFO_COMPRA
+    if direcao is _asg.DirecaoASG.VENDA:
+        return GLIFO_VENDA
+    if direcao is _asg.DirecaoASG.NEUTRA:
+        return GLIFO_NEUTRA
+    return GLIFO_AGUARDAR
+
+
+def _cor_da_leitura(leitura: str, direcao: "_asg.DirecaoASG"):
+    """Cor do glifo/moldura para a leitura do nucleo.
+
+    ULTRA usa a MESMA cor direcional do resto do produto (verde/rosa) — e a
+    mesma decisao, so que confirmada com confianca maxima, nunca um terceiro
+    hue. ALTO RISCO usa `tokens.ABSORPTION` (laranja de "evento de
+    microestrutura detectado", ja usado no produto para absorcao) — nao o
+    amarelo de AGUARDAR (`NEXO_AMARELO`/`FUNDO_ALERTA`), porque o risco tem
+    de se distinguir a olho de "so esperando", nao repetir o mesmo tom.
+    """
+
+    if leitura == GLIFO_ULTRA_COMPRA:
+        return tema_asg.NEXO_VERDE
+    if leitura == GLIFO_ULTRA_VENDA:
+        return tema_asg.NEXO_ROSA
+    if leitura == GLIFO_ALTO_RISCO:
+        return tokens.ABSORPTION
+    return _asg._cor_nexo_direcao(direcao)
+
+
+def _faixa_da_leitura(leitura: str, direcao: "_asg.DirecaoASG") -> QColor:
+    """Cor de contorno/halo do visor — mesma logica de `_cor_da_leitura`, em
+    versao translucida para a moldura (que ja tinha `_FAIXA_POR_DIRECAO` para
+    os quatro estados de decisao)."""
+
+    if leitura in (GLIFO_ULTRA_COMPRA, GLIFO_ULTRA_VENDA, GLIFO_ALTO_RISCO):
+        cor = QColor(_cor_da_leitura(leitura, direcao))
+        cor.setAlpha(60)
+        return cor
+    return _FAIXA_POR_DIRECAO.get(direcao, tema_asg.NEXO_CIANO_FAIXA)
+
+
 # Selo do Sinal Ultra: anel pulsante. Periodo longo o bastante para ler como
 # "respiracao" e nao como estroboscopio.
 PERIODO_PULSO_ULTRA_NS = 1_200_000_000
@@ -202,7 +302,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     decisao = estado.snapshot.decisao
     direcao = decisao.direcao
-    cor = _asg._cor_nexo_direcao(direcao)
+    leitura = leitura_do_nucleo(estado, direcao)
+    cor = _cor_da_leitura(leitura, direcao)
     ultra = estado.sinal_ultra
     direcao_ultra = getattr(ultra, "direcao", None)
     ultra_ativo = direcao_ultra is not None and direcao_ultra is not DirecaoUltra.NENHUMA
@@ -224,9 +325,9 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         _desenhar_cabecalho(painter, moldura, estado.snapshot.timestamp_ns)
         corpo = QRect(moldura.left(), moldura.top() + ALTURA_CABECALHO,
                       moldura.width(), moldura.height() - ALTURA_CABECALHO)
-        _desenhar_moldura(painter, corpo, direcao, cor)
-        _desenhar_glifo(painter, corpo, direcao, cor)
-        _desenhar_titulo_decisao(painter, corpo, decisao, cor)
+        _desenhar_moldura(painter, corpo, leitura, direcao, cor)
+        _desenhar_glifo(painter, corpo, leitura, direcao, cor)
+        _desenhar_titulo_decisao(painter, corpo, decisao, leitura, cor)
         if ultra_ativo:
             _desenhar_selo_ultra(painter, corpo, estado.snapshot.timestamp_ns)
 
@@ -556,7 +657,7 @@ def _desenhar_cabecalho(painter: QPainter, rect: QRect, timestamp_ns: int) -> No
                      texto)
 
 
-def _desenhar_moldura(painter: QPainter, moldura: QRect,
+def _desenhar_moldura(painter: QPainter, moldura: QRect, leitura: str,
                       direcao: "_asg.DirecaoASG", cor) -> None:
     """Corpo do visor em cinco camadas — a profundidade que o operador pediu.
 
@@ -576,7 +677,7 @@ def _desenhar_moldura(painter: QPainter, moldura: QRect,
        instrumento que nunca aparece num botao convencional.
     """
 
-    faixa = _FAIXA_POR_DIRECAO.get(direcao, tema_asg.NEXO_CIANO_FAIXA)
+    faixa = _faixa_da_leitura(leitura, direcao)
     silhueta = _silhueta_visor(moldura)
 
     painter.setPen(Qt.PenStyle.NoPen)
@@ -704,20 +805,28 @@ def _brackets_canto(painter: QPainter, rect: QRect, cor) -> None:
         painter.drawLine(x, y, x, y + dy * braco)
 
 
-def _desenhar_titulo_decisao(painter: QPainter, moldura: QRect, decisao, cor) -> None:
+def _desenhar_titulo_decisao(painter: QPainter, moldura: QRect, decisao,
+                             leitura: str, cor) -> None:
     """Titulo da decisao DENTRO do visor, na base do bisel.
 
     Estava fora da moldura, num vao morto entre o visor e o resto — e o vao
     existia so por causa dele. Trazido para dentro, o texto pertence ao
     instrumento e a regiao recupera a altura.
+
+    O texto segue a MESMA `leitura` que escolheu o glifo (`_ROTULO_LEITURA`
+    para ULTRA/ALTO RISCO, o titulo da decisao nos demais casos) — nunca o
+    titulo cru quando o glifo esta mostrando outra coisa. Rotulo e glifo
+    discordando e exatamente o padrao de defeito que mais se repetiu neste
+    projeto (declaracao nao conferindo com o elemento).
     """
 
+    rotulo = _ROTULO_LEITURA.get(leitura, decisao.titulo.upper())
     lado = min(moldura.width(), moldura.height())
     base = max(4, lado // BISEL_BASE_DIV)
     caixa = QRect(moldura.left(), moldura.bottom() - base - 26, moldura.width(), 16)
     painter.setFont(tokens.fonte_ui(11, QFont.Weight.Bold))
     painter.setPen(cor)
-    painter.drawText(caixa, Qt.AlignmentFlag.AlignCenter, decisao.titulo.upper())
+    painter.drawText(caixa, Qt.AlignmentFlag.AlignCenter, rotulo)
 
     # A ressalva consultiva mora DENTRO do instrumento, e nao so na linha do
     # rodape do quadro: o glifo grande e colorido e a peca mais parecida com
@@ -760,7 +869,7 @@ def _desenhar_selo_ultra(painter: QPainter, moldura: QRect, timestamp_ns: int) -
 # ==========================================================================
 # Glifo
 # ==========================================================================
-def _desenhar_glifo(painter: QPainter, moldura: QRect,
+def _desenhar_glifo(painter: QPainter, moldura: QRect, leitura: str,
                     direcao: "_asg.DirecaoASG", cor) -> None:
     """Glifo central, escalado para ocupar o visor (nao um icone perdido nele).
 
@@ -794,6 +903,22 @@ def _desenhar_glifo(painter: QPainter, moldura: QRect,
     bisel_topo = max(10, min(moldura.width(), moldura.height()) // BISEL_TOPO_DIV)
     altura_util = disponivel_h - 2 * RECUO_CONTORNO - bisel_topo // 2
     if altura_util <= 0:
+        return
+
+    if leitura in (GLIFO_ULTRA_COMPRA, GLIFO_ULTRA_VENDA):
+        # Raio extrudado — a leitura de MAIOR confianca do visor, nunca
+        # confundida com a seta simples de decisao sem Ultra armado.
+        rx = _semi_eixo(largura_util, FRACAO_GLIFO_LARGURA)
+        ry = _semi_eixo(altura_util, FRACAO_GLIFO_ALTURA)
+        _glifo_raio(painter, cx, cy, rx, ry, cor)
+        return
+
+    if leitura == GLIFO_ALTO_RISCO:
+        # Alerta de risco — mercado bateu de lado agora, nao apenas "sem
+        # sinal ainda" (ver docstring de `leitura_do_nucleo`).
+        rx = _semi_eixo(largura_util, FRACAO_GLIFO_LARGURA)
+        ry = _semi_eixo(altura_util, FRACAO_GLIFO_ALTURA)
+        _glifo_alerta(painter, cx, cy, rx, ry, cor)
         return
 
     if direcao in (_asg.DirecaoASG.COMPRA, _asg.DirecaoASG.VENDA):
@@ -893,6 +1018,73 @@ def _glifo_seta(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor,
     apice = face[0]
     painter.drawLine(apice, face[1])
     painter.drawLine(apice, face[2])
+
+
+def _pontos_raio(cx: int, cy: int, rx: int, ry: int) -> QPolygon:
+    """Raio (relampago) de 6 vertices, geometria autoral — nunca o desenho
+    do PNG/SVG de referencia, mesma regra de todo glifo deste modulo."""
+
+    return QPolygon([
+        QPoint(cx + round(rx * 0.15), cy - ry),
+        QPoint(cx - round(rx * 0.55), cy + round(ry * 0.15)),
+        QPoint(cx - round(rx * 0.05), cy + round(ry * 0.15)),
+        QPoint(cx - round(rx * 0.25), cy + ry),
+        QPoint(cx + round(rx * 0.55), cy - round(ry * 0.15)),
+        QPoint(cx + round(rx * 0.05), cy - round(ry * 0.15)),
+    ])
+
+
+def _glifo_raio(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor) -> None:
+    """Raio extrudado — leitura "Sinal Ultra ARMADO agora" (ver
+    `leitura_do_nucleo`). E a unica leitura de confianca MAXIMA que o visor
+    tem, entao precisa ser inconfundivel com a seta simples de decisao: a
+    mesma linguagem de extrusao em tres camadas (`_glifo_seta`), silhueta
+    diferente, para o operador reconhecer o estado pela FORMA, nao so pela
+    cor — mesmo invariante de "cor nunca e o unico canal" do resto do
+    produto.
+    """
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    for camada in range(CAMADAS_EXTRUSAO, 0, -1):
+        sombra = QColor(cor).darker(150 + 40 * camada)
+        painter.setBrush(sombra)
+        painter.drawPolygon(_pontos_raio(cx + camada * PASSO_EXTRUSAO,
+                                         cy + camada * PASSO_EXTRUSAO, rx, ry))
+
+    painter.setBrush(cor)
+    face = _pontos_raio(cx, cy, rx, ry)
+    painter.drawPolygon(face)
+
+    realce = QColor(tema_asg.NEXO_TEXTO)
+    realce.setAlpha(150)
+    painter.setPen(QPen(realce, TRACO_FINO))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.drawPolyline(face)
+
+
+def _glifo_alerta(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor) -> None:
+    """Triangulo de alerta com "!" — leitura ALTO RISCO (mercado bateu de
+    lado agora, ver `leitura_do_nucleo`). Preenchido e solido, ao contrario
+    do losango vazado de AGUARDAR: alto risco nao e "esperando calmo", e
+    "algo aconteceu e precisa de atencao", e o preenchimento solido carrega
+    esse peso visual — o mesmo principio de "forma tambem le o estado", nao
+    so a cor, que rege `_glifo_raio`.
+    """
+
+    topo = QPoint(cx, cy - ry)
+    base_esq = QPoint(cx - rx, cy + ry)
+    base_dir = QPoint(cx + rx, cy + ry)
+    triangulo = QPolygon([topo, base_dir, base_esq])
+
+    painter.setPen(QPen(tema_asg.NEXO_FUNDO, TRACO_GLIFO + 1))
+    painter.setBrush(cor)
+    painter.drawPolygon(triangulo)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+
+    painter.setFont(tokens.fonte_ui(max(10, int(ry * 0.9)), QFont.Weight.Black))
+    painter.setPen(tema_asg.NEXO_FUNDO)
+    caixa_ponto = QRect(cx - rx, cy - ry // 5, rx * 2, ry + ry // 5)
+    painter.drawText(caixa_ponto, Qt.AlignmentFlag.AlignCenter, "!")
 
 
 def _glifo_losango(painter: QPainter, cx: int, cy: int, rx: int, ry: int, cor) -> None:

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import os
+import time
 import statistics
 from collections import deque
 from collections.abc import Mapping
@@ -25,6 +26,8 @@ from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
 
 from fluxopro.analytics.candle_temporal import CandleTemporal, ConfigCandleTemporal
 from fluxopro.analytics.renko import ConfigRenko, FaseRenko, Renko
+from fluxopro.analytics.dominancia import MotorDominancia
+from fluxopro.analytics.suporte_resistencia import MotorSuporteResistencia
 from fluxopro.asg.sinal_ultra import (
     ConfigSinalUltra,
     DirecaoUltra,
@@ -2082,6 +2085,76 @@ class PainelNexoMercadoASG(_PainelASG):
         self._fase_ultra_anunciada = "ausente"
         # Ver docstring de `_VOZ_ATIVA_POR_PADRAO` — desligado por padrao.
         self._locutor = LocutorASG(ConfigVoz(ativo=_VOZ_ATIVA_POR_PADRAO))
+        # Suporte/Resistencia (fluxopro/analytics/suporte_resistencia.py) —
+        # motor determinístico construído do zero por este projeto a partir
+        # de INSTRUCOES_CLAUDE_SUPORTE_RESISTENCIA.md (pasta Codex, trazido
+        # pelo operador). Stateful (sequencia/idempotencia/saude de feed),
+        # por isso vive aqui — um por painel, nunca recriado por quadro.
+        self._motor_sr = MotorSuporteResistencia(stream_id="nexo")
+        self._sr_sequencia = 0
+        # Dominância Comprador/Vendedor
+        # (fluxopro/analytics/dominancia.py) — motor irmão do de Suporte/
+        # Resistência, construído a partir de
+        # INSTRUCOES_CLAUDE_DOMINANCIA_COMPRADOR_VENDEDOR.md (pasta Codex).
+        self._motor_dominancia = MotorDominancia(stream_id="nexo")
+        self._dominancia_sequencia = 0
+
+    def _calcular_sr_snapshot(self, estado_parcial: nexo.EstadoNexo):
+        """Roda o motor de Suporte/Resistencia sobre o `EstadoNexo` do
+        quadro (ainda sem `sr_snapshot`) e devolve o snapshot publicado.
+
+        Import tardio de `nexo.suporte_resistencia` pelo MESMO motivo do
+        `nexo_indisponivel` em `desenhar()`: o pacote raiz `nexo` e o unico
+        que entra no topo deste arquivo (ver comentario ao lado do import),
+        os modulos de regiao carregam sob demanda para desfazer o ciclo
+        regiao -> asg -> nexo.
+        """
+
+        from fluxopro.ui.paineis.nexo import suporte_resistencia as nexo_sr
+
+        entrada = nexo_sr.construir_entrada_sr(estado_parcial)
+        self._sr_sequencia += 1
+        timestamp_ns = max(1, int(self._snapshot.timestamp_ns))
+        # REPLAY nao tem "atraso de parede" que signifique alguma coisa —
+        # timestamps historicos comparados contra o relogio real dariam
+        # idade de dias. So em AO_VIVO o relogio de parede mede staleness
+        # de verdade; e a UNICA leitura desta funcao que consulta relogio,
+        # e so para ISTO (saude de feed), nunca para decidir zona ou score.
+        em_replay = getattr(self._snapshot, "estado_operacional", None) is EstadoASG.REPLAY
+        agora_ns = timestamp_ns if em_replay else time.time_ns()
+        return self._motor_sr.processar(
+            event_id=f"sr-{timestamp_ns}",
+            sequencia=self._sr_sequencia,
+            timestamp_ns=timestamp_ns,
+            instrumento=getattr(self.grid, "simbolo", "WDO"),
+            tick_size=self.grid.tick_size,
+            agora_ns=agora_ns,
+            **entrada,
+        )
+
+    def _calcular_dominancia_snapshot(self, estado_parcial: nexo.EstadoNexo):
+        """Roda o motor de Dominância Comprador/Vendedor sobre o
+        `EstadoNexo` do quadro — mesmo padrão de `_calcular_sr_snapshot`
+        (import tardio para não violar a regra de só o pacote raiz `nexo`
+        entrar no topo deste arquivo)."""
+
+        from fluxopro.ui.paineis.nexo import dominancia as nexo_dominancia
+
+        entrada = nexo_dominancia.construir_entrada_dominancia(estado_parcial)
+        self._dominancia_sequencia += 1
+        timestamp_ns = max(1, int(self._snapshot.timestamp_ns))
+        em_replay = getattr(self._snapshot, "estado_operacional", None) is EstadoASG.REPLAY
+        agora_ns = timestamp_ns if em_replay else time.time_ns()
+        idade_ms = 0.0 if em_replay else max(0.0, (agora_ns - timestamp_ns) / 1_000_000.0)
+        return self._motor_dominancia.processar(
+            event_id=f"dom-{timestamp_ns}",
+            sequencia=self._dominancia_sequencia,
+            timestamp_ns=timestamp_ns,
+            instrumento=getattr(self.grid, "simbolo", "WDO"),
+            modo="REPLAY" if em_replay else "LIVE",
+            idade_ms=idade_ms,
+            **entrada,
+        )
 
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         self._snapshot = snapshot
@@ -2714,7 +2787,7 @@ class PainelNexoMercadoASG(_PainelASG):
         """
 
         _perfil_vap = self._perfil_vap_ativo()
-        return nexo.EstadoNexo(
+        estado = nexo.EstadoNexo(
             snapshot=self._snapshot,
             serie=tuple(self._serie),
             grid=self.grid,
@@ -2752,6 +2825,9 @@ class PainelNexoMercadoASG(_PainelASG):
             alerta_exaustao=self._alerta_exaustao(),
             sinal_ultra=self._ultimo_sinal_ultra,
         )
+        estado = dataclass_replace(estado, sr_snapshot=self._calcular_sr_snapshot(estado))
+        return dataclass_replace(
+            estado, dominancia_snapshot=self._calcular_dominancia_snapshot(estado))
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
         """Aloca retangulos e delega. Este metodo nao pinta conteudo.

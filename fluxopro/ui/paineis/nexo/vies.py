@@ -86,6 +86,7 @@ a narrar, a faixa diz que nao houve anuncio, nunca inventa uma frase.
 
 from __future__ import annotations
 
+import math
 import os
 
 from PySide6.QtCore import QPoint, QPointF, QRect, Qt
@@ -479,16 +480,127 @@ def _fundo_console(painter: QPainter, area: QRect) -> None:
     painter.drawLine(area.left(), area.top(), area.right(), area.top())
 
 
-def _desenhar_avatar(painter: QPainter, cx: int, cy: int, raio: int,
-                     cor_anel: QColor) -> None:
-    """Avatar do OPERADOR IA — geometria autoral (nunca a foto/render de
-    terceiro dos prints de referencia): esfera com luz fora de eixo, sombra
-    projetada, especular, visor e brackets de mira.
+PERIODO_ROTACAO_DIAL_NS = 24_000_000_000
+"""Uma volta do dial (tracejado + escala radial) a cada 24s — mesmo periodo
+do anel externo do ``jarvis_hud_demo.html`` de referencia (``.ring``,
+``animation-duration``)."""
+PERIODO_ROTACAO_TRACEJADO_NS = 34_000_000_000
+"""O tracejado gira mais devagar e no sentido OPOSTO ao dial — mesma
+contra-rotacao da referencia (``.ring.r2``, 34s, ``animation-direction:
+reverse``); e o que separa visualmente as duas camadas em vez de girarem
+juntas como um bloco so."""
 
-    A profundidade vem de tres camadas empilhadas, nao de um gradiente
-    linear chapado: sombra elíptica abaixo, gradiente RADIAL deslocado do
-    centro (uma esfera iluminada de verdade tem o brilho fora do centro) e
-    um especular translucido no ponto onde a luz bate.
+
+def _fase(timestamp_ns: int, periodo_ns: int) -> float:
+    """Fracao 0..1 do ciclo em que ``timestamp_ns`` cai. Funcao PURA."""
+
+    if periodo_ns <= 0 or timestamp_ns <= 0:
+        return 0.0
+    return (timestamp_ns % periodo_ns) / periodo_ns
+
+
+def _desenhar_aneis_reator(painter: QPainter, cx: int, cy: int, raio: int,
+                           cor_anel: QColor, timestamp_ns: int) -> None:
+    """Aneis concentricos do "reator" ao redor do nucleo — reforma de
+    31/08/2026 a partir de referencia trazida pelo operador
+    (``jarvis-operador-b3-3d-4k.png`` / ``jarvis_hud_demo.html``, pasta
+    Codex): a esfera lisa ganhou casco de aneis, escala radial e o anel de
+    estado com "glow" simulado, no espirito da referencia (nucleo brilhante
+    cercado de aneis e marcacao de dial). Geometria propria do QPainter —
+    nenhum pixel do PNG/HTML de referencia e usado como asset, mesma regra
+    que ja valia para a esfera (ver docstring de `_desenhar_avatar`).
+
+    Anima girando o dial e o tracejado (pedido explicito do operador,
+    31/08/2026, revendo a decisao original de nao animar) — mas SEM QTimer
+    novo: o angulo e uma funcao PURA de ``timestamp_ns``, o mesmo relogio de
+    mercado que ja alimenta o pulso do selo Ultra em `nucleo.py`. O NEXO so
+    redesenha quando a ponte entrega um retrato novo (ver docstring de
+    `painel_denso.py`) — reaproveitar esse relogio anima em qualquer sessao
+    com negocios fluindo (a cadencia normal, varias vezes por segundo) SEM
+    adicionar um unico quadro que o painel nao fosse desenhar de qualquer
+    jeito. O preco: a rotacao PARA se o feed parar (mercado fechado,
+    replay pausado) — trade-off aceito porque o produto ja e "redesenha por
+    evento", nunca por relogio de UI, e criar a excecao so para um enfeite
+    contradiria essa regra em todo o resto do arquivo.
+
+    O casco solido (aro liso) NAO gira: um circulo uniforme e simetrico por
+    rotacao, entao girá-lo nao muda um pixel — so o tracejado e o dial (que
+    tem padrao angular) mostram movimento de verdade.
+
+    Cor: os aneis decorativos (casco solido, tracejado, dial) ficam em
+    CROMO NEUTRO (`NEXO_IDENTIDADE_ANEL`/`NEXO_MUTED`) — a mesma regra que
+    ja regia a esfera ("cromo neutro de proposito, o mesmo ciano/verde ja
+    carrega outros papeis no quadro"). So o anel de ESTADO usa `cor_anel`:
+    pintar o casco decorativo em azul/vermelho saturado (como a referencia)
+    duplicaria um papel que `NEXO_CIANO`/`NEXO_ROSA` ja carregam em outras
+    regioes — exatamente o defeito que o auditor de coerencia deste projeto
+    ja flagrou uma vez, no disco de identidade (`tema_asg.py`, bloco
+    "Round 2/3").
+    """
+
+    chrome = tema_asg.NEXO_IDENTIDADE_ANEL
+    centro = QPointF(cx, cy)
+
+    # Casco: aro solido de chrome — o "corpo" do reator, sempre visivel,
+    # nunca rotacionado (ver docstring: simetrico, girar nao muda nada).
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(chrome, 2))
+    painter.drawEllipse(centro, raio * 1.38, raio * 1.38)
+
+    # Abaixo de ~24px de raio (avatar comprimido, console estreito) o dial e
+    # o tracejado viram ruido de subpixel em vez de leitura — degrau honesto
+    # e nao desenhar, nao um traco que so pisca ao redimensionar.
+    if raio >= 24:
+        painter.save()
+        painter.translate(centro)
+        painter.rotate(_fase(timestamp_ns, PERIODO_ROTACAO_TRACEJADO_NS) * -360.0)
+        painter.setPen(QPen(chrome, 1, Qt.PenStyle.DashLine))
+        painter.drawEllipse(QPointF(0, 0), raio * 1.22, raio * 1.22)
+        painter.restore()
+
+        # Escala radial (dial): a marcacao que a referencia poe nos trilhos
+        # laterais, condensada num anel em volta do nucleo. A fase desloca o
+        # angulo de PARTIDA de cada traco — gira o dial inteiro sem precisar
+        # de uma segunda transformacao de matriz.
+        painter.setPen(QPen(tema_asg.NEXO_MUTED, 1))
+        n_tracos = 40
+        raio_ext, raio_int = raio * 1.12, raio * 1.06
+        fase_dial = _fase(timestamp_ns, PERIODO_ROTACAO_DIAL_NS) * 2 * math.pi
+        for indice in range(n_tracos):
+            angulo = 2 * math.pi * indice / n_tracos + fase_dial
+            seno, cosseno = math.sin(angulo), math.cos(angulo)
+            painter.drawLine(
+                QPointF(cx + raio_ext * cosseno, cy + raio_ext * seno),
+                QPointF(cx + raio_int * cosseno, cy + raio_int * seno),
+            )
+
+    # Anel de ESTADO com "glow": tracos concentricos decrescentes em
+    # largura e crescentes em opacidade — o QPainter deste backing store
+    # nao tem blur barato, entao o halo e simulado empilhando o mesmo
+    # circulo em vez de desenhar um so traco chapado. Tambem simetrico:
+    # nao gira, pelo mesmo motivo do casco.
+    for largura, alpha in ((7, 40), (4, 95), (2, 255)):
+        cor_halo = QColor(cor_anel.red(), cor_anel.green(), cor_anel.blue(), alpha)
+        painter.setPen(QPen(cor_halo, largura))
+        painter.drawEllipse(centro, raio + 4, raio + 4)
+
+
+def _desenhar_avatar(painter: QPainter, cx: int, cy: int, raio: int,
+                     cor_anel: QColor, timestamp_ns: int = 0) -> None:
+    """Avatar do OPERADOR IA — geometria autoral (nunca a foto/render de
+    terceiro dos prints de referencia): reator com aneis (`_desenhar_aneis_
+    reator`), esfera com luz fora de eixo, sombra projetada, especular,
+    visor e brackets de mira.
+
+    A profundidade da esfera vem de tres camadas empilhadas, nao de um
+    gradiente linear chapado: sombra elíptica abaixo, gradiente RADIAL
+    deslocado do centro (uma esfera iluminada de verdade tem o brilho fora
+    do centro) e um especular translucido no ponto onde a luz bate.
+
+    ``timestamp_ns`` e o relogio do QUADRO (`estado.snapshot.timestamp_ns`),
+    nunca um relogio de UI proprio — e o que faz os aneis girarem (ver
+    `_desenhar_aneis_reator`). Default `0` deixa os aneis parados (fase 0)
+    para quem chama sem relogio disponivel (montagem antiga/teste).
     """
 
     sombra = QColor(tema_asg.NEXO_IDENTIDADE_ANEL)
@@ -496,6 +608,8 @@ def _desenhar_avatar(painter: QPainter, cx: int, cy: int, raio: int,
     painter.setPen(Qt.PenStyle.NoPen)
     painter.setBrush(sombra)
     painter.drawEllipse(QPointF(cx, cy + raio * 0.75), raio * 0.8, raio * 0.22)
+
+    _desenhar_aneis_reator(painter, cx, cy, raio, cor_anel, timestamp_ns)
 
     esfera = QRadialGradient(QPointF(cx - raio * 0.35, cy - raio * 0.45), raio * 1.7)
     esfera.setColorAt(0.0, tema_asg.NEXO_PAINEL_ALTO.lighter(170))
@@ -514,13 +628,6 @@ def _desenhar_avatar(painter: QPainter, cx: int, cy: int, raio: int,
     painter.setBrush(brilho)
     painter.drawEllipse(QPointF(cx - raio * 0.4, cy - raio * 0.5),
                         raio * 0.5, raio * 0.34)
-
-    # Anel de ESTADO: e a unica parte colorida do avatar. A esfera continua
-    # cromo neutro de proposito (o mesmo ciano/verde ja carrega outros
-    # papeis no quadro); o anel e quem diz em que estado o Ultra esta.
-    painter.setBrush(Qt.BrushStyle.NoBrush)
-    painter.setPen(QPen(cor_anel, 2))
-    painter.drawEllipse(QPoint(cx, cy), raio + 4, raio + 4)
 
     # Visor: uma FRESTA horizontal com dois segmentos acesos, no mesmo
     # vocabulario do visor HUD central (nucleo.py).
@@ -784,7 +891,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         # sobreposto.
         raio = max(RAIO_MIN, min(RAIO_MAX, rect.width() // 4))
         _desenhar_avatar(painter, rect.center().x(),
-                         rect.top() + raio + 14, raio, cor_selo)
+                         rect.top() + raio + 14, raio, cor_selo,
+                         getattr(estado.snapshot, "timestamp_ns", 0))
         painter.setPen(tema_asg.NEXO_TEXTO)
         painter.setFont(tokens.fonte_numero(11, QFont.Weight.Bold))
         painter.drawText(QRect(rect.left(), rect.bottom() - 30, rect.width(), 16),
@@ -832,7 +940,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     altura_cabecalho = ALTURA_CABECALHO + folga_cabecalho
     raio_avatar = max(16, min(RAIO_MAX, (altura_cabecalho - 10) // 2))
     _desenhar_avatar(painter, x + raio_avatar + 12, y + altura_cabecalho // 2,
-                     raio_avatar, cor_selo)
+                     raio_avatar, cor_selo,
+                     getattr(estado.snapshot, "timestamp_ns", 0))
 
     texto_x = x + 2 * raio_avatar + 30
     centro = y + altura_cabecalho // 2
