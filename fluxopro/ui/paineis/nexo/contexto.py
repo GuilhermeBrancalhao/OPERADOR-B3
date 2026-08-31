@@ -373,7 +373,7 @@ def _fundo_profundidade(painter: QPainter, rect: QRect, centro: QPoint, raio: in
     gradiente = QRadialGradient(centro, raio_gradiente)
     gradiente.setColorAt(0.0, tema_asg.NEXO_PAINEL_ALTO)
     gradiente.setColorAt(0.45, tema_asg.NEXO_PAINEL)
-    gradiente.setColorAt(1.0, tema_asg.NEXO_FUNDO)
+    gradiente.setColorAt(1.0, QColor(3, 6, 9, 0))
     painter.fillRect(rect, QBrush(gradiente))
 
 

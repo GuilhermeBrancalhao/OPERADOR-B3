@@ -19,10 +19,11 @@ from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace as dataclass_replace
 from enum import Enum, unique
+from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPen, QPolygon
-from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
+from PySide6.QtCore import QPoint, QRect, QSize, QTimer, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QLinearGradient, QPainter, QPen, QPolygon
+from PySide6.QtWidgets import QGridLayout, QSizePolicy, QToolTip, QWidget
 
 from fluxopro.analytics.candle_temporal import CandleTemporal, ConfigCandleTemporal
 from fluxopro.analytics.renko import ConfigRenko, FaseRenko, Renko
@@ -2077,6 +2078,16 @@ class PainelNexoMercadoASG(_PainelASG):
         # estado volta a None e nada e repintado por causa do mouse.
         self._cursor_candles: tuple[int, int] | None = None
         self.setMouseTracking(True)
+        # Marca d'agua opcional e independente dos dados: o wallpaper nunca
+        # participa de snapshot, score ou feed. O caminho e configuravel para
+        # que a distribuicao continue funcionando sem a imagem local.
+        from fluxopro.ui.fundo_operador import FundoOperador
+        self._fundo_operador = FundoOperador()
+        self._wallpaper_timer = QTimer(self)
+        self._wallpaper_timer.setInterval(80)
+        self._wallpaper_timer.timeout.connect(self._avancar_wallpaper)
+        if not self._fundo_operador.imagem.isNull() and not self._fundo_operador.reduzido:
+            self._wallpaper_timer.start()
         self._arrasto_escala: str | None = None  # "tempo" | "preco"
         self._arrasto_escala_x0 = 0
         self._arrasto_escala_y0 = 0
@@ -2798,6 +2809,11 @@ class PainelNexoMercadoASG(_PainelASG):
             self.marcar_tudo_sujo()
 
     def mouseMoveEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        pos_fundo = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+        self._fundo_operador.alvo = (
+            (pos_fundo.x()/max(1, self.width()) - .5)*12,
+            (pos_fundo.y()/max(1, self.height()) - .5)*12)
+        self._atualizar_tooltip_estatistica(evento)
         if self._arrasto_escala is not None:
             pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
             caixa = self._retangulo_candles()
@@ -2841,6 +2857,8 @@ class PainelNexoMercadoASG(_PainelASG):
                 return
             super().mouseMoveEvent(evento)
             return
+
+        # Arrastar a serie de candles revela o trecho historico selecionado.
         pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
         caixa = self._retangulo_candles()
         modulo_candles = nexo.modulo("candles")
@@ -2864,6 +2882,26 @@ class PainelNexoMercadoASG(_PainelASG):
             self._candles_offset = novo_offset
             self.marcar_tudo_sujo()
         evento.accept()
+
+    def _atualizar_tooltip_estatistica(self, evento) -> None:
+        """Explica o bloco de placar/forca sem criar estado de mercado novo."""
+
+        if not self._nexo_ai_ativo:
+            QToolTip.hideText()
+            return
+        pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+        quadro = QRect(0, 0, self.width(), max(1, self.height() - nexo.ALTURA_RESSALVA))
+        caixa = nexo.retangulos(quadro).get("estatistica")
+        if caixa is None or not caixa.contains(pos):
+            QToolTip.hideText()
+            return
+        from fluxopro.ui.paineis.nexo import estatistica
+
+        texto = estatistica.texto_tooltip(caixa, pos, self._estado_nexo())
+        if texto:
+            QToolTip.showText(self.mapToGlobal(pos), texto, self)
+        else:
+            QToolTip.hideText()
 
     def mouseReleaseEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
         if self._arrasto_escala is not None:
@@ -2962,7 +3000,7 @@ class PainelNexoMercadoASG(_PainelASG):
         """
 
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.fillRect(regiao, tema_asg.NEXO_FUNDO)
+        self._desenhar_wallpaper(painter, regiao)
         largura, altura = self.width(), self.height()
         if largura < 420 or altura < 180:
             painter.setFont(tokens.fonte_ui(11, QFont.Weight.DemiBold))
@@ -3042,6 +3080,30 @@ class PainelNexoMercadoASG(_PainelASG):
         painter.drawText(rect.adjusted(4, 0, -4, 0),
                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                          "NEXO v1 · PROXY INDEPENDENTE")
+
+    def _avancar_wallpaper(self) -> None:
+        """Loop visual lento; nao toca no relogio nem nos snapshots."""
+
+        if self.isVisible() and not self.window().isMinimized():
+            self._fundo_operador.avancar()
+            self.marcar_tudo_sujo()
+            for nome in ('topo', 'rodape', 'ressalva'):
+                faixa = getattr(self.window(), nome, None)
+                if faixa is not None and faixa.isVisible():
+                    faixa.marcar_tudo_sujo()
+
+    def _desenhar_wallpaper(self, painter: QPainter, regiao: QRect) -> None:
+        """Uma imagem continua sob os modulos; fallback escuro sem arquivo."""
+
+        from fluxopro.ui.fundo_operador import pintar_fundo_compartilhado
+        if pintar_fundo_compartilhado(painter, self, regiao):
+            return
+
+        painter.save()
+        painter.setClipRect(regiao, Qt.ClipOperation.IntersectClip)
+        painter.fillRect(regiao, tema_asg.NEXO_FUNDO)
+        self._fundo_operador.pintar(painter, self.rect())
+        painter.restore()
 
     def _linhas_contexto_nexo(self) -> tuple[tuple[str, LinhaMatrizASG], ...]:
         """Quatro leituras curtas para o bloco de contexto, sem nova regra."""

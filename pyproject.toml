@@ -19,4 +19,4 @@ build-backend = "setuptools.build_meta"
 include = ["fluxopro*"]
 
 [tool.setuptools.package-data]
-"fluxopro.ui" = ["assets/*.png", "assets/*.md"]
+"fluxopro.ui" = ["assets/*.png", "assets/*.jpg", "assets/*.md"]

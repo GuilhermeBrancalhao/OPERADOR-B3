@@ -391,8 +391,12 @@ class FaixaRessalva(PainelDenso):
         self.setFixedHeight(ALTURA_RESSALVA)
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
-        painter.fillRect(regiao, tokens.ALERT)
-        painter.setPen(tokens.BG_BASE)
+        from fluxopro.ui.fundo_operador import pintar_fundo_compartilhado
+        if pintar_fundo_compartilhado(painter, self, regiao):
+            painter.setPen(tokens.ALERT)
+        else:
+            painter.fillRect(regiao, tokens.ALERT)
+            painter.setPen(tokens.BG_BASE)
         util = self.width() - 2 * (MARGEM + 4)
         painter.setFont(tokens.fonte_ui(14, 700))
         painter.drawText(

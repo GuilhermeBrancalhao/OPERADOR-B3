@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QPointF, QRect, QRectF, Qt
 from PySide6.QtGui import (
-    QColor, QFont, QImage, QLinearGradient, QPainter, QPainterPath, QPen,
+    QColor, QFont, QImage, QLinearGradient, QPainter, QPainterPath, QPen, QRadialGradient,
 )
 
 from fluxopro.ui import tema_asg
@@ -28,7 +28,7 @@ AMBAR = QColor("#ffc038")
 TEXTO = QColor("#d9edf7")
 SECUNDARIO = QColor("#a1b5c6")
 BORDA = QColor("#293d4e")
-FUNDO = QColor("#060c12")
+FUNDO = QColor(6, 12, 18, 0)
 NIVEIS_CONF = {ConfiancaASG.BAIXA: 1, ConfiancaASG.MEDIA: 2, ConfiancaASG.ALTA: 3}
 
 
@@ -201,29 +201,8 @@ def _texto(p: QPainter, r: QRect, texto: str, px: int = 11, cor=TEXTO,
 
 
 def _quadro(p: QPainter, rect: QRect, cor=CIANO) -> None:
-    r = QRectF(rect.adjusted(0, 0, -1, -1))
-    path = QPainterPath()
-    ch = 9
-    path.moveTo(r.left() + ch, r.top())
-    for x, y in ((r.right() - ch, r.top()), (r.right(), r.top() + ch),
-                 (r.right(), r.bottom() - ch), (r.right() - ch, r.bottom()),
-                 (r.left() + ch, r.bottom()), (r.left(), r.bottom() - ch),
-                 (r.left(), r.top() + ch)):
-        path.lineTo(x, y)
-    path.closeSubpath()
-    grad = QLinearGradient(r.topLeft(), r.bottomLeft())
-    grad.setColorAt(0, QColor("#101923"))
-    grad.setColorAt(.25, FUNDO)
-    grad.setColorAt(1, QColor("#080e16"))
-    p.setPen(QPen(BORDA, 1))
-    p.setBrush(grad)
-    p.drawPath(path)
-    p.setBrush(Qt.BrushStyle.NoBrush)
-    p.setPen(QPen(cor, 1))
-    p.drawLine(rect.left() + 7, rect.top() + 6, rect.left() + 19, rect.top() + 6)
-    p.drawLine(rect.left() + 6, rect.top() + 7, rect.left() + 6, rect.top() + 20)
-    p.setPen(QPen(VIOLETA, 1))
-    p.drawLine(rect.right() - 6, rect.top() + 8, rect.right() - 6, rect.top() + 18)
+    # Regioes de layout permanecem; a referencia aprovada nao tem molduras.
+    pass
 
 
 @lru_cache(maxsize=1)
@@ -237,9 +216,22 @@ def _arte() -> QImage:
 def _arte_escalada(lado: int) -> QImage:
     # Pré-escalar evita que drawImage altere a interpolação conforme a
     # região suja/clip de Qt, além de retirar o resize do caminho por quadro.
-    return _arte().copy(QRect(624, 126, 354, 334)).scaled(
+    imagem = _arte().copy(QRect(624, 126, 354, 334)).scaled(
         lado, lado, Qt.AspectRatioMode.IgnoreAspectRatio,
-        Qt.TransformationMode.SmoothTransformation)
+        Qt.TransformationMode.SmoothTransformation).convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+    if imagem.isNull():
+        return imagem
+    # Dissolve apenas a arte decorativa; dados e textos ficam fora da mascara.
+    mascara = QRadialGradient(QPointF(lado / 2, lado / 2), lado * .50)
+    mascara.setColorAt(0, QColor(255, 255, 255, 255))
+    mascara.setColorAt(.58, QColor(255, 255, 255, 255))
+    mascara.setColorAt(.85, QColor(255, 255, 255, 70))
+    mascara.setColorAt(1, QColor(255, 255, 255, 0))
+    p = QPainter(imagem)
+    p.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+    p.fillRect(imagem.rect(), mascara)
+    p.end()
+    return imagem
 
 
 def _anel(p: QPainter, rect: QRect, cor, fracao: float | None, texto: str = "") -> None:
@@ -282,6 +274,8 @@ def desenhar(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     p.save()
     try:
         p.setClipRect(rect, Qt.ClipOperation.IntersectClip)
+        # Preto da arte do nucleo nao cria um retangulo sobre o wallpaper.
+        p.setCompositionMode(QPainter.CompositionMode.CompositionMode_Screen)
         p.drawImage(rect.topLeft(), camada)
     finally:
         p.restore()

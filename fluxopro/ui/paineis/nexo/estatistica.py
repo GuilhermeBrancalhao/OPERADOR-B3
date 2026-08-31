@@ -488,21 +488,75 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # No classico em 1280px, 44px nao reservam numero de 16px mais a
     # legenda compacta de duas linhas. Mantem a proporcao nos demais
     # tamanhos; so aumenta o piso para impedir sobreposicao de texto.
-    altura_resumo = max(56, round(corpo.height() * 0.46))
+    # A referencia reserva quase dois tercos do bloco para a leitura de
+    # forca; com 46% os raios eram matematicamente presentes, mas ilegiveis
+    # no quadro 1280x720. O selo de S/R continua com o espaco minimo abaixo.
+    altura_resumo = max(82, round(corpo.height() * 0.72))
     linha_resumo = QRect(corpo.left(), corpo.top(), corpo.width(), altura_resumo)
     linha_selo_sr = QRect(corpo.left(), linha_resumo.bottom() + VAO_LINHA, corpo.width(),
                           max(20, corpo.height() - altura_resumo - VAO_LINHA))
 
-    largura_contagem = max(120, round(linha_resumo.width() * 0.44))
+    # Composicao aprovada: placar -> fontes -> serie da mesma forca composta.
+    # O bloco de fontes fica entre os cards e os raios, como na referencia,
+    # sem criar uma segunda regra de score.
+    largura_contagem = max(150, round(linha_resumo.width() * 0.38))
     bloco_contagem = QRect(linha_resumo.left(), linha_resumo.top(), largura_contagem,
                            linha_resumo.height())
-    bloco_barras = QRect(bloco_contagem.right() + VAO_LADRILHO, linha_resumo.top(),
-                         max(30, linha_resumo.width() - largura_contagem - VAO_LADRILHO),
+    largura_fontes = max(110, round(linha_resumo.width() * 0.26))
+    bloco_fontes = QRect(bloco_contagem.right() + VAO_LADRILHO, linha_resumo.top(),
+                         largura_fontes, linha_resumo.height())
+    bloco_barras = QRect(bloco_fontes.right() + VAO_LADRILHO, linha_resumo.top(),
+                         max(30, linha_resumo.width() - largura_contagem - largura_fontes
+                             - 2 * VAO_LADRILHO),
                          linha_resumo.height())
 
     _desenhar_contagem(painter, bloco_contagem, leituras, total)
+    _desenhar_fontes(painter, bloco_fontes, leituras)
     _desenhar_barras(painter, bloco_barras, estado.serie)
     _sr_ui.desenhar_selo(painter, linha_selo_sr, estado.sr_snapshot)
+
+
+def texto_tooltip(rect: QRect, pos: QPoint, estado: EstadoNexo) -> str | None:
+    """Explicacao contextual para o passe-mouse na regiao estatistica.
+
+    O texto e derivado do mesmo snapshot usado na pintura. Nao calcula um
+    novo score e nao acessa feed: serve apenas para tornar a leitura do
+    quadro verificavel sem depender de memoria ou de cor.
+    """
+
+    if not rect.contains(pos) or not estado.leituras:
+        return None
+    corpo = QRect(rect.left(), rect.top() + ALTURA_TITULO + 2, rect.width(),
+                  max(20, rect.height() - ALTURA_TITULO - 2))
+    altura_resumo = max(82, round(corpo.height() * 0.72))
+    linha = QRect(corpo.left(), corpo.top(), corpo.width(), altura_resumo)
+    largura_contagem = max(150, round(linha.width() * 0.38))
+    largura_fontes = max(110, round(linha.width() * 0.26))
+    limite_contagem = linha.left() + largura_contagem
+    limite_fontes = limite_contagem + VAO_LADRILHO + largura_fontes
+    saldo = pesos_por_lado(estado.leituras)[0] - pesos_por_lado(estado.leituras)[1]
+    if pos.x() < limite_contagem:
+        return (
+            "PLACAR ESTATÍSTICO\n"
+            "COMPRA e VENDA são forças separadas, ponderadas pela confiança.\n"
+            "Alta=1,0 · Média=0,6 · Baixa=0,3 · Indisponível=0,0\n"
+            f"Saldo atual: {saldo * 100:+.0f}%\n"
+            "Não é probabilidade nem ordem; é leitura consultiva."
+        )
+    if pos.x() < limite_fontes:
+        return (
+            "FONTES DA FORÇA\n"
+            "Cada linha mostra a contribuição da mesma leitura usada no placar.\n"
+            "COMPRA usa força positiva; VENDA usa força negativa.\n"
+            "— significa que a fonte não está disponível no snapshot."
+        )
+    return (
+        "FORÇA OBSERVADA\n"
+        "Cada posição é uma leitura cronológica da força composta.\n"
+        "Acima da linha = compra · abaixo = venda.\n"
+        "Altura e quantidade de raios = intensidade; cor = direção.\n"
+        "A série é histórica e não representa uma nova decisão."
+    )
 
 
 def _desenhar_contagem(painter: QPainter, rect: QRect,
@@ -528,6 +582,79 @@ def _desenhar_contagem(painter: QPainter, rect: QRect,
                      _asg._cor_nexo_direcao(_asg.DirecaoASG.COMPRA))
     _desenhar_placar(painter, caixa_venda, "VENDA", peso_venda, n_venda, total,
                      _asg._cor_nexo_direcao(_asg.DirecaoASG.VENDA))
+
+
+def _desenhar_fontes(painter: QPainter, rect: QRect,
+                     leituras: tuple[tuple[str, object], ...]) -> None:
+    """Mostra a decomposicao do mesmo conjunto que alimenta o placar.
+
+    ``—`` e deliberado quando a matriz nao publica a fonte: a tabela nao
+    transforma ausencia de Linha Azul/Regime em zero. Os percentuais sao
+    contribuicoes assinadas por fonte, enquanto o grafico ao lado mostra a
+    serie temporal da forca composta do snapshot.
+    """
+
+    painter.fillRect(rect, tema_asg.NEXO_PAINEL_ALTO)
+    painter.setPen(tema_asg.NEXO_GRADE)
+    painter.drawRect(rect.adjusted(0, 0, -1, -1))
+
+    por_nome = {str(nome).upper(): linha for nome, linha in leituras}
+    aliases = {
+        "MACRO": ("MACRO", "HORIZONTE"),
+        "MICRO": ("MICRO", "PULSO"),
+        "LINHA": ("LINHA", "LINHA AZUL", "MAKERPROXY", "PRESENCA"),
+        "REGIME": ("REGIME", "VELOCIMETRO", "RITMO"),
+    }
+
+    fonte = tokens.fonte_rotulo(6)
+    painter.setFont(fonte)
+    cabecalho_y = rect.top() + 16
+    colunas = (rect.left() + 5, rect.left() + round(rect.width() * 0.42),
+               rect.left() + round(rect.width() * 0.70))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(QRect(rect.left() + 5, rect.top() + 3, rect.width() - 10, 11),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                     "FONTE")
+    painter.setPen(_asg._cor_nexo_direcao(_asg.DirecaoASG.COMPRA))
+    painter.drawText(QRect(colunas[1], rect.top() + 3, rect.width() // 3, 11),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                     "COMPRA")
+    painter.setPen(_asg._cor_nexo_direcao(_asg.DirecaoASG.VENDA))
+    painter.drawText(QRect(colunas[2], rect.top() + 3, rect.width() // 3, 11),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                     "VENDA")
+
+    painter.setPen(tema_asg.NEXO_GRADE)
+    painter.drawLine(rect.left() + 3, cabecalho_y, rect.right() - 3, cabecalho_y)
+    altura_linha = max(14, (rect.height() - 19) // 4)
+    for indice, rotulo in enumerate(("MACRO", "MICRO", "LINHA", "REGIME")):
+        y = cabecalho_y + indice * altura_linha
+        painter.setPen(tema_asg.NEXO_GRADE)
+        if indice:
+            painter.drawLine(rect.left() + 3, y, rect.right() - 3, y)
+        linha = None
+        for alias in aliases[rotulo]:
+            linha = por_nome.get(alias)
+            if linha is not None:
+                break
+        if linha is None:
+            compra, venda = "—", "—"
+        else:
+            valor = max(-1.0, min(1.0, float(getattr(linha, "forca", 0.0))))
+            compra = f"{max(0.0, valor) * 100:.0f}%" if valor > 0.005 else "—"
+            venda = f"{max(0.0, -valor) * 100:.0f}%" if valor < -0.005 else "—"
+        painter.setFont(fonte)
+        painter.setPen(tema_asg.NEXO_MUTED)
+        painter.drawText(QRect(colunas[0], y + 2, max(30, colunas[1] - colunas[0] - 4),
+                               altura_linha), Qt.AlignmentFlag.AlignLeft, rotulo)
+        painter.setPen(_asg._cor_nexo_direcao(_asg.DirecaoASG.COMPRA)
+                       if compra != "—" else tema_asg.NEXO_MUTED)
+        painter.drawText(QRect(colunas[1], y + 2, max(22, colunas[2] - colunas[1] - 3),
+                               altura_linha), Qt.AlignmentFlag.AlignLeft, compra)
+        painter.setPen(_asg._cor_nexo_direcao(_asg.DirecaoASG.VENDA)
+                       if venda != "—" else tema_asg.NEXO_MUTED)
+        painter.drawText(QRect(colunas[2], y + 2, rect.right() - colunas[2] - 4,
+                               altura_linha), Qt.AlignmentFlag.AlignLeft, venda)
 
 
 def _desenhar_placar(painter: QPainter, caixa: QRect, rotulo: str, peso: float,
@@ -594,9 +721,11 @@ def _desenhar_placar(painter: QPainter, caixa: QRect, rotulo: str, peso: float,
 # direto; POSITIVAS espelham verticalmente, porque aqui "positivo" cresce
 # pra cima como qualquer outra barra do produto — o raio come continua
 # apontando "para fora" do eixo em vez de de cabeca para baixo.
+# Ordem no contorno, para que o raio continue legível mesmo quando a coluna
+# fica estreita (o poligono anterior se cruzava e acabava parecendo uma linha).
 _PONTOS_RAIO_UNITARIOS = (
-    (0.55, 0.00), (0.15, 0.55), (0.42, 0.55),
-    (0.05, 1.00), (0.62, 0.42), (0.35, 0.42),
+    (0.62, 0.00), (0.12, 0.48), (0.40, 0.48),
+    (0.08, 1.00), (0.78, 0.34), (0.50, 0.34),
 )
 
 
@@ -678,7 +807,7 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(rect.adjusted(6, 3, -6, 0),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
-                     "FORCA OBSERVADA")
+                     "FORÇA OBSERVADA")
 
     # Uma leitura por MUDANCA observada, e o teto medido sobre a serie
     # INTEIRA (nunca so a janela visivel) — a primeira leitura visivel ja
@@ -700,7 +829,11 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
     metade = max(4, area.height() // 2 - 2)
 
     def _altura(valor: float) -> int:
-        return max(4, round(min(1.0, abs(valor)) * metade))
+        # O valor continua governando a amplitude, mas uma leitura fraca não
+        # desaparece no painel compacto. A escala mínima é visual, não altera
+        # o score nem a procedência do snapshot.
+        magnitude = min(1.0, abs(valor))
+        return max(9, round((0.22 + 0.78 * magnitude) * metade))
 
     limitou = False
     x = area.left()
@@ -711,15 +844,25 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
         if quantidade == 0:
             x += largura_barra + vao
             continue
+        # Em 24 leituras, cinco raios em cada slot ficariam com 1–2 px e
+        # pareceriam uma barra lisa. Mantemos a função 0..5 e renderizamos até
+        # três silhuetas legíveis por leitura; a quantidade original continua
+        # determinando a intensidade e pode ser auditada no snapshot.
+        quantidade_renderizada = min(3, quantidade)
         vao_raios = 1
-        largura_raio = max(1, (largura_barra - (quantidade - 1) * vao_raios) // quantidade)
+        largura_raio = max(2, (largura_barra - (quantidade_renderizada - 1) * vao_raios)
+                            // quantidade_renderizada)
         if forca >= 0:
             invertido = True
         else:
             invertido = False
-        painter.setPen(Qt.PenStyle.NoPen)
+        # Preenchimento + contorno deixa a silhueta legível em slots estreitos
+        # e preserva a separação visual entre leituras consecutivas.
+        caneta_raio = QPen(cor.lighter(145))
+        caneta_raio.setWidth(1)
+        painter.setPen(caneta_raio)
         painter.setBrush(cor)
-        for indice in range(quantidade):
+        for indice in range(quantidade_renderizada):
             x_raio = x + indice * (largura_raio + vao_raios)
             y_raio = meio_y - altura if forca >= 0 else meio_y
             caixa_raio = QRect(x_raio, y_raio, largura_raio, altura)
