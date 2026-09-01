@@ -297,8 +297,17 @@ class _LinhaFake:
 
 
 def _textos_desenhados(serie):
-    """Captura o texto que a regiao escreve, para prender o que a tela
-    DECLARA (e nao so o que ela calcula)."""
+    """Captura o texto que a TIRA DE FORCA OBSERVADA escreve, para prender o
+    que ela DECLARA (e nao so o que calcula).
+
+    31/08/2026: passou a chamar `_desenhar_barras` diretamente. A regiao
+    `estatistica` deixou de desenhar a tira — ela virou o PLACAR DE
+    SUPORTE/RESISTENCIA a pedido do operador (ver o comentario do layout em
+    `nexo/estatistica.py`) — mas a tira continua no modulo, com este
+    contrato de legenda intacto, para quem tiver espaco para ela. Testar
+    pela regiao media outra coisa hoje; testar pela funcao mede o contrato
+    que este arquivo existe para vigiar.
+    """
     estado = EstadoNexo(
         snapshot=None, serie=serie, grid=WDO_GRID, paleta=None, maker=None,
         leituras=(("HORIZONTE", _LinhaFake()),), largura=400, altura=150,
@@ -315,7 +324,7 @@ def _textos_desenhados(serie):
 
     QPainter.drawText = espiao
     try:
-        estatistica.desenhar(painter, QRect(0, 0, 400, 150), estado)
+        estatistica._desenhar_barras(painter, QRect(0, 0, 400, 150), serie)
     finally:
         QPainter.drawText = original
         painter.end()

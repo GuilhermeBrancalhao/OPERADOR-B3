@@ -116,6 +116,16 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     if estado.alerta_exaustao is not None:
         _desenhar_alerta_exaustao(painter, rect, estado.alerta_exaustao)
         return
+    # Alerta de SUPORTE/RESISTENCIA (31/08/2026) — vem antes do aviso de
+    # volatilidade porque tem LADO e regiao de preco: e leitura acionavel de
+    # onde o mercado esta sendo defendido, enquanto volatilidade e so
+    # "cuidado" sem lado.
+    alerta_sr = alerta_suporte_resistencia(estado)
+    if alerta_sr is not None:
+        titulo_sr, subtitulo_sr, cor_sr, para_cima_sr = alerta_sr
+        _desenhar_placa_alerta(painter, rect, cor_sr, "ALERTA", titulo_sr,
+                               subtitulo_sr, seta_para_cima=para_cima_sr)
+        return
     if estado.risco_volatilidade >= LIMIAR_RISCO_VOLATILIDADE_ALERTA:
         _desenhar_alerta_volatilidade(painter, rect, estado.risco_volatilidade)
         return
@@ -212,8 +222,28 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
                      f"CONFIANCA · {decisao.confianca.value}  ·  LEITURA CONSULTIVA")
 
 
+
+def _desenhar_seta_sniper(painter: QPainter, cx: int, cy: int, raio: int, cor,
+                          para_cima: bool) -> None:
+    """Triangulo cheio do sinal do sniper — forma E cor, nunca so cor (a
+    tela tem de sobreviver ao modo sem cor, como o resto do NEXO)."""
+
+    sentido = 1 if para_cima else -1
+    painter.save()
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(cor))
+    painter.drawPolygon(QPolygon([
+        QPoint(cx, cy - sentido * raio),
+        QPoint(cx + round(raio * 0.85), cy + round(sentido * raio * 0.65)),
+        QPoint(cx - round(raio * 0.85), cy + round(sentido * raio * 0.65)),
+    ]))
+    painter.restore()
+
+
 def _desenhar_placa_alerta(
-    painter: QPainter, rect: QRect, cor, rotulo_chip: str, titulo: str, subtitulo: str
+    painter: QPainter, rect: QRect, cor, rotulo_chip: str, titulo: str, subtitulo: str,
+    seta_para_cima: bool | None = None,
 ) -> None:
     """Geometria compartilhada dos dois alertas: cunha diagonal + chip
     "ALERTA"/rotulo a esquerda, titulo grande + subtitulo a direita — mesmo
@@ -243,6 +273,15 @@ def _desenhar_placa_alerta(
     painter.setFont(tokens.fonte_ui(9, QFont.Weight.Bold))
     painter.setPen(tema_asg.NEXO_TEXTO)
     painter.drawText(caixa_chip, Qt.AlignmentFlag.AlignCenter, rotulo_chip)
+
+    # Setinha do "sniper" (aula `TPk39osWiKY`): para BAIXO no alerta de
+    # resistencia, para CIMA no de suporte. Fica logo apos o chip, do lado
+    # do titulo — e o mesmo lugar em que a referencia do operador a poe.
+    # `None` = alerta sem lado (volatilidade), e ai nao ha seta.
+    if seta_para_cima is not None:
+        _desenhar_seta_sniper(painter, caixa_chip.right() + PAD_H + 8,
+                              rect.center().y(), max(5, rect.height() // 6), cor,
+                              seta_para_cima)
 
     caixa_texto = QRect(caixa_chip.right() + PAD_H * 2, rect.top(),
                         rect.width() - largura_chip - PAD_H * 3, rect.height())
@@ -274,6 +313,63 @@ def _desenhar_placa_alerta(
     painter.drawText(QRect(caixa_texto.left() + PAD_H, caixa_texto.bottom() - ALTURA_LINHA_RODAPE,
                           caixa_texto.width() - 2 * PAD_H, ALTURA_LINHA_RODAPE),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, subtitulo)
+
+
+INTENSIDADE_MIN_ALERTA_SR = 3
+"""Abaixo de 3 raios (forca da zona < 40%) o alerta de suporte/resistencia
+NAO toma a faixa.
+
+Regra da aula (`pesquisa/legendas/TPk39osWiKY.txt`): "a gente so vai dar
+enfase para esse sinal quando ele aparecer no NIVEL MAXIMO". Um alerta que
+acende em qualquer zona fraca deixa de ser alerta — e o Sergio e explicito
+que a sinalizacao NAO e constante ("existem epocas que nem aparece")."""
+
+
+def alerta_suporte_resistencia(estado: EstadoNexo):
+    """`(titulo, subtitulo, cor, para_cima)` do alerta de S/R, ou `None`.
+
+    O alerta e de UM LADO SO — suporte OU resistencia — porque e isso que a
+    fonte descreve: "alerta de resistencia maxima OU alerta de suporte
+    maximo. O objetivo e o mesmo". Nunca os dois.
+
+    Os textos de conduta vem direto da aula, e sao CONSULTIVOS (o que
+    EVITAR, nunca o que fazer):
+      - resistencia: "voce nunca vai fazer a compra em cima dessa
+        sinalizacao";
+      - suporte: "enquanto estiver o suporte detectado nesses niveis, voce
+        vai evitar fazer a entrada de venda".
+    """
+
+    from fluxopro.ui.paineis.nexo import suporte_resistencia as _sr_ui
+
+    snapshot = getattr(estado, "sr_snapshot", None)
+    zona = _sr_ui.zona_de_referencia(snapshot)
+    if zona is None:
+        return None
+    intensidade = _sr_ui.intensidade_da_zona(getattr(zona, "score", None))
+    if intensidade < INTENSIDADE_MIN_ALERTA_SR:
+        return None
+
+    lado = getattr(zona, "lado", None)
+    if lado is None or getattr(lado, "name", "") == "NEUTRO":
+        lado = _sr_ui.lado_geometrico(zona.preco,
+                                      getattr(snapshot, "ultimo_preco", None))
+    e_suporte = getattr(lado, "name", "") == "SUPORTE"
+    if not e_suporte and getattr(lado, "name", "") != "RESISTENCIA":
+        return None
+
+    maximo = intensidade >= _sr_ui.INTENSIDADE_MAXIMA
+    tick = getattr(snapshot, "tick_size", 1.0) or 1.0
+    preco = _sr_ui.texto_preco_regiao(zona.preco, tick)
+    if e_suporte:
+        cor = _asg._cor_nexo_direcao(_asg.DirecaoASG.COMPRA)
+        titulo = "ULTRA SUPORTE MAXIMO" if maximo else "SUPORTE DETECTADO"
+        subtitulo = f"EVITE VENDER ENQUANTO SINALIZADO · REGIAO {preco}"
+    else:
+        cor = _asg._cor_nexo_direcao(_asg.DirecaoASG.VENDA)
+        titulo = "ULTRA RESISTENCIA MAXIMA" if maximo else "RESISTENCIA DETECTADA"
+        subtitulo = f"EVITE COMPRAR ENQUANTO SINALIZADO · REGIAO {preco}"
+    return titulo, subtitulo, cor, e_suporte
 
 
 def _desenhar_alerta_exaustao(painter: QPainter, rect: QRect, alerta: tuple[str, float]) -> None:

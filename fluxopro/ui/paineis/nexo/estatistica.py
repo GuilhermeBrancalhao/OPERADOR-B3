@@ -453,20 +453,19 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     compra_peso, venda_peso = pesos_por_lado(leituras)
     saldo = compra_peso - venda_peso
 
+    # 31/08/2026 — o titulo passou a descrever o que a regiao MOSTRA. Ele
+    # dizia "4 LEITURAS PONDERADAS POR CONFIANCA · SALDO x% · N=4", que era
+    # a contagem das leituras da matriz; essa contagem saiu da tela (ver o
+    # comentario do layout abaixo) e o titulo antigo virava afirmacao falsa
+    # sobre um numero que nao esta mais ali.
     painter.setFont(tokens.fonte_rotulo(8))
     painter.setPen(tema_asg.NEXO_MUTED)
-    titulo = "PLACAR ESTATISTICO  ·  4 LEITURAS PONDERADAS POR CONFIANCA"
-    if min(compra_peso, venda_peso) >= LIMIAR_DIVERGENCIA:
-        titulo += "  ·  LEITURAS DIVERGENTES"
     painter.drawText(QRect(rect.left() + 4, rect.top(), rect.width() - 110, ALTURA_TITULO),
                      Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-                     titulo)
-    # O SALDO impresso aqui e, por construcao, o mesmo `placar_ponderado`
-    # (compra - venda). E a ponte explicita entre as duas caixas grandes e
-    # o score unico que o resto do quadro usa — nunca um terceiro numero.
+                     "PLACAR ESTATISTICO  ·  SUPORTE / RESISTENCIA")
     painter.drawText(QRect(rect.right() - 106, rect.top(), 102, ALTURA_TITULO),
                      Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                     f"SALDO {saldo * 100:+.0f}%  ·  N={total}")
+                     f"SALDO {saldo * 100:+.0f}%")
 
     corpo = QRect(rect.left(), rect.top() + ALTURA_TITULO + 2, rect.width(),
                   max(20, rect.height() - ALTURA_TITULO - 2))
@@ -491,29 +490,36 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # A referencia reserva quase dois tercos do bloco para a leitura de
     # forca; com 46% os raios eram matematicamente presentes, mas ilegiveis
     # no quadro 1280x720. O selo de S/R continua com o espaco minimo abaixo.
-    altura_resumo = max(82, round(corpo.height() * 0.72))
-    linha_resumo = QRect(corpo.left(), corpo.top(), corpo.width(), altura_resumo)
-    linha_selo_sr = QRect(corpo.left(), linha_resumo.bottom() + VAO_LINHA, corpo.width(),
-                          max(20, corpo.height() - altura_resumo - VAO_LINHA))
-
-    # Composicao aprovada: placar -> fontes -> serie da mesma forca composta.
-    # O bloco de fontes fica entre os cards e os raios, como na referencia,
-    # sem criar uma segunda regra de score.
-    largura_contagem = max(150, round(linha_resumo.width() * 0.38))
-    bloco_contagem = QRect(linha_resumo.left(), linha_resumo.top(), largura_contagem,
-                           linha_resumo.height())
-    largura_fontes = max(110, round(linha_resumo.width() * 0.26))
-    bloco_fontes = QRect(bloco_contagem.right() + VAO_LADRILHO, linha_resumo.top(),
-                         largura_fontes, linha_resumo.height())
-    bloco_barras = QRect(bloco_fontes.right() + VAO_LADRILHO, linha_resumo.top(),
-                         max(30, linha_resumo.width() - largura_contagem - largura_fontes
-                             - 2 * VAO_LADRILHO),
-                         linha_resumo.height())
-
-    _desenhar_contagem(painter, bloco_contagem, leituras, total)
-    _desenhar_fontes(painter, bloco_fontes, leituras)
-    _desenhar_barras(painter, bloco_barras, estado.serie)
-    _sr_ui.desenhar_selo(painter, linha_selo_sr, estado.sr_snapshot)
+    # ------------------------------------------------------------------
+    # 31/08/2026 — REDESENHO APROVADO PELO OPERADOR (print antes de aplicar).
+    #
+    # A regiao passa a ser o PLACAR DE SUPORTE/RESISTENCIA, com a logica
+    # conferida nas aulas da SG/ASG (ver `nexo/suporte_resistencia.py`,
+    # bloco do placar): um lado por vez, raios = intensidade vinda da FORCA
+    # DA ZONA, barrinhas = termometro do nivel, e o numero grande e o PRECO
+    # DA REGIAO.
+    #
+    # O que saiu, e por que: a contagem COMPRA/VENDA das 4 leituras da
+    # matriz (`_desenhar_contagem`) e o bloco de fontes (`_desenhar_fontes`)
+    # mediam OUTRA coisa — o placar ponderado das leituras — e viviam
+    # empatados em 33%/33% sem dizer nada sobre a regiao de preco, que e o
+    # que a aula manda observar. As funcoes continuam no modulo (testes e
+    # tooltip as usam); so deixaram de ocupar a tela.
+    #
+    # A FORCA OBSERVADA (a tira de raios) FICA: e leitura de historico, nao
+    # de regiao, e nao conflita com o placar novo. Vai para a faixa de baixo,
+    # que e a "distribuicao total" que o operador pediu.
+    # MEDIDO NA TELA (31/08/2026): tentei manter a FORCA OBSERVADA numa
+    # faixa de 30% aqui embaixo e ela ficou com 73px — menos que o cabecalho
+    # (32) + rodape (22) + a meia-altura que o simbolo de raio exige. O
+    # resultado foi a propria regiao escrevendo "AMPLIE O PAINEL", e o
+    # termometro do placar sumindo por falta de altura.
+    #
+    # A regiao passa a ser SO o placar de suporte/resistencia, que e o que o
+    # operador aprovou no print. A FORCA OBSERVADA nao foi apagada do
+    # projeto: `_desenhar_barras` continua aqui, com seus testes, para quem
+    # tiver espaco para ela.
+    _sr_ui.desenhar_placar(painter, corpo, estado.sr_snapshot)
 
 
 def texto_tooltip(rect: QRect, pos: QPoint, estado: EstadoNexo) -> str | None:
@@ -770,6 +776,52 @@ def _texto_periodo(segundos: float) -> str:
     return f"{segundos / 60:.0f} min"
 
 
+ALTURA_MIN_RAIO_PX = 5
+"""Piso de legibilidade do SIMBOLO de raio, em pixels.
+
+DEFEITO CORRIGIDO EM 31/08/2026 (operador: "a representacao visual da
+quantidade crescente de raios ainda precisa ser corrigida para cumprir
+integralmente o que foi aprovado").
+
+A contagem 0..5 sempre esteve certa — e por isso a suite passava. O que
+falhava era o TAMANHO: a altura saia de `(metade - 4*vao) // 5`, sem piso,
+e o unico portao era `area.height() >= 24`. Medido:
+
+    area util   24px -> simbolo de 1px
+    area util   40px -> simbolo de 2px
+    area util   78px -> simbolo de 5px   <- a regiao REAL do produto
+
+Com 1-5px o glifo de relampago degenera num tracinho horizontal: na tela do
+pregao o cabecalho dizia `VENDA -21,3% · 2/5` e o operador via dois riscos
+colados, nada parecido com a escada da escala aprovada
+(`outputs/qa_raios_entrega_20260831/escala_1_a_5.png`), que foi medida numa
+caixa bem maior, com simbolo de ~12px.
+
+Abaixo deste piso o desenho NAO encolhe mais: primeiro o VAO cede (o
+espacamento e conforto, o simbolo e a leitura), e se ainda assim nao couber
+a regiao declara `AMPLIE O PAINEL` em vez de desenhar um risco que finge ser
+um raio."""
+
+
+def geometria_pilha_raios(metade: int) -> tuple[int, int] | None:
+    """`(altura_do_simbolo, vao)` para caber os 5 niveis em `metade` pixels.
+
+    `None` quando nem com vao minimo o simbolo alcanca
+    `ALTURA_MIN_RAIO_PX` — o chamador declara em vez de desenhar.
+
+    Funcao PURA e publica de proposito: e a MESMA regra que decide o portao
+    ("cabe?") e o desenho ("de que tamanho?"). Ter duas copias dessa conta
+    foi exatamente o que deixou o portao aceitar 24px enquanto o desenho
+    produzia 1px.
+    """
+
+    for vao in (2, 1):
+        altura = (metade - 4 * vao) // 5
+        if altura >= ALTURA_MIN_RAIO_PX:
+            return min(12, altura), vao
+    return None
+
+
 def caixas_pilha_raios(area: QRect, coluna: int, colunas: int, forca: float) -> tuple[QRect, ...]:
     """Simbolos separados verticalmente; nenhuma multiplicacao ocupa a largura.
 
@@ -777,15 +829,17 @@ def caixas_pilha_raios(area: QRect, coluna: int, colunas: int, forca: float) -> 
     mostrado no cabecalho; a formula da forca e seu limitador nao mudam.
     """
     quantidade = quantidade_raios_forca(forca)
-    if not quantidade or area.width() < colunas * 3 or area.height() < 24:
+    if not quantidade or area.width() < colunas * 3:
         return ()
+    meio = area.center().y()
+    metade = min(meio - area.top(), area.bottom() - meio) - 2
+    geometria = geometria_pilha_raios(metade)
+    if geometria is None:
+        return ()
+    altura, vao = geometria
     x0 = area.left() + coluna * area.width() // colunas
     x1 = area.left() + (coluna + 1) * area.width() // colunas
     largura = max(1, min(10, x1 - x0 - 1))
-    meio = area.center().y()
-    metade = min(meio - area.top(), area.bottom() - meio) - 2
-    vao = 2 if metade >= 28 else 1
-    altura = max(1, min(12, (metade - 4 * vao) // 5))
     x = x0 + (x1 - x0 - largura) // 2
     caixas = []
     for indice in range(quantidade):
@@ -825,8 +879,14 @@ def _desenhar_barras(painter: QPainter, rect: QRect,
     leituras = leituras_distintas(serie)
     teto = teto_por_segundo(leituras)
     limitadas = suavizar_por_taxa(leituras, teto)
-    altura_cabecalho = 36
-    altura_rodape = 26
+    # 31/08/2026 — cabecalho e rodape cederam 4px cada para a AREA DO
+    # GRAFICO. O simbolo de raio tem piso de legibilidade
+    # (`ALTURA_MIN_RAIO_PX`) e a conta que o dimensiona divide a meia-altura
+    # por 5 niveis: com 36+26 reservados, uma regiao de 120px sobrava 58 de
+    # area e o simbolo caia abaixo do piso — a pilha inteira sumia. Os dois
+    # blocos de texto continuam cabendo (14px + 15px = 29 < 32).
+    altura_cabecalho = 32
+    altura_rodape = 22
     area = rect.adjusted(5, altura_cabecalho, -5, -altura_rodape)
     capacidade = max(1, min(24, area.width() // 4))
     visiveis = leituras[-capacidade:]

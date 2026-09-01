@@ -58,8 +58,8 @@ from __future__ import annotations
 
 import re
 
-from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QFont, QPainter, QPen
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygon
 
 from fluxopro.analytics import suporte_resistencia as sr
 from fluxopro.analytics.renko import FaseRenko
@@ -594,3 +594,270 @@ def _desenhar_zona(painter: QPainter, caixa: QRect, zona, snapshot) -> None:
     painter.drawText(caixa.adjusted(4, 0, -4, -2),
                      Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom,
                      f"{zona.toques} TESTES · FORÇA {zona.score * 100:.0f}%")
+
+
+# ==========================================================================
+# PLACAR DE SUPORTE/RESISTÊNCIA — desenho aprovado pelo operador (31/08/2026)
+# ==========================================================================
+#
+# Lógica conferida nas AULAS DA SG/ASG (transcrições em
+# `fluxo_pro/pesquisa/legendas`), não em suposição:
+#
+# * `TPk39osWiKY`: "quando ele vier com a força ultra, que é quando tem esse
+#   RAIO aqui"; "a gente só vai dar ênfase para esse sinal quando ele
+#   aparecer no NÍVEL MÁXIMO"; a setinha piscando (vermelha p/ baixo no
+#   alerta de resistência, verde p/ cima no de suporte) é o sinal do sniper.
+# * `W7lNHhliZXU`: "ele tem umas BARRINHAS ali que são PREENCHIDAS"; "como
+#   que tá o TERMÔMETRO dessas sinalizações? eles sobem níveis agressivos ou
+#   já tá perdendo força do sinal?".
+#
+# Daí as três regras desta região, todas confirmadas pelo operador:
+#
+# 1. **um lado por vez** — o alerta é de suporte OU de resistência, nunca os
+#    dois; o lado oposto fica apagado em zero, e não escondido;
+# 2. **raios = intensidade**, vinda da FORÇA DA ZONA (`Zona.score`);
+# 3. **barrinhas = termômetro do nível**, preenchidas na mesma força.
+#
+# O fundo é TRANSLÚCIDO de propósito: o wallpaper do quadro atravessa, como
+# em todo o resto da superfície integrada.
+
+INTENSIDADE_MAXIMA = 5
+
+_PONTOS_RAIO_SR = (
+    (0.55, 0.00), (0.15, 0.55), (0.42, 0.55),
+    (0.05, 1.00), (0.62, 0.42), (0.35, 0.42),
+)
+
+
+def intensidade_da_zona(score: float | None) -> int:
+    """Força da zona [0,1] -> 0..5 raios.
+
+    Reaproveita a MESMA escala já aprovada para a força observada
+    (`estatistica.quantidade_raios_forca`: zero abaixo de 5%, um até 20%,
+    dois até 40%, três até 60%, quatro até 80%, cinco acima) — duas escalas
+    diferentes para "intensidade" na mesma tela seria exatamente o defeito
+    de "dois pesos, uma leitura" que esta bancada já pegou antes.
+
+    Import tardio porque `estatistica` importa ESTE módulo: no topo daria
+    ciclo.
+    """
+
+    if score is None:
+        return 0
+    from fluxopro.ui.paineis.nexo.estatistica import quantidade_raios_forca
+
+    return quantidade_raios_forca(score)
+
+
+def texto_preco_regiao(preco_ticks, tick_size: float) -> str:
+    """Preço da região no formato do produto (`5.219,5`). `—` sem zona."""
+
+    if preco_ticks is None:
+        return "—"
+    valor = preco_ticks * (tick_size or 1.0)
+    return f"{valor:,.1f}".replace(",", "@").replace(".", ",").replace("@", ".")
+
+
+def _poligono_raio_sr(caixa: QRect) -> QPolygon:
+    return QPolygon([
+        QPoint(caixa.left() + round(ux * caixa.width()),
+               caixa.top() + round(uy * caixa.height()))
+        for ux, uy in _PONTOS_RAIO_SR
+    ])
+
+
+def _seta(painter: QPainter, cx: int, cy: int, raio: int, cor, para_cima: bool) -> None:
+    """Triangulo cheio do lado. `save`/`restore` de proposito: sem isso o
+    `NoPen` usado para preencher VAZAVA para quem chama, e no Qt um
+    `drawText` com `NoPen` NAO PINTA NADA — foi assim que os rotulos BUY e
+    SELL sumiram da tela em 31/08/2026 (o desenho parecia certo porque a
+    seta e o numero, que usam brush, continuavam aparecendo)."""
+
+    sentido = 1 if para_cima else -1
+    painter.save()
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(cor)
+    painter.drawPolygon(QPolygon([
+        QPoint(cx, cy - sentido * raio),
+        QPoint(cx + round(raio * 0.8), cy + round(sentido * raio * 0.6)),
+        QPoint(cx - round(raio * 0.8), cy + round(sentido * raio * 0.6)),
+    ]))
+    painter.restore()
+
+
+def _chapa(painter: QPainter, rect: QRect, cor_borda, alfa: int = 70,
+           largura: int = 1) -> None:
+    """Chapa TRANSLÚCIDA — o wallpaper continua visível por trás."""
+
+    painter.fillRect(rect, QColor(4, 8, 12, alfa))
+    caneta = QPen(cor_borda)
+    caneta.setWidth(largura)
+    painter.setPen(caneta)
+    painter.drawRect(rect.adjusted(0, 0, -1, -1))
+
+
+def _card_lado(painter: QPainter, rect: QRect, rotulo: str, valor: int,
+               cor, para_cima: bool, ativo: bool) -> None:
+    _chapa(painter, rect, cor if ativo else tema_asg.NEXO_GRADE,
+           alfa=88 if ativo else 46, largura=2 if ativo else 1)
+    painter.setFont(tokens.fonte_rotulo(7))
+    painter.setPen(cor if ativo else tema_asg.NEXO_MUTED)
+    _seta(painter, rect.left() + 16, rect.top() + 10, 4,
+          cor if ativo else tema_asg.NEXO_GRADE, para_cima)
+    painter.drawText(QRect(rect.left() + 24, rect.top() + 3, rect.width() - 28, 13),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, rotulo)
+    painter.setFont(tokens.fonte_numero(max(16, min(34, rect.height() // 2)),
+                                        QFont.Weight.Bold))
+    painter.setPen(cor if ativo else tema_asg.NEXO_GRADE)
+    painter.drawText(rect.adjusted(0, 13, 0, -3), Qt.AlignmentFlag.AlignCenter, str(valor))
+
+
+def zona_de_referencia(snapshot):
+    """Zona que o placar descreve: a CONFIRMADA quando existe, senão a mais
+    PRÓXIMA do preço.
+
+    Sem confirmação o operador ainda precisa do nível da região que o preço
+    está encostando — o que muda é o rótulo (`NÃO CONFIRMADA`) e a moldura
+    apagada, nunca esconder a informação.
+    """
+
+    if snapshot is None:
+        return None
+    dominante = getattr(snapshot, "dominante", None)
+    if dominante is not None:
+        return dominante
+    zonas = tuple(getattr(snapshot, "zonas", ()) or ())
+    if not zonas:
+        return None
+    ultimo = getattr(snapshot, "ultimo_preco", None)
+    if ultimo is None:
+        return zonas[0]
+    return min(zonas, key=lambda z: abs(z.preco - ultimo))
+
+
+def desenhar_placar(painter: QPainter, rect: QRect, snapshot) -> None:
+    """Placar de suporte/resistência: lado, intensidade, região e nível.
+
+    Substitui a contagem COMPRA/VENDA de leituras que ocupava esta região —
+    ela media outra coisa (as 4 leituras da matriz), vivia empatada em
+    33%/33% e não dizia nada sobre a REGIÃO DE PREÇO, que é o que a aula
+    manda observar.
+    """
+
+    if rect.height() < 60 or rect.width() < 200:
+        return
+
+    referencia = zona_de_referencia(snapshot)
+    tick = getattr(snapshot, "tick_size", 1.0) or 1.0 if snapshot else 1.0
+    ultimo = getattr(snapshot, "ultimo_preco", None) if snapshot else None
+    dominante = getattr(snapshot, "dominante", None) if snapshot else None
+    confirmado = dominante is not None and dominante.lado is not sr.LadoZona.NEUTRO
+
+    lado = getattr(referencia, "lado", None)
+    if lado is None or lado is sr.LadoZona.NEUTRO:
+        lado = (lado_geometrico(referencia.preco, ultimo)
+                if referencia is not None else sr.LadoZona.NEUTRO)
+    e_suporte = lado is sr.LadoZona.SUPORTE
+    cor = _COR_POR_LADO.get(lado, tema_asg.NEXO_MUTED)
+
+    score = getattr(referencia, "score", None)
+    intensidade = intensidade_da_zona(score)
+
+    # A regiao (`nexo/estatistica.py`) ja imprime "PLACAR ESTATISTICO" no
+    # seu cabecalho — repetir aqui dava DOIS titulos empilhados na tela
+    # (visto no retrato de 31/08/2026). Aqui fica so a saude do feed.
+    saude = getattr(getattr(snapshot, "saude", None), "estado", None) if snapshot else None
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(QRect(rect.left() + 4, rect.top(), rect.width() - 8, 12),
+                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                     rotulo_saude(saude) if saude is not None else "SEM LEITURA")
+
+    corpo = QRect(rect.left() + 4, rect.top() + 13, rect.width() - 8,
+                  max(20, rect.height() - 16))
+
+    # --------------------------------------------------------------- cards
+    # DISTRIBUICAO PROPORCIONAL (31/08/2026, pedido do operador: "faca a
+    # distribuicao total na tela"). Alturas fixas faziam o TERMOMETRO cair
+    # fora em regiao baixa — medido pelo teste responsivo em 1280x600 e
+    # 1480x780, onde sobravam 8px para uma faixa que precisa de 21. As tres
+    # faixas agora dividem o corpo em fracao, entao todas cabem em qualquer
+    # resolucao, e o teto de 72px impede o card de inchar em tela grande.
+    altura_card = max(34, min(72, round(corpo.height() * 0.46)))
+    largura_card = max(70, (corpo.width() - 26) // 2)
+    _card_lado(painter, QRect(corpo.left(), corpo.top(), largura_card, altura_card),
+               "BUY", intensidade if e_suporte else 0,
+               tema_asg.NEXO_VERDE, True, e_suporte and intensidade > 0)
+    painter.setFont(tokens.fonte_rotulo(8))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(QRect(corpo.left() + largura_card, corpo.top(), 26, altura_card),
+                     Qt.AlignmentFlag.AlignCenter, "x")
+    _card_lado(painter,
+               QRect(corpo.left() + largura_card + 26, corpo.top(), largura_card, altura_card),
+               "SELL", 0 if e_suporte else intensidade,
+               tema_asg.NEXO_ROSA, False, (not e_suporte) and intensidade > 0)
+
+    # ------------------------------------------ intensidade + preco da regiao
+    y = corpo.top() + altura_card + 6
+    if corpo.bottom() - y < 30:
+        return
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(QRect(corpo.left(), y, 120, 11),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                     "INTENSIDADE")
+    coluna_regiao = corpo.left() + min(140, corpo.width() // 2)
+    painter.drawText(QRect(coluna_regiao, y, corpo.right() - coluna_regiao, 11),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                     "REGIÃO" if confirmado else "REGIÃO · NÃO CONFIRMADA")
+
+    passo = min(20, max(12, (coluna_regiao - corpo.left() - 8) // INTENSIDADE_MAXIMA))
+    # reserva a faixa do termometro ANTES de dimensionar o raio
+    reserva_termometro = 22
+    disponivel = max(10, corpo.bottom() - y - 14 - reserva_termometro)
+    altura_raio = min(28, max(9, disponivel))
+    painter.save()
+    painter.setPen(Qt.PenStyle.NoPen)
+    for indice in range(INTENSIDADE_MAXIMA):
+        aceso = indice < intensidade
+        painter.setBrush(cor if aceso else QColor(42, 53, 66, 130))
+        painter.drawPolygon(_poligono_raio_sr(
+            QRect(corpo.left() + indice * passo, y + 12, max(6, passo - 5), altura_raio)))
+    painter.restore()
+
+    # A caixa do preco recebe a altura do RAIO mais folga, e a fonte sai de
+    # uma FRACAO dessa caixa: com `fonte = altura_raio` a tinta media 36px
+    # numa caixa de 30 e o Qt cortava o numero por baixo (medido em
+    # 31/08/2026 pelo teste responsivo).
+    caixa_preco = QRect(coluna_regiao, y + 11, corpo.right() - coluna_regiao,
+                        altura_raio + 12)
+    painter.setFont(tokens.fonte_numero(
+        max(12, min(24, int(caixa_preco.height() * 0.62))), QFont.Weight.Bold))
+    painter.setPen(cor)
+    painter.drawText(caixa_preco,
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+                     texto_preco_regiao(getattr(referencia, "preco", None), tick))
+
+    # ------------------------------------------------------------ termometro
+    y2 = y + 14 + altura_raio + 4
+    if corpo.bottom() - y2 < 14:
+        return
+    rotulo = f"TERMOMETRO DO NIVEL · {intensidade}/{INTENSIDADE_MAXIMA}"
+    if intensidade >= INTENSIDADE_MAXIMA:
+        rotulo += "  ·  NIVEL MAXIMO"
+    if referencia is not None:
+        rotulo += f"  ·  {referencia.toques} TESTES"
+    painter.setFont(tokens.fonte_rotulo(6))
+    painter.setPen(tema_asg.NEXO_MUTED)
+    painter.drawText(QRect(corpo.left(), y2, corpo.width(), 11),
+                     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, rotulo)
+    faixa = QRect(corpo.left(), y2 + 11, corpo.width(),
+                  max(5, min(16, corpo.bottom() - y2 - 11)))
+    barras = max(6, min(20, faixa.width() // 14))
+    acesas = int(round(max(0.0, min(1.0, float(score or 0.0))) * barras))
+    vao = 3
+    largura_barra = max(2, (faixa.width() - vao * (barras - 1)) // barras)
+    for indice in range(barras):
+        caixa = QRect(faixa.left() + indice * (largura_barra + vao), faixa.top(),
+                      largura_barra, faixa.height())
+        painter.fillRect(caixa, cor if indice < acesas else QColor(42, 53, 66, 120))

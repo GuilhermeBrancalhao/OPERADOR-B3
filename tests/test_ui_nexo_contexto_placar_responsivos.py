@@ -1,5 +1,6 @@
 """Mede o texto pintado, inclusive a parte que Qt cortaria silenciosamente."""
 
+import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -42,6 +43,24 @@ def _estado(presenca="-100% SUAV", ritmo="DESACELERANDO"):
     )
 
 
+
+def _estado_com_zona(score=0.9, lado="RESISTENCIA", preco=10439):
+    """`EstadoNexo` com um `sr_snapshot` — o placar novo le a ZONA, nao as
+    leituras da matriz."""
+
+    from fluxopro.analytics import suporte_resistencia as sr
+
+    zona = sr.Zona(id="z", lado=getattr(sr.LadoZona, lado), preco=preco,
+                   inferior=preco - 4, superior=preco + 4, score=score,
+                   confianca=0.9, toques=4, fontes=("vap-poc",),
+                   status=sr.EstadoZona.ATIVA)
+    snapshot = SimpleNamespace(zonas=(zona,), dominante=zona, ultimo_preco=10400,
+                               tick_size=0.5,
+                               saude=SimpleNamespace(estado=sr.EstadoFeed.LIVE))
+    base = _estado()
+    return dataclasses.replace(base, sr_snapshot=snapshot)
+
+
 def _pintar(modulo, rect, estado):
     imagem = QImage(rect.right() + 8, rect.bottom() + 8, QImage.Format.Format_ARGB32)
     imagem.fill(tema_asg.NEXO_FUNDO)
@@ -82,25 +101,40 @@ def test_contexto_mostra_nome_valor_e_suav_completos(qapp, largura, altura, frac
 @pytest.mark.parametrize("largura,altura", [(1280, 600), (1480, 780), (1920, 960)])
 @pytest.mark.parametrize("fracao,fracao_altura", [(0.37, 0.34), (0.40, 0.21)],
                          ids=["central-ai", "classico"])
-def test_placar_preserva_percentuais_contagem_e_qualificador(qapp, largura, altura,
-                                                           fracao, fracao_altura):
+def test_placar_declara_intensidade_regiao_e_nivel_sem_corte(qapp, largura, altura,
+                                                            fracao, fracao_altura):
+    """CONTRATO NOVO (31/08/2026) — a regiao deixou de mostrar a contagem
+    ponderada das 4 leituras (que vivia empatada e nao falava da regiao de
+    preco) e passou a ser o PLACAR DE SUPORTE/RESISTENCIA, com a logica
+    conferida nas aulas da SG: intensidade em raios, preco da REGIAO e
+    termometro do NIVEL.
+
+    O que este teste preserva do contrato antigo, porque continua valendo em
+    qualquer redesenho: nenhum rotulo pode ser CORTADO e a tipografia tem de
+    ficar legivel nas tres resolucoes.
+    """
+
     rect = QRect(13, 17, round(largura * fracao), round(altura * fracao_altura))
-    registros = _pintar(estatistica, rect, _estado())
-    legendas = [r for r in registros if "CONV" in r[0]]
-    assert len(legendas) == 2
-    assert "1 DE 4 LEITURAS" in legendas[0][0]
-    assert "3 DE 4 LEITURAS" in legendas[1][0]
-    numeros = [r for r in registros if r[0] in {"10%", "42%"}]
-    assert len(numeros) == 2
-    for registro in legendas:
+    registros = _pintar(estatistica, rect, _estado_com_zona())
+    textos = [r[0] for r in registros]
+    assert any("INTENSIDADE" in t for t in textos), textos
+    assert any("REGI" in t for t in textos), textos
+    assert any("TERMOMETRO" in t or "TERM" in t for t in textos), textos
+    # o preco da regiao (numero grande) tem de estar escrito
+    assert any("5.219,5" in t for t in textos), textos
+    for registro in registros:
         _sem_corte(registro, rect)
-        assert "PONDERADA" in registro[0]
-        assert "CONVICCAO" in registro[0] or "CONV." in registro[0]
-        assert registro[3] >= (7 if "\n" in registro[0] else 6)
-    for numero, legenda in zip(numeros, legendas):
-        _sem_corte(numero, rect)
-        assert numero[3] >= 16
-        assert not numero[2].intersects(legenda[2])
+        assert registro[3] >= 6, registro
+
+
+def test_placar_mostra_um_lado_por_vez(qapp):
+    """A aula: "alerta de resistencia maxima OU alerta de suporte maximo".
+    O lado oposto aparece zerado, nunca escondido."""
+
+    rect = QRect(13, 17, 520, 240)
+    textos = [r[0] for r in _pintar(estatistica, rect, _estado_com_zona())]
+    assert "BUY" in textos and "SELL" in textos
+    assert "0" in textos, "o lado oposto tem de aparecer ZERADO, nao sumir"
 
 
 def test_leituras_largas_preservam_disposicao_lado_a_lado(qapp):
