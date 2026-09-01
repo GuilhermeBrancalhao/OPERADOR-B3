@@ -519,7 +519,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # operador aprovou no print. A FORCA OBSERVADA nao foi apagada do
     # projeto: `_desenhar_barras` continua aqui, com seus testes, para quem
     # tiver espaco para ela.
-    _sr_ui.desenhar_placar(painter, corpo, estado.sr_snapshot)
+    _sr_ui.desenhar_placar(painter, corpo, estado.sr_snapshot,
+                           len(estado.candles_m15 or ()))
 
 
 def texto_tooltip(rect: QRect, pos: QPoint, estado: EstadoNexo) -> str | None:

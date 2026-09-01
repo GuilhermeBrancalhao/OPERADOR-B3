@@ -354,12 +354,26 @@ class _Condicao:
     so para o desenho nao virar quatro blocos copiados.
     """
 
-    __slots__ = ("rotulo", "medida", "atendida")
+    __slots__ = ("rotulo", "medida", "atendida", "bloqueada_por")
 
-    def __init__(self, rotulo: str, medida: str, atendida: bool) -> None:
+    def __init__(self, rotulo: str, medida: str, atendida: bool,
+                 bloqueada_por: str | None = None) -> None:
         self.rotulo = rotulo
         self.medida = medida
         self.atendida = atendida
+        self.bloqueada_por = bloqueada_por
+        """Nome da condicao PRE-REQUISITO que impede esta de ser avaliada.
+
+        MEDIDO NO PREGAO INTEIRO DE 31/08 (01/09/2026): DECISAO, RENKO e
+        CONFIANCA ficaram em ZERO nos 3.276 quadros; so MAKER acendeu (713).
+        Mas RENKO estar em zero nao era leitura de mercado — `renko_ok` exige
+        `confirmada`, entao com DECISAO apagada ele e FALSO POR CONSTRUCAO,
+        mesmo com o Renko em TENDENCIA na tela.
+
+        As quatro lampadas tinham o mesmo peso visual, e o operador concluia
+        que faltavam tres coisas quando faltava UMA. Este campo existe para a
+        tela poder distinguir "avaliado e nao atendido" de "nem chegou a ser
+        avaliado"."""
 
 
 def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
@@ -470,7 +484,8 @@ def _condicoes_ultra(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> tuple[_C
 
     return (
         _Condicao("DECISAO", direcao.value if confirmada else "SEM DIRECAO", confirmada),
-        _Condicao("RENKO", texto_renko, renko_ok),
+        _Condicao("RENKO", texto_renko, renko_ok,
+                  bloqueada_por=None if confirmada else "DECISAO"),
         _Condicao(
             "MAKER",
             "%s / %s" % (formato.formatar_sinalizado(forca, 2),

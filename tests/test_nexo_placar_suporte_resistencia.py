@@ -16,6 +16,7 @@ o preco da REGIAO no numero grande, e o alerta so tomando a faixa quando o
 nivel e alto.
 """
 
+import dataclasses
 from types import SimpleNamespace
 
 import pytest
@@ -443,3 +444,42 @@ def test_alerta_dispara_com_o_preco_encostado_no_VAL():
     titulo, subtitulo, _cor, para_cima = alerta
     assert para_cima is True and "SUPORTE" in titulo
     assert "EVITE VENDER" in subtitulo
+
+
+def test_AQUECENDO_funciona_com_o_SNAPSHOT_REAL_do_aquecimento():
+    """DEFEITO VISTO NA TELA (01/09/2026): a regiao continuava escrita
+    "ATRASADO" durante o aquecimento.
+
+    No aquecimento o motor CONGELA o ultimo snapshot valido, que naquele
+    instante e o `_snapshot_indisponivel` — e nele `macro` e **None**. O
+    rotulo lia `macro.amostras` e caia de volta em "ATRASADO", exatamente o
+    texto que ele existe para substituir.
+
+    O teste anterior passava porque FABRICAVA um snapshot com `macro`
+    preenchido: media a minha suposicao, nao o objeto real. Aqui o snapshot
+    e construido pelo PROPRIO motor.
+    """
+
+    congelado = sr._snapshot_indisponivel(
+        stream_id="s", event_id="e", sequencia=1, timestamp_ns=1,
+        instrumento="WDO", tick_size=0.5, motivo="aquecimento")
+    assert congelado.macro is None, "premissa do teste mudou"
+
+    # como o painel entrega: STALE + a contagem vinda de quem desenha
+    congelado_stale = dataclasses.replace(
+        congelado,
+        saude=sr.Saude(sr.EstadoFeed.STALE, 0.0, None, None, "aquecimento"))
+    assert ui.rotulo_saude_do_snapshot(congelado_stale, 5) == "AQUECENDO 5/10"
+    assert ui.rotulo_saude_do_snapshot(congelado_stale, 10) == "ATRASADO"
+
+
+def test_sem_a_contagem_de_quem_desenha_nao_inventa_numero():
+    """Sem `candles_fechados` e sem `macro`, o rotulo NAO pode chutar um
+    numero — volta ao texto honesto de saude."""
+
+    congelado = dataclasses.replace(
+        sr._snapshot_indisponivel(stream_id="s", event_id="e", sequencia=1,
+                                  timestamp_ns=1, instrumento="WDO",
+                                  tick_size=0.5, motivo="x"),
+        saude=sr.Saude(sr.EstadoFeed.STALE, 0.0, None, None, "x"))
+    assert ui.rotulo_saude_do_snapshot(congelado) == "ATRASADO"

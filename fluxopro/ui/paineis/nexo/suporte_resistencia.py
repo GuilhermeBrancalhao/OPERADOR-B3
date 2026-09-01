@@ -502,7 +502,7 @@ alcanca `LIVE` com `>= ceil(0,80 * 12) = 10` candles.
 """
 
 
-def rotulo_saude_do_snapshot(snapshot) -> str:
+def rotulo_saude_do_snapshot(snapshot, candles_fechados: int | None = None) -> str:
     """Igual a `rotulo_saude`, mas separa AQUECIMENTO de feed ATRASADO.
 
     DEFEITO DE DIAGNOSTICO MEDIDO EM 01/09/2026: no replay de 31/08 a regiao
@@ -525,7 +525,21 @@ def rotulo_saude_do_snapshot(snapshot) -> str:
         return "SEM LEITURA"
     if saude is not sr.EstadoFeed.STALE:
         return rotulo_saude(saude)
-    amostras = getattr(getattr(snapshot, "macro", None), "amostras", None)
+    # A contagem vem de QUEM DESENHA (`candles_fechados`), nao do snapshot.
+    #
+    # DEFEITO VISTO NA TELA EM 01/09/2026, poucas horas depois de eu escrever
+    # este rotulo: durante o aquecimento o motor CONGELA o ultimo snapshot
+    # valido, que naquele momento e o `_snapshot_indisponivel` — e nele
+    # `macro` e `None`. Lendo `macro.amostras` o rotulo caia direto de volta
+    # em "ATRASADO", exatamente o texto que ele existe para substituir, e a
+    # regiao voltava a mandar procurar problema de conexao.
+    #
+    # O teste que eu tinha escrito passava porque FABRICAVA um snapshot com
+    # `macro.amostras` preenchido — media a minha suposicao, nao o objeto que
+    # existe na hora do aquecimento.
+    amostras = candles_fechados
+    if amostras is None:
+        amostras = getattr(getattr(snapshot, "macro", None), "amostras", None)
     if amostras is None or amostras >= CANDLES_PARA_LIVE:
         return rotulo_saude(saude)
     return f"AQUECENDO {amostras}/{CANDLES_PARA_LIVE}"
@@ -548,7 +562,8 @@ def texto_distancia(preco_zona: int, ultimo_preco: int | None, tick_size: float)
     return f"{pontos:+.1f} pts"
 
 
-def desenhar_selo(painter: QPainter, rect: QRect, snapshot) -> None:
+def desenhar_selo(painter: QPainter, rect: QRect, snapshot,
+                  candles_fechados: int | None = None) -> None:
     """Selo SUPORTE/RESISTÊNCIA/NEUTRO + MICRO/MACRO + saúde — a leitura
     central do documento de referência, adaptada à faixa estreita desta
     região (ver docstring do módulo)."""
@@ -585,7 +600,7 @@ def desenhar_selo(painter: QPainter, rect: QRect, snapshot) -> None:
     painter.setFont(tokens.fonte_rotulo(6))
     painter.setPen(cor_saude)
     painter.drawText(faixa_titulo, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                     rotulo_saude_do_snapshot(snapshot))
+                     rotulo_saude_do_snapshot(snapshot, candles_fechados))
 
     # ------------------------------------------------------- alerta + micro/macro
     y = faixa_titulo.bottom() + 1
@@ -818,7 +833,8 @@ def zona_de_referencia(snapshot):
     return min(zonas, key=lambda z: abs(z.preco - ultimo))
 
 
-def desenhar_placar(painter: QPainter, rect: QRect, snapshot) -> None:
+def desenhar_placar(painter: QPainter, rect: QRect, snapshot,
+                    candles_fechados: int | None = None) -> None:
     """Placar de suporte/resistência: lado, intensidade, região e nível.
 
     Substitui a contagem COMPRA/VENDA de leituras que ocupava esta região —
@@ -854,7 +870,7 @@ def desenhar_placar(painter: QPainter, rect: QRect, snapshot) -> None:
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(QRect(rect.left() + 4, rect.top(), rect.width() - 8, 12),
                      Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                     rotulo_saude_do_snapshot(snapshot))
+                     rotulo_saude_do_snapshot(snapshot, candles_fechados))
 
     corpo = QRect(rect.left() + 4, rect.top() + 13, rect.width() - 8,
                   max(20, rect.height() - 16))

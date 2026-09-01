@@ -41,7 +41,7 @@ class LeituraNexoAI:
     titulo: str
     fase: str
     motivo: str
-    condicoes: tuple[tuple[str, str, bool], ...]
+    condicoes: tuple[tuple[str, str, bool, bool], ...]
     progresso: float | None
     confianca: str
     nivel_confianca: int | None
@@ -124,7 +124,11 @@ def compor(estado: EstadoNexo) -> LeituraNexoAI:
     if not saudavel:
         titulo = estado_feed if estado_feed not in {"DESCONHECIDO", "AGUARDANDO"} else "SEM DADOS"
         fase = "CONFIRMAÇÃO BLOQUEADA"
-    condicoes = tuple((c.rotulo, c.medida, bool(c.atendida and saudavel))
+    # 4o item: a condicao esta BLOQUEADA por um pre-requisito (nao foi nem
+    # avaliada) — ver `nucleo._Condicao.bloqueada_por`. Os dois layouts leem
+    # a MESMA funcao pura, entao a distincao aparece igual nas duas telas.
+    condicoes = tuple((c.rotulo, c.medida, bool(c.atendida and saudavel),
+                       c.bloqueada_por is not None)
                       for c in nucleo._condicoes_ultra(estado, decisao.direcao))
     motivo = decisao.motivo if saudavel else dados.detalhe
     if estado_feed == "SEM BOOK":
@@ -404,9 +408,13 @@ def _desenhar_conteudo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
             p.fillRect(QRect(direita, r.top() + 52, round(w * modelo.progresso), 3), cor_estado)
         else:
             # Quatro lampadas = quatro condições REAIS, não porcentagem.
-            for i, (nome, _, passou) in enumerate(modelo.condicoes):
+            for i, (nome, _, passou, bloqueada) in enumerate(modelo.condicoes):
                 cell = QRect(direita + i * w // 4, r.bottom() - 21, w // 4, 14)
-                _texto(p, cell, ("+" if passou else "−") + nome[:3], 9,
+                # "·" = nem chegou a ser avaliada (pre-requisito apagado);
+                # "−" = avaliada e nao atendida. Sem esta distincao as quatro
+                # lampadas mentiam sobre quanto falta — ver `bloqueada_por`.
+                marca = "+" if passou else ("·" if bloqueada else "−")
+                _texto(p, cell, marca + nome[:3], 9,
                        CIANO if passou else SECUNDARIO)
         if not compacto and r.height() > 105:
             _texto(p, QRect(direita, r.top() + 59, w, 16), modelo.motivo, 10, SECUNDARIO)
@@ -535,7 +543,10 @@ def texto_auditoria(estado: EstadoNexo) -> str:
               "Histórico: até 48 snapshots publicados, mesma fórmula da força; reinicia em falhas.",
               f"Janela do histórico: {m.janela_s} segundos | Maker auxiliar: {m.maker}",
               "", "CONDIÇÕES DO FILTRO (diagnóstico existente):"]
-    linhas += [f"{'OK' if ok else 'PENDENTE'} · {nome}: {valor}" for nome, valor, ok in m.condicoes]
+    linhas += [
+        f"{'OK' if ok else ('AGUARDA PRE-REQUISITO' if bloq else 'PENDENTE')} · {nome}: {valor}"
+        for nome, valor, ok, bloq in m.condicoes
+    ]
     linhas += ["", "GATES DA DECISÃO:"]
     linhas += [f"{g.nome}: {g.resultado.value} · {g.motivo}" for g in estado.snapshot.decisao.gates]
     d = estado.snapshot.decisao

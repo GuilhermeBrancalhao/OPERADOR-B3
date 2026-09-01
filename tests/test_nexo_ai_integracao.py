@@ -125,7 +125,7 @@ def test_degradacao_suprime_forca_historico_e_confirmacao_mesmo_com_residuos(ope
     assert not m.saudavel
     assert m.titulo not in ("COMPRA", "VENDA")
     assert m.fase == "CONFIRMAÇÃO BLOQUEADA"
-    assert not any(ok for _, _, ok in m.condicoes)
+    assert not any(c[2] for c in m.condicoes)
     assert m.progresso is None and m.nivel_confianca is None
     assert m.forca is None and m.maker is None and not m.historico
     assert not m.divergente
@@ -355,13 +355,22 @@ def test_caixas_direitas_iguais_ao_contrato_original(quadro):
     # Baseline independente do mapa retornado pela implementacao candidata:
     # escrito a mao de proposito, para o teste nao se comparar consigo mesmo.
     #
-    # ATUALIZADO EM 31/08/2026 — o operador pediu "AMPLIE A AREA DO GRAFICO
-    # DE RENKO (...) preciso ver um periodo maior, para conseguir tracar os
-    # alvos", e a regiao `forca` foi de 0,22 para 0,34 do quadro, com
-    # `candles` comecando em 0,35 no lugar de 0,23. O que este teste vigia
-    # nao mudou: a coluna direita e IDENTICA nos dois layouts e o assistente
-    # nao invade nenhuma das tres caixas.
-    original = {"forca": (.63, 0., 1., .34), "candles": (.63, .35, .98, .85),
+    # ATUALIZADO DUAS VEZES, sempre com o print na frente do operador:
+    #
+    #   31/08/2026 — "AMPLIE A AREA DO GRAFICO DE RENKO (...) preciso ver um
+    #   periodo maior": `forca` de 0,22 para 0,34.
+    #
+    #   01/09/2026 — "ABRA MAIS O GRAFICO RENKO, PARA EU CONSEGUIR VER MELHOR
+    #   ALVOS": `forca` de 0,34 para 0,52, `candles` comecando em 0,53. Junto
+    #   com o teto de escala em `forca.FATORES_DECLARAVEIS`, porque so
+    #   aumentar a altura COMPRIMIA os alvos (mais altura com o mesmo fator =
+    #   mais faixa de preco na tela) — ver a nota longa la.
+    #
+    # O que este teste vigia NAO mudou nas duas vezes, e e por isso que ele
+    # falhou de proposito nas duas: a coluna direita tem de ser IDENTICA nos
+    # dois layouts e o assistente nao pode invadir nenhuma das tres caixas.
+    # A baseline e escrita a mao para o teste nao se comparar consigo mesmo.
+    original = {"forca": (.63, 0., 1., .52), "candles": (.63, .53, .98, .85),
                 "pressao": (.63, .86, 1., 1.)}
     caixas = assistente.caixas_integradas(quadro)
     for nome, (x0, y0, x1, y1) in original.items():
@@ -523,7 +532,62 @@ def test_degradacao_no_caminho_real_ate_modelo_do_card(qapp, estado):
         parar_timers(janela)
         m = assistente.compor(janela.asg.nexo._estado_nexo())
         assert janela.asg.nexo._snapshot.estado_operacional is estado
-        assert not m.saudavel and not any(ok for _, _, ok in m.condicoes)
+        assert not m.saudavel and not any(c[2] for c in m.condicoes)
         assert m.forca is None and m.maker is None and m.progresso is None
     finally:
         fechar_cenario(janela, sessao)
+
+
+# ===== RENKO e FILHA de DECISAO: a tela nao pode mentir sobre quanto falta
+def test_RENKO_aparece_como_BLOQUEADA_quando_DECISAO_esta_apagada():
+    """MEDIDO NO PREGAO INTEIRO DE 31/08 (01/09/2026): DECISAO, RENKO e
+    CONFIANCA em ZERO nos 3.276 quadros; so MAKER acendeu (713).
+
+    Mas RENKO em zero NAO era leitura de mercado: `renko_ok` exige
+    `confirmada`, entao com DECISAO apagada ele e falso POR CONSTRUCAO, mesmo
+    com o Renko em TENDENCIA na tela. As quatro lampadas tinham o mesmo peso
+    e o operador concluia que faltavam tres coisas quando faltava UMA.
+    """
+    from fluxopro.ui.paineis.nexo import nucleo as _nucleo
+
+    estado = estado_controlado(lado=Side.BUY)
+    estado = replace(estado, snapshot=replace(
+        estado.snapshot, decisao=replace(estado.snapshot.decisao,
+                                         direcao=DirecaoASG.AGUARDAR)))
+    cond = _nucleo._condicoes_ultra(estado, DirecaoASG.AGUARDAR)
+    por_nome = {c.rotulo: c for c in cond}
+
+    assert not por_nome["DECISAO"].atendida
+    assert por_nome["RENKO"].bloqueada_por == "DECISAO", (
+        "RENKO tem de se declarar bloqueada por DECISAO — senao a tela mostra "
+        "duas lampadas apagadas como se fossem dois portoes independentes"
+    )
+    # as independentes NAO podem ser marcadas como bloqueadas
+    assert por_nome["MAKER"].bloqueada_por is None
+    assert por_nome["CONFIANCA"].bloqueada_por is None
+
+
+def test_com_DECISAO_confirmada_o_RENKO_volta_a_ser_avaliado():
+    """O outro lado: confirmada a decisao, RENKO deixa de ser bloqueada e
+    passa a valer como leitura de verdade."""
+    from fluxopro.ui.paineis.nexo import nucleo as _nucleo
+
+    estado = estado_controlado(lado=Side.BUY)
+    cond = _nucleo._condicoes_ultra(estado, DirecaoASG.COMPRA)
+    por_nome = {c.rotulo: c for c in cond}
+    assert por_nome["DECISAO"].atendida
+    assert por_nome["RENKO"].bloqueada_por is None
+
+
+def test_o_modelo_do_layout_novo_carrega_a_marca_de_bloqueio():
+    """Os dois layouts leem a MESMA funcao pura; o modelo do layout novo tem
+    de propagar a distincao, senao a correcao para na fronteira."""
+
+    estado = estado_controlado(lado=Side.BUY)
+    estado = replace(estado, snapshot=replace(
+        estado.snapshot, decisao=replace(estado.snapshot.decisao,
+                                         direcao=DirecaoASG.AGUARDAR)))
+    m = assistente.compor(estado)
+    por_nome = {c[0]: c for c in m.condicoes}
+    assert por_nome["RENKO"][3] is True, "marca de bloqueio nao chegou ao modelo"
+    assert por_nome["MAKER"][3] is False

@@ -55,8 +55,8 @@ VAOS_SEM_DONO: tuple[tuple[str, tuple[float, float, float, float]], ...] = (
     ("contexto", (0.34, 0.00, 0.63, 0.02)),
     ("contexto", (0.34, 0.02, 0.40, 0.42)),
     ("contexto", (0.34, 0.42, 0.40, 0.56)),
-    ("forca/candles", (0.63, 0.34, 1.00, 0.35)),
-    ("candles", (0.98, 0.35, 1.00, 0.85)),
+    ("forca/candles", (0.63, 0.52, 1.00, 0.53)),
+    ("candles", (0.98, 0.53, 1.00, 0.85)),
     ("candles/pressao", (0.62, 0.85, 1.00, 0.86)),
     ("ladder", (0.00, 0.56, 0.02, 0.65)),
     ("banner/estatistica", (0.00, 0.78, 0.42, 0.79)),
@@ -125,8 +125,8 @@ REGIOES: dict[str, tuple[float, float, float, float]] = {
     # O grafico de velas cede os 0,12: ele enquadra o pregao inteiro em 5M e
     # tinha folga vertical, enquanto o Renko e a regiao onde os ALVOS
     # (A1/A2/A3) sao lidos e precisava de amplitude.
-    "forca": (0.63, 0.00, 1.00, 0.34),
-    "candles": (0.63, 0.35, 0.98, 0.85),
+    "forca": (0.63, 0.00, 1.00, 0.52),
+    "candles": (0.63, 0.53, 0.98, 0.85),
     "pressao": (0.63, 0.86, 1.00, 1.00),
 }
 
