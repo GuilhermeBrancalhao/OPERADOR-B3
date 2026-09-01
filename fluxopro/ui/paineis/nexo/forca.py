@@ -65,10 +65,29 @@ ALTURA_TIJOLO_MAX_PX = 16
 """Teto da altura do tijolo. Existe para o caso de mercado parado (poucos
 niveis ocupados): sem ele a regra de ocupacao inflaria o tijolo ate virar o
 bloco gigante que o operador chamou de distorcido."""
-FATORES_DECLARAVEIS = (2, 3, 4, 6, 8)
+FATORES_DECLARAVEIS = (2,)
 """Fatores de escala admitidos acima do 1:1, todos redondos. Quantizado de
 proposito: um fator continuo daria o enquadramento perfeito e um rotulo
-("ESCALA 2,37x") que ninguem le, alem de tremer a cada quadro."""
+("ESCALA 2,37x") que ninguem le, alem de tremer a cada quadro.
+
+TETO BAIXADO DE (2,3,4,6,8) PARA (2,) EM 31/08/2026 — operador: "AUMENTE
+NUMERO DE RENKO, PRECISO VER UM PERIODO MAIOR, PARA CONSEGUIR TRACAR OS
+ALVOS".
+
+O fator existe para preencher a altura quando a micro percorre pouco preco,
+mas ele infla o TIJOLO — e tijolo mais alto e, pelo `ASPECTO_TIJOLO`, mais
+LARGO, o que reduz quantos cabem na largura fixa da regiao. Medido na tela
+(regiao de 568px, escala do candle ~5 px/tick):
+
+    fator 3x -> tijolo 8x15px -> ~53 tijolos visiveis
+    fator 2x -> tijolo 5x10px -> ~93 tijolos visiveis
+    fator 1x -> tijolo 3x5px  -> ~140, mas volta a virar "cerca de listras"
+
+Ou seja: o fator alto estava comprando altura preenchida ao preco do
+HISTORICO, que e exatamente o que o operador precisa para tracar alvo. Com
+teto 2 o periodo visivel quase dobra e o tijolo continua legivel. A altura
+que sobrar e preenchida do jeito legitimo — mais tijolos percorrendo mais
+preco (ver `TIJOLOS_VISIVEIS_MAX`), nunca esticando o bloco."""
 
 OCUPACAO_MINIMA = 0.45
 """Abaixo desta fracao da caixa a serie e considerada ilegivel de tao

@@ -55,8 +55,8 @@ VAOS_SEM_DONO: tuple[tuple[str, tuple[float, float, float, float]], ...] = (
     ("contexto", (0.34, 0.00, 0.63, 0.02)),
     ("contexto", (0.34, 0.02, 0.40, 0.42)),
     ("contexto", (0.34, 0.42, 0.40, 0.56)),
-    ("forca/candles", (0.63, 0.22, 1.00, 0.23)),
-    ("candles", (0.98, 0.23, 1.00, 0.85)),
+    ("forca/candles", (0.63, 0.34, 1.00, 0.35)),
+    ("candles", (0.98, 0.35, 1.00, 0.85)),
     ("candles/pressao", (0.62, 0.85, 1.00, 0.86)),
     ("ladder", (0.00, 0.56, 0.02, 0.65)),
     ("banner/estatistica", (0.00, 0.78, 0.42, 0.79)),
@@ -115,8 +115,18 @@ REGIOES: dict[str, tuple[float, float, float, float]] = {
     # espaco (o pregao inteiro em 5M). O grafico de velas ganha ~115px de
     # altura em 1920x1080, o que por sua vez AUMENTA o px/tick dele — e o
     # tijolo do Renko acompanha, porque e a mesma escala.
-    "forca": (0.63, 0.00, 1.00, 0.22),
-    "candles": (0.63, 0.23, 0.98, 0.85),
+    # 31/08/2026 — o Renko cresceu de 0,22 para 0,34 do quadro a pedido do
+    # operador ("AMPLIE A AREA DO GRAFICO DE RENKO (...) preciso ver um
+    # periodo maior, para conseguir tracar os alvos"). A altura extra vira
+    # HISTORICO, nao tijolo maior: a escala vertical continua amarrada ao
+    # candle (`forca.FATOR_ESCALA_VS_CANDLE`), entao o que a caixa maior
+    # compra e mais preco enquadrado e mais tijolos na tela.
+    #
+    # O grafico de velas cede os 0,12: ele enquadra o pregao inteiro em 5M e
+    # tinha folga vertical, enquanto o Renko e a regiao onde os ALVOS
+    # (A1/A2/A3) sao lidos e precisava de amplitude.
+    "forca": (0.63, 0.00, 1.00, 0.34),
+    "candles": (0.63, 0.35, 0.98, 0.85),
     "pressao": (0.63, 0.86, 1.00, 1.00),
 }
 

@@ -470,7 +470,34 @@ def _desenhar_conteudo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
 
 def desenhar_resumo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
-    """A área do AGUARDAR duplicado passa a explicar bloqueios e alertas."""
+    """A área do AGUARDAR duplicado passa a explicar bloqueios e alertas.
+
+    DEFEITO CORRIGIDO EM 31/08/2026 (operador: "ainda esta faltando o alerta
+    de suporte e resistencia, ATE AGORA NAO TEVE").
+
+    O alerta de S/R foi escrito em `nexo/banner.py`, mas o layout integrado
+    NÃO desenha o banner: `asg.desenhar` troca a região por esta função
+    (`if self._nexo_ai_ativo and nome == "banner"`). Ou seja, o alerta
+    existia, era calculado a cada quadro e **não tinha como aparecer na
+    tela**. Agora esta faixa desenha a MESMA placa do clássico quando há
+    alerta de suporte/resistência — um renderizador, dois layouts.
+    """
+
+    from fluxopro.ui.paineis.nexo import banner as _banner
+
+    alerta_sr = _banner.alerta_suporte_resistencia(estado)
+    if alerta_sr is not None:
+        titulo, subtitulo, cor, para_cima = alerta_sr
+        p.save()
+        try:
+            p.setClipRect(rect, Qt.ClipOperation.IntersectClip)
+            p.fillRect(rect, FUNDO)
+            _banner._desenhar_placa_alerta(p, rect, cor, "ALERTA", titulo,
+                                           subtitulo, seta_para_cima=para_cima)
+        finally:
+            p.restore()
+        return
+
     p.save()
     try:
         p.setClipRect(rect, Qt.ClipOperation.IntersectClip)

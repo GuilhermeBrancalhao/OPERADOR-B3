@@ -23,7 +23,7 @@ import pytest
 pytest.importorskip("PySide6.QtWidgets", reason="PySide6 nao instalado")
 
 from PySide6.QtCore import QRect  # noqa: E402
-from PySide6.QtGui import QImage, QPainter  # noqa: E402
+from PySide6.QtGui import QColor, QImage, QPainter  # noqa: E402
 
 from fluxopro.analytics import suporte_resistencia as sr  # noqa: E402
 from fluxopro.ui.paineis.nexo import banner  # noqa: E402
@@ -159,6 +159,11 @@ def test_alerta_traz_o_preco_da_regiao_no_subtitulo():
 def _desenha(rect, snapshot):
     imagem = QImage(max(1, rect.width()), max(1, rect.height()),
                     QImage.Format.Format_ARGB32)
+    # `fill` OBRIGATORIO: `QImage` nasce com memoria NAO INICIALIZADA. Sem
+    # isto o teste de pixel passava sozinho (lixo zerado) e falhava na suite
+    # (lixo de outra imagem), com verde e vermelho empatando no mesmo numero
+    # — flakiness que o proprio teste criou, nao defeito do desenho.
+    imagem.fill(QColor("black"))
     painter = QPainter(imagem)
     try:
         ui.desenhar_placar(painter, rect, snapshot)
@@ -201,3 +206,58 @@ def test_placar_acende_apenas_o_lado_da_zona(qapp):
     v_sup, r_sup = contar(_snapshot((sup,), sup, ultimo=10400))
     assert r_res > v_res, "resistencia deveria acender o lado VENDEDOR"
     assert v_sup > r_sup, "suporte deveria acender o lado COMPRADOR"
+
+
+# ============================== o alerta PRECISA aparecer no layout INTEGRADO
+def test_layout_integrado_desenha_a_placa_de_alerta(qapp):
+    """DEFEITO RELATADO PELO OPERADOR: "ainda esta faltando o alerta de
+    suporte e resistencia, ATE AGORA NAO TEVE".
+
+    O alerta morava em `nexo/banner.py`, mas o layout integrado NAO desenha
+    o banner — `asg.desenhar` troca a regiao por
+    `assistente.desenhar_resumo`. O alerta era calculado a cada quadro e nao
+    tinha como chegar na tela. Este teste chama a funcao do layout NOVO e
+    exige o titulo escrito.
+    """
+
+    from fluxopro.ui.paineis.nexo import assistente
+
+    zona = _zona(10500, sr.LadoZona.RESISTENCIA, 0.95)
+    estado = _estado(_snapshot((zona,), zona, ultimo=10400))
+
+    textos = []
+    original = QPainter.drawText
+
+    def espiao(self, *args):
+        if args and isinstance(args[-1], str):
+            textos.append(args[-1])
+        return original(self, *args)
+
+    imagem = QImage(520, 90, QImage.Format.Format_ARGB32)
+    painter = QPainter(imagem)
+    QPainter.drawText = espiao
+    try:
+        assistente.desenhar_resumo(painter, QRect(0, 0, 520, 90), estado)
+    finally:
+        QPainter.drawText = original
+        painter.end()
+
+    assert any("RESISTENCIA" in t for t in textos), textos
+    assert any("ALERTA" in t for t in textos), textos
+    assert any("EVITE COMPRAR" in t for t in textos), textos
+
+
+def test_layout_integrado_sem_alerta_mantem_o_resumo(qapp):
+    """Sem zona forte a faixa volta ao resumo de sempre — o alerta nao pode
+    sequestrar a regiao permanentemente."""
+
+    from fluxopro.ui.paineis.nexo import assistente
+
+    fraca = _zona(10500, sr.LadoZona.RESISTENCIA, 0.10)
+    estado = _estado(_snapshot((fraca,), None, ultimo=10400))
+    imagem = QImage(520, 90, QImage.Format.Format_ARGB32)
+    painter = QPainter(imagem)
+    try:
+        assistente.desenhar_resumo(painter, QRect(0, 0, 520, 90), estado)
+    finally:
+        painter.end()

@@ -352,8 +352,16 @@ def test_tres_cards_mudam_pixels_com_suas_leituras_reais(qapp):
 @pytest.mark.parametrize("quadro", [QRect(0, 0, 1280, 570), QRect(11, 23, 1480, 740),
                                    QRect(0, 0, 1920, 960)])
 def test_caixas_direitas_iguais_ao_contrato_original(quadro):
-    # Baseline independente do mapa retornado pela implementacao candidata.
-    original = {"forca": (.63, 0., 1., .22), "candles": (.63, .23, .98, .85),
+    # Baseline independente do mapa retornado pela implementacao candidata:
+    # escrito a mao de proposito, para o teste nao se comparar consigo mesmo.
+    #
+    # ATUALIZADO EM 31/08/2026 — o operador pediu "AMPLIE A AREA DO GRAFICO
+    # DE RENKO (...) preciso ver um periodo maior, para conseguir tracar os
+    # alvos", e a regiao `forca` foi de 0,22 para 0,34 do quadro, com
+    # `candles` comecando em 0,35 no lugar de 0,23. O que este teste vigia
+    # nao mudou: a coluna direita e IDENTICA nos dois layouts e o assistente
+    # nao invade nenhuma das tres caixas.
+    original = {"forca": (.63, 0., 1., .34), "candles": (.63, .35, .98, .85),
                 "pressao": (.63, .86, 1., 1.)}
     caixas = assistente.caixas_integradas(quadro)
     for nome, (x0, y0, x1, y1) in original.items():
