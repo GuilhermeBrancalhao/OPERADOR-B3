@@ -98,8 +98,12 @@ ESTADO_REPLAY = tokens.POC
 # arquivo, a referencia a ``NEXO_VERDE``/cinza fixo pelo token neutro (ou
 # ``tokens.ALERT`` no caso do banner) — reportado como pendente.
 NEXO_FUNDO = QColor("#030609")
-NEXO_PAINEL = QColor("#070C12")
-NEXO_PAINEL_ALTO = QColor("#0B1118")
+# Superficies translucidas: o fundo nativo continua sendo uma unica camada
+# por baixo de todos os modulos. O alpha e intencional e nao altera texto,
+# linhas ou dados; apenas permite que o wallpaper seja percebido atraves dos
+# paineis sem criar margens ou divisorias extras.
+NEXO_PAINEL = QColor(7, 12, 18, 12)
+NEXO_PAINEL_ALTO = QColor(11, 17, 24, 22)
 NEXO_GRADE = QColor("#17232C")
 NEXO_CIANO = QColor("#53D5E8")
 NEXO_VERDE = QColor("#26F58A")

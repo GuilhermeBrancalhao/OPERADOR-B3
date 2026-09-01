@@ -53,6 +53,7 @@ from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
+    QFontMetrics,
     QPainter,
     QPen,
     QPolygon,
@@ -372,7 +373,7 @@ def _fundo_profundidade(painter: QPainter, rect: QRect, centro: QPoint, raio: in
     gradiente = QRadialGradient(centro, raio_gradiente)
     gradiente.setColorAt(0.0, tema_asg.NEXO_PAINEL_ALTO)
     gradiente.setColorAt(0.45, tema_asg.NEXO_PAINEL)
-    gradiente.setColorAt(1.0, tema_asg.NEXO_FUNDO)
+    gradiente.setColorAt(1.0, QColor(3, 6, 9, 0))
     painter.fillRect(rect, QBrush(gradiente))
 
 
@@ -735,10 +736,40 @@ def _leituras(painter: QPainter, rect: QRect,
     altura = max(16, rect.height() // len(linhas))
     coluna_rotulo = int(rect.width() * FRACAO_COLUNA_ROTULO_LEITURA)
     x_regua = rect.left() + coluna_rotulo
+    fonte_nome = tokens.fonte_rotulo(TAM_FONTE_LEITURA_NOME)
+    fonte_valor = tokens.fonte_numero(TAM_FONTE_LEITURA_VALOR, QFont.Weight.Bold)
+    metrica_nome, metrica_valor = QFontMetrics(fonte_nome), QFontMetrics(fonte_valor)
+    # O compositor compacto deixa ~83px para esta coluna em 1280px.
+    # PRESENCA/RITMO nao podem disputar metade disso com SUAV ou com
+    # DESACELERANDO. Se qualquer par nao couber, empilhe todos os pares
+    # na mesma coluna, sem elidir valor, sufixo ou diminuir a fonte.
+    empilhar = any(
+        metrica_nome.horizontalAdvance(nome) > coluna_rotulo - ESPACO_REGUA_LEITURA
+        or metrica_valor.horizontalAdvance(linha.valor)
+        > rect.width() - coluna_rotulo - ESPACO_REGUA_LEITURA
+        for nome, linha in linhas
+    )
     rotulo_suprimido = tema_asg.NEXO_MUTED.darker(FATOR_ESCURO_ROTULO_LEITURA)
     for indice, (nome, linha) in enumerate(linhas):
         y = rect.y() + indice * altura
         cor = _asg._cor_nexo_direcao(linha.direcao)
+        if empilhar:
+            flags = Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
+            altura_valor = metrica_valor.boundingRect(
+                QRect(0, 0, rect.width(), altura), flags, linha.valor).height()
+            topo = y + max(0, (altura - metrica_nome.height() - 3 - altura_valor) // 2)
+            painter.setFont(fonte_nome)
+            painter.setPen(rotulo_suprimido)
+            painter.drawText(QRect(rect.left(), topo, rect.width(), metrica_nome.height()),
+                             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, nome)
+            painter.setPen(QPen(tema_asg.NEXO_GRADE, LARGURA_TRACO_MOLDURA))
+            linha_y = topo + metrica_nome.height() + 1
+            painter.drawLine(rect.left(), linha_y, rect.right(), linha_y)
+            painter.setFont(fonte_valor)
+            painter.setPen(_tom_valor_leitura(cor))
+            painter.drawText(QRect(rect.left(), linha_y + 2, rect.width(), altura_valor),
+                             flags, linha.valor)
+            continue
         painter.setFont(tokens.fonte_rotulo(TAM_FONTE_LEITURA_NOME))
         painter.setPen(rotulo_suprimido)
         painter.drawText(QRect(rect.left(), y, coluna_rotulo - ESPACO_REGUA_LEITURA, altura),

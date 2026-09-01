@@ -297,6 +297,10 @@ class EstadoNexo:
     mapeamento dos 8 componentes a partir do que o projeto ja calcula."""
 
 
+    serie_forca_ai: tuple[tuple[int, float], ...] = ()
+    """Até 48 snapshots de força disponíveis, sem Maker e sem interpolação."""
+
+
 def retangulos(quadro: QRect) -> dict[str, QRect]:
     """Traduz o mapa de fracoes em retangulos inteiros dentro de ``quadro``.
 

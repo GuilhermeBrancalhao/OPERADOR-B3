@@ -641,6 +641,11 @@ def _parser():
         ),
     )
     g.add_argument(
+        "--retrato-manter-aberto",
+        action="store_true",
+        help="Com --retrato simples, salva a janela real e continua executando para conferência visual.",
+    )
+    g.add_argument(
         "--workspace",
         choices=list(NOMES_DE_ENTRADA),
         default="OPERADOR B3",
@@ -1065,7 +1070,8 @@ def main(argv: list[str] | None = None) -> int:
                 janela._n_deteccoes,
                 janela._n_sinais,
             )
-            janela.close()
+            if not args.retrato_manter_aberto:
+                janela.close()
 
         QTimer.singleShot(
             int(duracao * 1000),

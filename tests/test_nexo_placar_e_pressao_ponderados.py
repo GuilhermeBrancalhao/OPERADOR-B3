@@ -87,6 +87,33 @@ def test_pressao_composta_fica_em_menos1_mais1():
     assert pressao.pressao_composta(-1.0, -1.0) == -1.0
 
 
+def test_animais_espelham_a_mesma_pressao_sem_criar_segundo_sinal():
+    touro_compra, urso_compra = pressao.intensidades_animais(0.8, tem_leitura=True)
+    touro_venda, urso_venda = pressao.intensidades_animais(-0.8, tem_leitura=True)
+    assert touro_compra > urso_compra
+    assert urso_venda > touro_venda
+    assert pressao.intensidades_animais(0.0, tem_leitura=True)[0] == pressao.intensidades_animais(0.0, tem_leitura=True)[1]
+
+
+def test_animais_ficam_neutros_sem_leitura_publicavel():
+    assert pressao.intensidades_animais(1.0, tem_leitura=False) == (
+        pressao.OPACIDADE_ANIMAL_NEUTRO,
+        pressao.OPACIDADE_ANIMAL_NEUTRO,
+    )
+
+
+def test_animais_aprovados_estao_empacotados_e_sem_fundo_opaco(qapp):
+    for touro in (True, False):
+        sprite = pressao._sprite_animal(touro)
+        assert not sprite.isNull(), "A instalação deve incluir os animais aprovados"
+        imagem = sprite.toImage()
+        cores = [imagem.pixelColor(x, y) for y in range(imagem.height())
+                 for x in range(imagem.width())]
+        assert any(c.alpha() == 0 for c in cores), "Fundo deve ser transparente"
+        assert sum(c.alpha() > 128 for c in cores) > 100, "Animal deve estar visível"
+        assert pressao._sprite_animal(touro).cacheKey() == sprite.cacheKey()
+
+
 # --- placar de dois lados (achado "mudancas tao abruptas") -----------------
 
 def test_pesos_por_lado_mostram_discordancia_nos_dois_lados():

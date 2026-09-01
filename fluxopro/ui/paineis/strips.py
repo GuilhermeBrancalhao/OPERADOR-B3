@@ -186,7 +186,9 @@ class StripTopo(PainelDenso):
             self.marcar_tudo_sujo()
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
-        painter.fillRect(regiao, self.cor_fundo)
+        from fluxopro.ui.fundo_operador import pintar_fundo_compartilhado
+        if not pintar_fundo_compartilhado(painter, self, regiao):
+            painter.fillRect(regiao, self.cor_fundo)
         altura = self.height()
         x = 8
 
@@ -341,7 +343,9 @@ class StripRodape(PainelDenso):
             self.marcar_tudo_sujo()
 
     def desenhar(self, painter: QPainter, regiao: QRect) -> None:
-        painter.fillRect(regiao, self.cor_fundo)
+        from fluxopro.ui.fundo_operador import pintar_fundo_compartilhado
+        if not pintar_fundo_compartilhado(painter, self, regiao):
+            painter.fillRect(regiao, self.cor_fundo)
         painter.setPen(tokens.BORDER)
         painter.drawLine(0, 0, self.width(), 0)
         interno = QRect(8, 0, self.width() - 16, self.height())

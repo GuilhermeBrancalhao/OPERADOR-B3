@@ -19,10 +19,11 @@ from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, fields, replace as dataclass_replace
 from enum import Enum, unique
+from pathlib import Path
 
-from PySide6.QtCore import QPoint, QRect, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QFontMetrics, QLinearGradient, QPainter, QPen, QPolygon
-from PySide6.QtWidgets import QGridLayout, QSizePolicy, QWidget
+from PySide6.QtCore import QPoint, QRect, QSize, QTimer, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QLinearGradient, QPainter, QPen, QPolygon
+from PySide6.QtWidgets import QGridLayout, QSizePolicy, QToolTip, QWidget
 
 from fluxopro.analytics.candle_temporal import CandleTemporal, ConfigCandleTemporal
 from fluxopro.analytics.renko import ConfigRenko, FaseRenko, Renko
@@ -1989,6 +1990,18 @@ class PainelNexoMercadoASG(_PainelASG):
         super().__init__(parent)
         self.grid = grid
         self.paleta = paleta
+        # Nova composição somente neste painel; rollback sem perder estado.
+        self._nexo_ai_ativo = os.environ.get("FLUXOPRO_NEXO_AI", "1") != "0"
+        self._dialogo_nexo_ai = None
+        from PySide6.QtGui import QKeySequence, QShortcut
+
+        self._atalho_nexo_detalhes = QShortcut(QKeySequence("F6"), self)
+        self._atalho_nexo_detalhes.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._atalho_nexo_detalhes.activated.connect(self._abrir_detalhes_nexo_ai)
+        self._atalho_nexo_classico = QShortcut(QKeySequence("F7"), self)
+        self._atalho_nexo_classico.setContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
+        self._atalho_nexo_classico.activated.connect(self._alternar_nexo_ai)
+        self.setAccessibleName("Operador B3. F6 detalhes; F7 composição clássica.")
         self._snapshot = WorkspaceASGSnapshot(
             0,
             DadosASGSnapshot(0),
@@ -2003,6 +2016,7 @@ class PainelNexoMercadoASG(_PainelASG):
         # sintetizado pela UI. Isso permite candles causais e um grafico que
         # ganha densidade no pregão sem reter dados indefinidamente.
         self._serie: deque[tuple[int, int, float, int]] = deque(maxlen=480)
+        self._serie_forca_ai: deque[tuple[int, float]] = deque(maxlen=48)
         # Buffer de negocios crus (timestamp, preco, qty, agressor) so pra
         # montar o VAP recortado em 5M/15M sob pedido (achado do operador em
         # 27/08/2026: o VAP so tinha o perfil da sessao inteira). Trimado por
@@ -2017,7 +2031,10 @@ class PainelNexoMercadoASG(_PainelASG):
         # direta junto com `_serie` — nunca assina o barramento. Ver
         # docstring de `fluxopro/analytics/renko.py` para os rótulos de
         # confiança (CONFIRMADO/IMPRECISO/AUSENTE NA FONTE) por regra.
-        self._renko = Renko(grid, ConfigRenko(tamanho_tijolo_pontos=4.0))
+        # Semente visual mais fina: o Renko continua dinamico e auditavel,
+        # mas comeca com blocos de 2 pontos para dar mais degraus desde a
+        # abertura. O tamanho real segue sendo recalibrado pelo agregador.
+        self._renko = Renko(grid, ConfigRenko(tamanho_tijolo_pontos=2.0))
         # VAP (volume por preço): substitui a escada tipo DOM na lateral
         # esquerda, por pedido do operador — "é um vap, é um volume
         # profile... só que eu consigo trabalhar num nível de refinamento"
@@ -2061,6 +2078,16 @@ class PainelNexoMercadoASG(_PainelASG):
         # estado volta a None e nada e repintado por causa do mouse.
         self._cursor_candles: tuple[int, int] | None = None
         self.setMouseTracking(True)
+        # Marca d'agua opcional e independente dos dados: o wallpaper nunca
+        # participa de snapshot, score ou feed. O caminho e configuravel para
+        # que a distribuicao continue funcionando sem a imagem local.
+        from fluxopro.ui.fundo_operador import FundoOperador
+        self._fundo_operador = FundoOperador()
+        self._wallpaper_timer = QTimer(self)
+        self._wallpaper_timer.setInterval(80)
+        self._wallpaper_timer.timeout.connect(self._avancar_wallpaper)
+        if not self._fundo_operador.imagem.isNull() and not self._fundo_operador.reduzido:
+            self._wallpaper_timer.start()
         self._arrasto_escala: str | None = None  # "tempo" | "preco"
         self._arrasto_escala_x0 = 0
         self._arrasto_escala_y0 = 0
@@ -2211,6 +2238,18 @@ class PainelNexoMercadoASG(_PainelASG):
 
     def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
         self._snapshot = snapshot
+        from fluxopro.ui.paineis.nexo.assistente import forca_publicada
+
+        forca_ai = forca_publicada(snapshot)
+        if (forca_ai is None or (self._serie_forca_ai
+                and snapshot.timestamp_ns < self._serie_forca_ai[-1][0])):
+            self._serie_forca_ai.clear()
+        if forca_ai is not None:
+            ponto_ai = (snapshot.timestamp_ns, forca_ai)
+            if self._serie_forca_ai and snapshot.timestamp_ns == self._serie_forca_ai[-1][0]:
+                self._serie_forca_ai[-1] = ponto_ai
+            else:
+                self._serie_forca_ai.append(ponto_ai)
         linha_maker_bruta = next(
             (l for l in snapshot.matriz.linhas if l.componente == "MAKERPROXY"), None
         )
@@ -2537,6 +2576,32 @@ class PainelNexoMercadoASG(_PainelASG):
     def _agregador_candles_atual(self) -> CandleTemporal:
         return self._candles_15m if self._timeframe_candles_min == 15 else self._candles_m15
 
+    def _alternar_nexo_ai(self) -> None:
+        self._nexo_ai_ativo = not self._nexo_ai_ativo
+        self.marcar_tudo_sujo()
+
+    def _abrir_detalhes_nexo_ai(self) -> None:
+        from PySide6.QtWidgets import QDialog, QPlainTextEdit, QVBoxLayout
+        from fluxopro.ui.paineis.nexo import assistente
+
+        # Um único diálogo, reaberto com o quadro atual. É explicitamente uma
+        # captura congelada; não mantém ponte para feed nem temporizador.
+        if self._dialogo_nexo_ai is None:
+            dialogo = QDialog(self)
+            dialogo.setWindowTitle("Operador B3 · Procedência e condições · snapshot congelado")
+            dialogo.resize(780, 600)
+            layout = QVBoxLayout(dialogo)
+            texto = QPlainTextEdit(dialogo)
+            texto.setReadOnly(True)
+            texto.setObjectName("nexo_ai_auditoria")
+            texto.setAccessibleName("Dados e condições do snapshot Operador B3")
+            layout.addWidget(texto)
+            self._dialogo_nexo_ai = dialogo
+        texto = self._dialogo_nexo_ai.findChild(QPlainTextEdit, "nexo_ai_auditoria")
+        texto.setPlainText(assistente.texto_auditoria(self._estado_nexo()))
+        self._dialogo_nexo_ai.show()
+        self._dialogo_nexo_ai.raise_()
+
     def _retangulo_candles(self) -> QRect | None:
         """Mesmo calculo de `desenhar()` para a regiao "candles" — reaproveitado
         pelos handlers de mouse pra saber onde o clique/arrasto caiu, sem
@@ -2557,6 +2622,16 @@ class PainelNexoMercadoASG(_PainelASG):
 
     def mousePressEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
         pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+
+        if self._nexo_ai_ativo:
+            from fluxopro.ui.paineis.nexo import assistente
+
+            quadro = QRect(0, 0, self.width(), max(1, self.height() - nexo.ALTURA_RESSALVA))
+            central = assistente.caixas_integradas(quadro)["assistente"]
+            if assistente.retangulos_internos(central)["detalhes"].contains(pos):
+                self._abrir_detalhes_nexo_ai()
+                evento.accept()
+                return
 
         caixa_ladder = self._retangulo_ladder()
         if caixa_ladder is not None:
@@ -2716,6 +2791,8 @@ class PainelNexoMercadoASG(_PainelASG):
         atual = self._velas_visiveis_efetivas(caixa)
         alvo = int(round(atual * fator))
         alvo = max(modulo_candles.VELAS_MIN, alvo)
+        # O mesmo total usado pelo desenho define o teto. Um limite sem
+        # total cortava o início de sessões longas ao pedir zoom-out.
         novo = modulo_candles.slots_da_janela(
             caixa.width() if caixa is not None else 400,
             self._timeframe_candles_min, alvo, self._total_candles_do_dia())
@@ -2732,6 +2809,11 @@ class PainelNexoMercadoASG(_PainelASG):
             self.marcar_tudo_sujo()
 
     def mouseMoveEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        pos_fundo = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+        self._fundo_operador.alvo = (
+            (pos_fundo.x()/max(1, self.width()) - .5)*12,
+            (pos_fundo.y()/max(1, self.height()) - .5)*12)
+        self._atualizar_tooltip_estatistica(evento)
         if self._arrasto_escala is not None:
             pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
             caixa = self._retangulo_candles()
@@ -2775,6 +2857,8 @@ class PainelNexoMercadoASG(_PainelASG):
                 return
             super().mouseMoveEvent(evento)
             return
+
+        # Arrastar a serie de candles revela o trecho historico selecionado.
         pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
         caixa = self._retangulo_candles()
         modulo_candles = nexo.modulo("candles")
@@ -2798,6 +2882,27 @@ class PainelNexoMercadoASG(_PainelASG):
             self._candles_offset = novo_offset
             self.marcar_tudo_sujo()
         evento.accept()
+
+    def _atualizar_tooltip_estatistica(self, evento) -> None:
+        """Explica o bloco de placar/forca sem criar estado de mercado novo."""
+
+        if not self._nexo_ai_ativo:
+            QToolTip.hideText()
+            return
+        pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
+        quadro = QRect(0, 0, self.width(), max(1, self.height() - nexo.ALTURA_RESSALVA))
+        from fluxopro.ui.paineis.nexo import assistente
+        caixa = assistente.caixas_integradas(quadro).get("estatistica")
+        if caixa is None or not caixa.contains(pos):
+            QToolTip.hideText()
+            return
+        from fluxopro.ui.paineis.nexo import estatistica
+
+        texto = estatistica.texto_tooltip(caixa, pos, self._estado_nexo())
+        if texto:
+            QToolTip.showText(self.mapToGlobal(pos), texto, self)
+        else:
+            QToolTip.hideText()
 
     def mouseReleaseEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
         if self._arrasto_escala is not None:
@@ -2843,6 +2948,7 @@ class PainelNexoMercadoASG(_PainelASG):
         estado = nexo.EstadoNexo(
             snapshot=self._snapshot,
             serie=tuple(self._serie),
+            serie_forca_ai=tuple(self._serie_forca_ai),
             grid=self.grid,
             paleta=self.paleta,
             maker=self._linha_maker(),
@@ -2895,7 +3001,7 @@ class PainelNexoMercadoASG(_PainelASG):
         """
 
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.fillRect(regiao, tema_asg.NEXO_FUNDO)
+        self._desenhar_wallpaper(painter, regiao)
         largura, altura = self.width(), self.height()
         if largura < 420 or altura < 180:
             painter.setFont(tokens.fonte_ui(11, QFont.Weight.DemiBold))
@@ -2906,7 +3012,10 @@ class PainelNexoMercadoASG(_PainelASG):
 
         estado = self._estado_nexo()
         quadro = QRect(0, 0, largura, max(1, altura - nexo.ALTURA_RESSALVA))
-        caixas = nexo.retangulos(quadro)
+        from fluxopro.ui.paineis.nexo import assistente
+
+        caixas = (assistente.caixas_integradas(quadro) if self._nexo_ai_ativo
+                  else nexo.retangulos(quadro))
 
         # Amarracao de escala entre duas regioes vizinhas: o Renko ("forca")
         # tem de desenhar na MESMA escala vertical do grafico de velas logo
@@ -2921,11 +3030,22 @@ class PainelNexoMercadoASG(_PainelASG):
                 caixas["candles"], estado),
         )
         for nome in nexo.ORDEM_DESENHO:
+            if self._nexo_ai_ativo and nome in {"nucleo", "vies"}:
+                continue
             painter.save()
             try:
-                nexo.modulo(nome).desenhar(painter, caixas[nome], estado)
+                # Isolar a região inclui a sangria de antialiasing: o núcleo
+                # clássico não pode alterar pixels do gráfico ao alternar F7.
+                painter.setClipRect(caixas[nome], Qt.ClipOperation.IntersectClip)
+                if self._nexo_ai_ativo and nome == "banner":
+                    assistente.desenhar_resumo(painter, caixas[nome], estado)
+                else:
+                    nexo.modulo(nome).desenhar(painter, caixas[nome], estado)
             finally:
                 painter.restore()
+
+        if self._nexo_ai_ativo:
+            assistente.desenhar(painter, caixas["assistente"], estado)
 
         # Camada de honestidade: no-op quando o quadro esta saudavel
         # (`diagnosticar` devolve None), e um veu+cartao nomeando o que
@@ -2961,6 +3081,30 @@ class PainelNexoMercadoASG(_PainelASG):
         painter.drawText(rect.adjusted(4, 0, -4, 0),
                          Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
                          "NEXO v1 · PROXY INDEPENDENTE")
+
+    def _avancar_wallpaper(self) -> None:
+        """Loop visual lento; nao toca no relogio nem nos snapshots."""
+
+        if self.isVisible() and not self.window().isMinimized():
+            self._fundo_operador.avancar()
+            self.marcar_tudo_sujo()
+            for nome in ('topo', 'rodape', 'ressalva'):
+                faixa = getattr(self.window(), nome, None)
+                if faixa is not None and faixa.isVisible():
+                    faixa.marcar_tudo_sujo()
+
+    def _desenhar_wallpaper(self, painter: QPainter, regiao: QRect) -> None:
+        """Uma imagem continua sob os modulos; fallback escuro sem arquivo."""
+
+        from fluxopro.ui.fundo_operador import pintar_fundo_compartilhado
+        if pintar_fundo_compartilhado(painter, self, regiao):
+            return
+
+        painter.save()
+        painter.setClipRect(regiao, Qt.ClipOperation.IntersectClip)
+        painter.fillRect(regiao, tema_asg.NEXO_FUNDO)
+        self._fundo_operador.pintar(painter, self.rect())
+        painter.restore()
 
     def _linhas_contexto_nexo(self) -> tuple[tuple[str, LinhaMatrizASG], ...]:
         """Quatro leituras curtas para o bloco de contexto, sem nova regra."""

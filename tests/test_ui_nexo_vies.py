@@ -25,6 +25,7 @@ O smoke de desenho continua cobrindo as quatro direcoes sem tela real.
 """
 
 import pytest
+from dataclasses import replace
 
 pytest.importorskip("PySide6.QtWidgets", reason="PySide6 nao instalado")
 
@@ -328,10 +329,28 @@ def test_desenha_armado(qapp):
 
 
 def test_desenha_em_modo_compacto(qapp):
-    """Abaixo do tamanho minimo do console a regiao cai para avatar+vies em
-    vez de desenhar um console cortado por cima de si mesmo."""
+    """Abaixo do tamanho minimo o avatar vira um HUD funcional compacto."""
 
     _desenha_sem_excecao(_estado_armado(), largura=160, altura=180)
+
+
+def test_metricas_reator_priorizam_dominancia_e_preservam_ausencia():
+    estado = _estado()
+    estado = replace(
+        estado,
+        maker=_maker(-0.4, ConfiancaASG.MEDIA),
+        dominancia_snapshot=type("Dominancia", (), {"composite": 0.7})(),
+    )
+    metricas = vies._metricas_reator(estado)
+    assert metricas[0][0] == "FORÇA"
+    assert metricas[0][1] == pytest.approx(0.7)
+    assert metricas[1][1] == pytest.approx(-0.4)
+    assert metricas[2][1] == pytest.approx(0.65)
+
+
+def test_metricas_reator_nao_inventa_forca_sem_snapshot():
+    metricas = vies._metricas_reator(_estado())
+    assert all(valor is None for _, valor, _ in metricas)
 
 
 def test_regiao_minuscula_nao_desenha_nada(qapp):
