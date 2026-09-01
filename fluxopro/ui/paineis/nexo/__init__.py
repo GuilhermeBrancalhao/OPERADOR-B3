@@ -224,6 +224,15 @@ class EstadoNexo:
     total quase certo e silenciosamente errado. Fonte: `VolumeProfile.volume_total`."""
     risco_volatilidade: float = 0.0
     alerta_exaustao: tuple[str, float] | None = None
+    alerta_sr: tuple | None = None
+    """Alerta de suporte/resistencia JA RETIDO, calculado pelo painel.
+
+    Mora aqui, e nao numa global do modulo de desenho, porque a retencao tem
+    MEMORIA: uma global vazaria de uma janela para a outra em producao e de um
+    teste para o seguinte na bancada — foi assim que
+    `test_f7_preserva_objetos_candles_renko_snapshot_e_pixels_direitos` passou
+    isolado e quebrou na suite em 01/09/2026. Estado com memoria pertence ao
+    painel; as regioes continuam funcoes puras do `EstadoNexo`."""
     sinal_ultra: object | None = None
     """``SinalUltraSnapshot`` (fluxopro.asg.sinal_ultra) do quadro, ou None.
     Filtro adicional, construido do zero por este projeto — ver docstring de

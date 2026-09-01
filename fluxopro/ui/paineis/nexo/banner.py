@@ -120,7 +120,7 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # volatilidade porque tem LADO e regiao de preco: e leitura acionavel de
     # onde o mercado esta sendo defendido, enquanto volatilidade e so
     # "cuidado" sem lado.
-    alerta_sr = alerta_suporte_resistencia(estado)
+    alerta_sr = alerta_suporte_resistencia_retido(estado)
     if alerta_sr is not None:
         titulo_sr, subtitulo_sr, cor_sr, para_cima_sr = alerta_sr
         _desenhar_placa_alerta(painter, rect, cor_sr, "ALERTA", titulo_sr,
@@ -325,6 +325,66 @@ acende em qualquer zona fraca deixa de ser alerta — e o Sergio e explicito
 que a sinalizacao NAO e constante ("existem epocas que nem aparece")."""
 
 
+RETENCAO_ALERTA_S = 12.0
+"""Quanto tempo o alerta de S/R FICA na tela depois do ultimo disparo.
+
+MEDIDO NA GRAVACAO DE 31/08 (01/09/2026): o alerta disparou em **1 quadro de
+481**. Ele nao estava faltando — estava piscando por um quadro so, o que
+nenhum olho humano pega. Um alerta que so existe para quem le o log nao e um
+alerta.
+
+O relogio e o do MERCADO (`snapshot.timestamp_ns`), nunca o de parede: em
+replay acelerado um `time.monotonic()` prenderia a placa por um trecho enorme
+de pregao, e a placa passaria a descrever um instante que ja acabou. Em ao
+vivo os dois relogios coincidem, que e o caso de uso real."""
+
+
+class _RetencaoAlerta:
+    """Segura o ultimo alerta por `RETENCAO_ALERTA_S` de tempo de MERCADO.
+
+    Instancia unica de modulo porque ha uma janela por processo e a regiao e
+    desenhada por um unico painel; se algum dia houver duas janelas, isto vira
+    um campo do painel, nao um dicionario global.
+    """
+
+    def __init__(self) -> None:
+        self._alerta = None
+        # `None`, nunca `0`: zero e um timestamp VALIDO (e o primeiro quadro
+        # de um replay comeca nele) — tratar zero como "sem marca" fazia a
+        # retencao nascer desarmada.
+        self._ts_ns: int | None = None
+
+    def avaliar(self, estado: EstadoNexo, alerta):
+        agora = getattr(getattr(estado, "snapshot", None), "timestamp_ns", None)
+        if alerta is not None:
+            self._alerta, self._ts_ns = alerta, agora
+            return alerta
+        if self._alerta is None or agora is None or self._ts_ns is None:
+            return alerta
+        if agora < self._ts_ns:  # replay reposicionado para tras: nao retem
+            self._alerta = None
+            return None
+        if (agora - self._ts_ns) <= RETENCAO_ALERTA_S * 1e9:
+            return self._alerta
+        self._alerta = None
+        return None
+
+
+def alerta_suporte_resistencia_retido(estado: EstadoNexo):
+    """O que o DESENHO usa: o alerta ja segurado na tela pelo PAINEL.
+
+    A retencao (`_RetencaoAlerta`) e stateful e por isso mora no painel, em
+    `estado.alerta_sr` — nunca numa global deste modulo. Ver a docstring do
+    campo em `nexo/__init__.py`.
+
+    Cai de volta no instantaneo quando o campo nao existe (retratos e testes
+    que montam um `EstadoNexo` a mao), para nunca deixar a faixa muda.
+    """
+
+    retido = getattr(estado, "alerta_sr", None)
+    return retido if retido is not None else alerta_suporte_resistencia(estado)
+
+
 def alerta_suporte_resistencia(estado: EstadoNexo):
     """`(titulo, subtitulo, cor, para_cima)` do alerta de S/R, ou `None`.
 
@@ -350,10 +410,8 @@ def alerta_suporte_resistencia(estado: EstadoNexo):
     if intensidade < INTENSIDADE_MIN_ALERTA_SR:
         return None
 
-    lado = getattr(zona, "lado", None)
-    if lado is None or getattr(lado, "name", "") == "NEUTRO":
-        lado = _sr_ui.lado_geometrico(zona.preco,
-                                      getattr(snapshot, "ultimo_preco", None))
+    # Confirmado > geometria > origem do nivel — ver `lado_de_alerta`.
+    lado = _sr_ui.lado_de_alerta(zona, getattr(snapshot, "ultimo_preco", None))
     e_suporte = getattr(lado, "name", "") == "SUPORTE"
     if not e_suporte and getattr(lado, "name", "") != "RESISTENCIA":
         return None

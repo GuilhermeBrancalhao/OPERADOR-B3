@@ -94,6 +94,18 @@ def test_sem_zona_nenhuma_devolve_none():
 
 
 # ============================================================ alerta (banner)
+def _estado_com_relogio(snapshot, timestamp_ns):
+    """A retencao do alerta le o relogio do MERCADO em `snapshot.timestamp_ns`
+    do snapshot PRINCIPAL (nao o de S/R)."""
+
+    from fluxopro.ui.paineis.nexo import EstadoNexo
+
+    return EstadoNexo(snapshot=SimpleNamespace(timestamp_ns=timestamp_ns),
+                      serie=(), grid=None, paleta=None, maker=None,
+                      leituras=(), largura=1920, altura=1055,
+                      sr_snapshot=snapshot)
+
+
 def _estado(snapshot):
     from fluxopro.ui.paineis.nexo import EstadoNexo
 
@@ -261,3 +273,173 @@ def test_layout_integrado_sem_alerta_mantem_o_resumo(qapp):
         assistente.desenhar_resumo(painter, QRect(0, 0, 520, 90), estado)
     finally:
         painter.end()
+
+
+# ================= o alerta tem de FICAR na tela tempo de ser visto (01/09)
+def _retencao():
+    """Instancia PROPRIA por teste: a retencao tem memoria, e uma instancia
+    compartilhada vazaria de um teste para o seguinte — que foi exatamente o
+    defeito que ela mesma causou quando era global de modulo."""
+
+    from fluxopro.ui.paineis.nexo import banner as bn
+
+    return bn._RetencaoAlerta()
+
+
+def test_alerta_fica_retido_para_ser_visivel():
+    """MEDIDO NA GRAVACAO DE 31/08: o alerta disparou em 1 quadro de 481.
+    Nao estava faltando — piscava por um quadro so."""
+
+    from fluxopro.ui.paineis.nexo import banner as bn
+
+    r = _retencao()
+    zona = _zona(10500, sr.LadoZona.RESISTENCIA, 0.95)
+    forte = _estado_com_relogio(_snapshot((zona,), zona), 0)
+    assert r.avaliar(forte, bn.alerta_suporte_resistencia(forte)) is not None
+
+    # 5s depois a zona sumiu, mas a placa continua
+    cedo = _estado_com_relogio(_snapshot(), 5 * 10 ** 9)
+    assert r.avaliar(cedo, None) is not None
+
+    # passada a retencao, a faixa e devolvida
+    tarde = _estado_com_relogio(_snapshot(), int((bn.RETENCAO_ALERTA_S + 1) * 1e9))
+    assert r.avaliar(tarde, None) is None
+
+
+def test_retencao_usa_o_relogio_do_MERCADO_e_nao_o_de_parede():
+    """Em replay acelerado um relogio de parede prenderia a placa por um
+    trecho enorme de pregao, descrevendo um instante que ja passou."""
+
+    from fluxopro.ui.paineis.nexo import banner as bn
+
+    r = _retencao()
+    zona = _zona(10500, sr.LadoZona.RESISTENCIA, 0.95)
+    forte = _estado_com_relogio(_snapshot((zona,), zona), 0)
+    r.avaliar(forte, bn.alerta_suporte_resistencia(forte))
+    # nenhum tempo de PAREDE passou, mas o mercado andou alem da retencao
+    longe = _estado_com_relogio(_snapshot(), int((bn.RETENCAO_ALERTA_S + 1) * 1e9))
+    assert r.avaliar(longe, None) is None
+
+
+def test_retencao_nao_e_global_do_modulo():
+    """O defeito que ela mesma causou: como global, a placa de um teste
+    aparecia no quadro do seguinte, e
+    `test_f7_preserva_objetos_candles_renko_snapshot_e_pixels_direitos`
+    passava isolado e quebrava na suite."""
+
+    from fluxopro.ui.paineis.nexo import banner as bn
+
+    assert not hasattr(bn, "_retencao"), (
+        "a retencao voltou a ser global de modulo — ela tem memoria e "
+        "vazaria entre janelas e entre testes"
+    )
+
+
+def test_funcao_pura_nao_ganhou_memoria():
+    """`alerta_suporte_resistencia` continua PURA: memoria global nela faria
+    um teste vazar no seguinte."""
+
+    from fluxopro.ui.paineis.nexo import banner as bn
+
+    zona = _zona(10500, sr.LadoZona.RESISTENCIA, 0.95)
+    assert bn.alerta_suporte_resistencia(
+        _estado_com_relogio(_snapshot((zona,), zona), 0)) is not None
+    assert bn.alerta_suporte_resistencia(
+        _estado_com_relogio(_snapshot(), 10 ** 9)) is None
+
+
+# ============ AQUECIMENTO nao e feed ATRASADO (01/09/2026)
+def _snap_saude(estado_feed, amostras):
+    return SimpleNamespace(
+        zonas=(), dominante=None, ultimo_preco=10400, tick_size=0.5,
+        saude=SimpleNamespace(estado=estado_feed),
+        macro=SimpleNamespace(amostras=amostras),
+    )
+
+
+def test_regiao_diz_AQUECENDO_e_quanto_falta_em_vez_de_ATRASADO():
+    """MEDIDO NO REPLAY DE 31/08: a regiao passou o pregao inteiro escrita
+    "ATRASADO", sem zona nenhuma, em 618 de 619 quadros. Nada estava
+    atrasado — o motor precisa de 10 candles antes da primeira zona, e ate la
+    a qualidade fica abaixo do minimo, o que `classificar_saude` so sabe
+    chamar de STALE. "ATRASADO" mandou procurar problema de conexao."""
+
+    texto = ui.rotulo_saude_do_snapshot(_snap_saude(sr.EstadoFeed.STALE, 5))
+    assert texto == "AQUECENDO 5/10", texto
+
+
+def test_depois_do_aquecimento_STALE_volta_a_significar_ATRASADO():
+    """Passado o aquecimento, um STALE e feed atrasado de verdade e tem de
+    voltar a dizer isso — senao o rotulo novo esconderia a falha real."""
+
+    assert ui.rotulo_saude_do_snapshot(
+        _snap_saude(sr.EstadoFeed.STALE, 30)) == "ATRASADO"
+
+
+def test_outros_estados_de_feed_nao_sao_tocados():
+    for estado_feed in (sr.EstadoFeed.LIVE, sr.EstadoFeed.GAP,
+                        sr.EstadoFeed.RECOVERING, sr.EstadoFeed.UNAVAILABLE):
+        assert ui.rotulo_saude_do_snapshot(_snap_saude(estado_feed, 2)) == \
+            ui.rotulo_saude(estado_feed)
+
+
+def test_sem_snapshot_continua_SEM_LEITURA():
+    assert ui.rotulo_saude_do_snapshot(None) == "SEM LEITURA"
+
+
+# ============ resolvedor de lado com o preco EXATAMENTE na zona (01/09/2026)
+def _zona_fonte(preco, fonte, lado=None, score=0.9):
+    return sr.Zona(id=f"{fonte}-{preco}", lado=lado or sr.LadoZona.NEUTRO,
+                   preco=preco, inferior=preco - 4, superior=preco + 4,
+                   score=score, confianca=0.9, toques=4, fontes=(fonte,),
+                   status=sr.EstadoZona.ATIVA)
+
+
+def test_preco_em_cima_do_VAL_resolve_como_SUPORTE():
+    """MEDIDO: 33 quadros de 2.706 ficavam sem lado, e em 33 de 33 a causa
+    era `ultimo_preco == zona.preco`. O alerta escolhe a zona MAIS PROXIMA e
+    depois exigia que o preco NAO estivesse nela."""
+
+    zona = _zona_fonte(10400, "vap-val")
+    assert ui.lado_de_alerta(zona, 10400) is sr.LadoZona.SUPORTE
+
+
+def test_preco_em_cima_do_VAH_resolve_como_RESISTENCIA():
+    zona = _zona_fonte(10400, "vap-vah")
+    assert ui.lado_de_alerta(zona, 10400) is sr.LadoZona.RESISTENCIA
+
+
+def test_POC_continua_sem_lado_de_proposito():
+    """O POC nao e extremo da area de valor — e onde mais se negociou. Nao
+    tem lado por construcao, e inventar um seria pior que nao alertar."""
+
+    zona = _zona_fonte(10400, "vap-poc")
+    assert ui.lado_de_alerta(zona, 10400) is sr.LadoZona.NEUTRO
+    assert banner.alerta_suporte_resistencia(
+        _estado(_snapshot((zona,), zona, ultimo=10400))) is None
+
+
+def test_geometria_VENCE_a_origem_quando_o_preco_furou_o_nivel():
+    """Se o preco furou o VAL, o VAL passou a estar ACIMA e virou
+    resistencia — rotular suporte pela origem seria erro."""
+
+    zona = _zona_fonte(10400, "vap-val")
+    assert ui.lado_de_alerta(zona, 10300) is sr.LadoZona.RESISTENCIA
+
+
+def test_lado_confirmado_pelo_contexto_vence_tudo():
+    zona = _zona_fonte(10400, "vap-val", lado=sr.LadoZona.RESISTENCIA)
+    assert ui.lado_de_alerta(zona, 10400) is sr.LadoZona.RESISTENCIA
+
+
+def test_alerta_dispara_com_o_preco_encostado_no_VAL():
+    """O caso completo, ponta a ponta: era exatamente este quadro que se
+    perdia."""
+
+    zona = _zona_fonte(10400, "vap-val")
+    alerta = banner.alerta_suporte_resistencia(
+        _estado(_snapshot((zona,), zona, ultimo=10400)))
+    assert alerta is not None
+    titulo, subtitulo, _cor, para_cima = alerta
+    assert para_cima is True and "SUPORTE" in titulo
+    assert "EVITE VENDER" in subtitulo

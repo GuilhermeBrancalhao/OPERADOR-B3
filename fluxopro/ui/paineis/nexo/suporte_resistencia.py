@@ -56,6 +56,8 @@ de segurança herdados do documento de referência.
 
 from __future__ import annotations
 
+import math
+
 import re
 
 from PySide6.QtCore import QPoint, QRect, Qt
@@ -306,6 +308,49 @@ def lado_geometrico(preco_zona: int, ultimo_preco: int | None) -> "sr.LadoZona":
     return sr.LadoZona.NEUTRO
 
 
+# Value Area: o VAL e o PISO da area de valor e o VAH e o TETO dela. Quando o
+# preco esta EXATAMENTE em cima da zona, a geometria nao tem de que lado
+# ficar, e e ai que a origem do nivel decide.
+_LADO_POR_FONTE = {
+    "vap-val": "SUPORTE",
+    "vap-vah": "RESISTENCIA",
+}
+
+
+def lado_de_alerta(zona, ultimo_preco: int | None) -> "sr.LadoZona":
+    """Lado que o ALERTA usa: confirmado > geometria > origem do nivel.
+
+    MEDIDO EM 01/09/2026 no replay de 31/08 (2.706 quadros): o contexto
+    confirma o lado em 220 quadros e a geometria resolve outros 1.143, mas
+    sobram **33** em que `lado_geometrico` devolve NEUTRO — e em 33 de 33 a
+    causa e a mesma: `ultimo_preco == zona.preco`. O alerta escolhe a zona
+    MAIS PROXIMA do preco e depois exigia que o preco NAO estivesse nela; as
+    duas regras brigavam, e o quadro perdido era justamente o do preco
+    ENCOSTADO na regiao, que e o momento que a aula manda observar.
+
+    O desempate vem da origem do nivel, que a zona ja carrega em `fontes`:
+    VAL e o piso da area de valor (suporte), VAH e o teto (resistencia). O
+    POC nao tem lado por construcao — e onde mais se negociou, nao um
+    extremo — entao continua NEUTRO e segue sem alerta, de proposito.
+
+    A geometria vem ANTES da origem porque ela e a verdade do momento: se o
+    preco furou o VAL, o VAL passou a estar ACIMA e virou resistencia, e
+    seria erro rotula-lo suporte so pela origem.
+    """
+
+    lado = getattr(zona, "lado", None)
+    if lado is not None and getattr(lado, "name", "") != "NEUTRO":
+        return lado
+    geometrico = lado_geometrico(getattr(zona, "preco", None), ultimo_preco)
+    if geometrico is not sr.LadoZona.NEUTRO:
+        return geometrico
+    for fonte in getattr(zona, "fontes", ()) or ():
+        nome = _LADO_POR_FONTE.get(fonte)
+        if nome is not None:
+            return getattr(sr.LadoZona, nome)
+    return sr.LadoZona.NEUTRO
+
+
 def _zonas_candidatas(estado: EstadoNexo, contexto: float, componente_r: float,
                       componente_j: float, componente_b: float,
                       confianca: float, ultimo_preco: int | None) -> tuple[sr.Zona, ...]:
@@ -448,6 +493,44 @@ def rotulo_saude(estado) -> str:
     return _SAUDE_PT.get(estado, "INDISPONÍVEL")
 
 
+CANDLES_PARA_LIVE = math.ceil(sr.QUALIDADE_LIVE_MIN * JANELA_ESTABILIDADE)
+"""Quantos candles fechados o motor precisa antes de publicar QUALQUER zona.
+
+`qualidade = min(qualidade_micro, qualidade_macro)` e
+`qualidade_macro = len(candles) / JANELA_ESTABILIDADE`, entao a saude so
+alcanca `LIVE` com `>= ceil(0,80 * 12) = 10` candles.
+"""
+
+
+def rotulo_saude_do_snapshot(snapshot) -> str:
+    """Igual a `rotulo_saude`, mas separa AQUECIMENTO de feed ATRASADO.
+
+    DEFEITO DE DIAGNOSTICO MEDIDO EM 01/09/2026: no replay de 31/08 a regiao
+    passava o pregao inteiro escrita "ATRASADO" e sem zona nenhuma — 618 de
+    619 quadros. Nada estava atrasado: com candle de 5 min o motor precisa de
+    10 candles (~50 minutos de pregao) antes de publicar a primeira zona, e
+    ate la a qualidade fica abaixo de `QUALIDADE_LIVE_MIN`, o que
+    `classificar_saude` so sabe chamar de `STALE`.
+
+    "ATRASADO" e palavra de SAUDE DE FEED e manda procurar problema de
+    conexao; o operador (e eu antes dele) foi atras da conexao. Aqui a regiao
+    passa a dizer o que de fato acontece, e quanto falta.
+
+    A contagem sai de `macro.amostras`, que e exatamente `len(candles)` em
+    `construir_entrada_sr` — nao ha segunda contagem para divergir.
+    """
+
+    saude = getattr(getattr(snapshot, "saude", None), "estado", None) if snapshot else None
+    if saude is None:
+        return "SEM LEITURA"
+    if saude is not sr.EstadoFeed.STALE:
+        return rotulo_saude(saude)
+    amostras = getattr(getattr(snapshot, "macro", None), "amostras", None)
+    if amostras is None or amostras >= CANDLES_PARA_LIVE:
+        return rotulo_saude(saude)
+    return f"AQUECENDO {amostras}/{CANDLES_PARA_LIVE}"
+
+
 def rotulo_alerta(alerta) -> str:
     """Texto em português do alerta — ver `_ALERTA_PT`."""
 
@@ -502,7 +585,7 @@ def desenhar_selo(painter: QPainter, rect: QRect, snapshot) -> None:
     painter.setFont(tokens.fonte_rotulo(6))
     painter.setPen(cor_saude)
     painter.drawText(faixa_titulo, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                     rotulo_saude(snapshot.saude.estado))
+                     rotulo_saude_do_snapshot(snapshot))
 
     # ------------------------------------------------------- alerta + micro/macro
     y = faixa_titulo.bottom() + 1
@@ -771,7 +854,7 @@ def desenhar_placar(painter: QPainter, rect: QRect, snapshot) -> None:
     painter.setPen(tema_asg.NEXO_MUTED)
     painter.drawText(QRect(rect.left() + 4, rect.top(), rect.width() - 8, 12),
                      Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                     rotulo_saude(saude) if saude is not None else "SEM LEITURA")
+                     rotulo_saude_do_snapshot(snapshot))
 
     corpo = QRect(rect.left() + 4, rect.top() + 13, rect.width() - 8,
                   max(20, rect.height() - 16))

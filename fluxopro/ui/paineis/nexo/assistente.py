@@ -485,7 +485,7 @@ def desenhar_resumo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     from fluxopro.ui.paineis.nexo import banner as _banner
 
-    alerta_sr = _banner.alerta_suporte_resistencia(estado)
+    alerta_sr = _banner.alerta_suporte_resistencia_retido(estado)
     if alerta_sr is not None:
         titulo, subtitulo, cor, para_cima = alerta_sr
         p.save()

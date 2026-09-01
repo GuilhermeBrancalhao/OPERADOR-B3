@@ -131,9 +131,31 @@ class ConfigRenko:
     tijolo_maximo_pontos: float = 20.0
     """Teto, para o tijolo dinâmico não inflar a um bloco único cobrindo o dia."""
 
-    janela_amplitude_precos: int = 240
-    """Quantos preços brutos recentes (não tijolos, negócios crus) entram no
-    cálculo de amplitude usado pela recalibragem dinâmica."""
+    janela_amplitude_precos: int = 20000
+    """TETO DE MEMÓRIA da janela de amplitude, não o seu tamanho útil — quem
+    manda no recorte é `janela_amplitude_s`. Só existe para o deque não
+    crescer sem limite num pregão inteiro.
+
+    Era 240 até 01/09/2026, e aí ERA o recorte útil. Medido na gravação de
+    31/08: 240 negócios cobrem 66 SEGUNDOS de pregão (mediana) e amplitude de
+    5 ticks; a 12% disso o tijolo dava `round(0,6) = 1` tick e ficava PRESO no
+    piso o pregão inteiro (7.303 tijolos no dia, num dia cuja amplitude total
+    foi de 48 ticks). Contar NEGÓCIOS faz a janela encolher no tempo justo
+    quando o mercado acelera — exatamente quando ela precisava ser larga."""
+
+    janela_amplitude_s: float = 1200.0
+    """Recorte de TEMPO da amplitude que dimensiona o tijolo: 20 minutos.
+
+    Vem da referência do operador (01/09/2026): "foram 4 candles de 5m, olha a
+    quantidade de renko". 4 x 5min = 20min é o período que ele quer enxergar
+    de uma vez, então é essa a amplitude que tem de caber na região — o tijolo
+    é dimensionado pela MESMA janela que o olho dele percorre, e não por um
+    punhado de negócios dos últimos segundos.
+
+    Medido na mesma gravação: o range de 20 minutos é de 2 ticks na mediana e
+    26 no p90, o que a 12% dá tijolo de 1 tick nas fases paradas e 3 ticks nas
+    ativas — e é a 3 ticks que ~80-100 tijolos cobrem os 20 minutos, em vez
+    dos ~7 minutos que a janela de 240 negócios entregava."""
 
     recalibrar_a_cada_tijolos: int = 5
     """Recalibra o tamanho do tijolo a cada N tijolos FECHADOS, nunca a cada
@@ -155,6 +177,19 @@ class ConfigRenko:
     a valer só a recalibragem por tijolos fechados."""
 
     aquecimento_a_cada_precos: int = 8
+
+    precos_sem_tijolo_para_destravar: int = 200
+    """Quantos preços podem chegar SEM nenhum tijolo fechar antes de a
+    recalibragem de destrave voltar a rodar (achado de 01/09/2026).
+
+    O impasse de partida documentado em `aquecimento_minimo_precos` REAPARECE
+    depois do primeiro tijolo: se o regime aperta e o tijolo vigente fica maior
+    que a amplitude nova, nada fecha, logo a recalibragem por fechamento nunca
+    roda, logo o tijolo nunca encolhe. Este contador separa os dois casos que
+    de fora parecem o mesmo — MOVIMENTO em curso (tijolos fechando, tamanho
+    intocado, que é o que `test_aquecimento_para_assim_que_o_primeiro_tijolo_fecha`
+    protege) e REGIÃO TRAVADA (nada fechando há muito tempo). Só no segundo o
+    destrave age, e só para encolher."""
 
     tijolos_para_tendencia: int = 3
     """IMPRECISO — limiar de tijolos seguidos na mesma direção para FaseRenko.TENDENCIA."""
@@ -186,10 +221,13 @@ class Renko:
         self._tijolos: deque[TijoloRenko] = deque(maxlen=self._config.maxlen_tijolos)
         self._ancora: int | None = None  # fechamento do último tijolo fechado
         self._ultimo_timestamp_ns = 0
-        self._precos_recentes: deque[int] = deque(
+        # (timestamp_ns, preco): o recorte util e por TEMPO
+        # (`janela_amplitude_s`); o `maxlen` abaixo e so teto de memoria.
+        self._precos_recentes: deque[tuple[int, int]] = deque(
             maxlen=max(2, self._config.janela_amplitude_precos)
         )
         self._tijolos_desde_recalibragem = 0
+        self._precos_desde_ultimo_tijolo = 0
         # Comeca "vencido" para que a primeira calibragem de aquecimento role
         # no exato preco em que o minimo de amostras e atingido.
         self._precos_desde_aquecimento = max(1, self._config.aquecimento_a_cada_precos)
@@ -208,7 +246,8 @@ class Renko:
 
         if not self._config.tijolo_dinamico or len(self._precos_recentes) < 2:
             return
-        amplitude_ticks = max(self._precos_recentes) - min(self._precos_recentes)
+        precos = [p for _t, p in self._precos_recentes]
+        amplitude_ticks = max(precos) - min(precos)
         if amplitude_ticks <= 0:
             return
         # Toda a conta e feita em TICKS: o piso do tijolo e o passo da grade do
@@ -225,7 +264,12 @@ class Renko:
         if timestamp_ns < self._ultimo_timestamp_ns:
             return
         self._ultimo_timestamp_ns = timestamp_ns
-        self._precos_recentes.append(preco)
+        self._precos_recentes.append((timestamp_ns, preco))
+        # Eviccao por TEMPO, nao por contagem: a janela tem de valer os mesmos
+        # `janela_amplitude_s` tanto no mercado parado quanto no acelerado.
+        corte = timestamp_ns - int(self._config.janela_amplitude_s * 1e9)
+        while len(self._precos_recentes) > 2 and self._precos_recentes[0][0] < corte:
+            self._precos_recentes.popleft()
 
         if self._ancora is None:
             self._ancora = preco
@@ -236,15 +280,34 @@ class Renko:
         # de partida cravado — que pode ser maior que a amplitude inteira da
         # sessao. Recalibra pelos precos crus para destravar o impasse (ver
         # `ConfigRenko.aquecimento_minimo_precos`).
+        # O MESMO impasse volta DEPOIS do primeiro tijolo (achado de
+        # 01/09/2026, por teste): se o regime aperta e o tijolo vigente fica
+        # maior que a amplitude nova, nenhum tijolo fecha, logo a recalibragem
+        # por fechamento nunca roda, logo o tijolo nunca encolhe. O gate antigo
+        # era `not self._tijolos` e so cobria a PARTIDA.
+        #
+        # Aqui a recalibragem de destrave so pode ENCOLHER o tijolo: crescer no
+        # meio de uma sequencia aberta e o que a docstring de
+        # `_recalibrar_tamanho` proibe, e nao e necessario para destravar.
+        self._precos_desde_ultimo_tijolo += 1
+        travado = (
+            self._precos_desde_ultimo_tijolo
+            >= self._config.precos_sem_tijolo_para_destravar
+        )
         if (
             self._config.tijolo_dinamico
-            and not self._tijolos
+            and (not self._tijolos or travado)
             and len(self._precos_recentes) >= self._config.aquecimento_minimo_precos
         ):
             self._precos_desde_aquecimento += 1
             if self._precos_desde_aquecimento >= self._config.aquecimento_a_cada_precos:
                 self._precos_desde_aquecimento = 0
-                self._recalibrar_tamanho()
+                if not self._tijolos:
+                    self._recalibrar_tamanho()
+                else:
+                    anterior = self._tamanho_ticks
+                    self._recalibrar_tamanho()
+                    self._tamanho_ticks = min(anterior, self._tamanho_ticks)
 
         tam = self._tamanho_ticks
         while True:
@@ -256,6 +319,7 @@ class Renko:
                 )
                 self._ancora = novo_fechamento
                 self._tijolos_desde_recalibragem += 1
+                self._precos_desde_ultimo_tijolo = 0
             elif deslocamento <= -tam:
                 novo_fechamento = self._ancora - tam
                 self._tijolos.append(
@@ -263,6 +327,7 @@ class Renko:
                 )
                 self._ancora = novo_fechamento
                 self._tijolos_desde_recalibragem += 1
+                self._precos_desde_ultimo_tijolo = 0
             else:
                 break
             if self._tijolos_desde_recalibragem >= self._config.recalibrar_a_cada_tijolos:

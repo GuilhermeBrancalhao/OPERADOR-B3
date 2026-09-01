@@ -2133,6 +2133,10 @@ class PainelNexoMercadoASG(_PainelASG):
         # sequencia quando ele muda faz sequencia e event_id andarem
         # juntos, que e a premissa do motor.
         self._sr_ultimo_ts = -1
+        # Retencao do alerta de S/R: memoria POR PAINEL. Ver a docstring de
+        # `EstadoNexo.alerta_sr` — uma global do modulo de desenho vazava de
+        # uma janela para a outra e de um teste para o seguinte.
+        self._retencao_alerta_sr = None
         # Dominância Comprador/Vendedor
         # (fluxopro/analytics/dominancia.py) — motor irmão do de Suporte/
         # Resistência, construído a partir de
@@ -2181,6 +2185,22 @@ class PainelNexoMercadoASG(_PainelASG):
             agora_ns=agora_ns,
             **entrada,
         )
+
+    def _alerta_sr_retido(self, estado_parcial: nexo.EstadoNexo):
+        """Alerta de S/R do quadro, ja segurado na tela pela retencao.
+
+        MEDIDO EM 01/09/2026 no replay de 31/08: quando o alerta dispara, ele
+        dura **1 quadro de 481** — nao estava faltando, estava piscando. A
+        retencao e stateful, entao mora aqui, no painel, e nao numa global do
+        modulo de desenho (ver `EstadoNexo.alerta_sr`).
+        """
+
+        from fluxopro.ui.paineis.nexo import banner as nexo_banner
+
+        if self._retencao_alerta_sr is None:
+            self._retencao_alerta_sr = nexo_banner._RetencaoAlerta()
+        return self._retencao_alerta_sr.avaliar(
+            estado_parcial, nexo_banner.alerta_suporte_resistencia(estado_parcial))
 
     def _pacote_analise(self, estado_parcial: nexo.EstadoNexo):
         """Pede uma analise (o motor decide se e a hora) e devolve o ultimo
@@ -2985,6 +3005,7 @@ class PainelNexoMercadoASG(_PainelASG):
             sinal_ultra=self._ultimo_sinal_ultra,
         )
         estado = dataclass_replace(estado, sr_snapshot=self._calcular_sr_snapshot(estado))
+        estado = dataclass_replace(estado, alerta_sr=self._alerta_sr_retido(estado))
         estado = dataclass_replace(
             estado, dominancia_snapshot=self._calcular_dominancia_snapshot(estado))
         # A analise entra por ULTIMO: ela le dominancia e S/R ja publicados,

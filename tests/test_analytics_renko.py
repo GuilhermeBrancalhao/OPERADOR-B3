@@ -172,15 +172,94 @@ def test_piso_do_tijolo_e_um_tick_do_papel_nao_um_numero_de_pontos():
     assert renko.tamanho_tijolo_ticks == 1
 
 
-def test_aquecimento_para_assim_que_o_primeiro_tijolo_fecha():
+def test_tamanho_nao_muda_enquanto_os_tijolos_estao_FECHANDO():
     """Depois do primeiro fechamento vale so a recalibragem por tijolos —
     mudar o tamanho a cada negocio quebraria a leitura da fase no meio do
-    movimento."""
+    movimento.
+
+    REESCRITO EM 01/09/2026, mesmo principio, cenario corrigido. Ate aqui este
+    teste provava o principio com preco OSCILANDO dentro do tijolo, ou seja,
+    com NENHUM tijolo fechando — que e o caso do IMPASSE
+    (`test_regiao_travada_destrava_encolhendo_o_tijolo` abaixo), e nao o caso
+    do movimento em curso que a docstring descreve. Os dois eram
+    indistinguiveis pelo teste antigo; agora o movimento e real e o tamanho
+    tem de ficar parado durante ele.
+    """
     config = ConfigRenko(tamanho_tijolo_pontos=1.0, recalibrar_a_cada_tijolos=10_000)
     renko = Renko(WDO_GRID, config)
     renko.registrar(0, 100_000)
     renko.registrar(1, 100_002)  # fecha tijolo (1 ponto = 2 ticks)
     tam = renko.tamanho_tijolo_ticks
-    for i in range(2, 400):
-        renko.registrar(i, 100_002 + (i % 2))
+    for i in range(2, 400):  # tendencia: cada preco FECHA um tijolo
+        renko.registrar(i, 100_002 + i * tam)
+    assert renko.tijolos, "cenario invalido: nenhum tijolo fechou"
     assert renko.tamanho_tijolo_ticks == tam
+
+
+def test_regiao_travada_destrava_encolhendo_o_tijolo():
+    """O complemento: sem NADA fechando, o tijolo tem de poder encolher.
+
+    O impasse de partida documentado em `aquecimento_minimo_precos` reaparece
+    depois do primeiro tijolo — se o vigente ficou maior que a amplitude nova,
+    nada fecha, a recalibragem por fechamento nunca roda e a regiao congela.
+    """
+    config = ConfigRenko(tamanho_tijolo_pontos=1.0, recalibrar_a_cada_tijolos=10_000)
+    renko = Renko(WDO_GRID, config)
+    renko.registrar(0, 100_000)
+    renko.registrar(1, 100_002)
+    tam = renko.tamanho_tijolo_ticks
+    for i in range(2, 400):  # oscila DENTRO do tijolo: nada fecha
+        renko.registrar(i, 100_002 + (i % 2))
+    assert renko.tamanho_tijolo_ticks < tam
+
+
+# ============ a janela de amplitude e de TEMPO, nunca de contagem (01/09/2026)
+SEG = 10 ** 9
+
+
+def test_janela_de_amplitude_e_recortada_por_tempo_e_nao_por_contagem():
+    """DEFEITO MEDIDO NA GRAVACAO DE 31/08: a janela era de 240 NEGOCIOS, que
+    naquele pregao cobriam 66 SEGUNDOS (mediana) e 5 ticks de amplitude. A 12%
+    disso o tijolo dava `round(0,6) = 1` e ficava PRESO no piso o dia inteiro
+    — 7.303 tijolos num dia cuja amplitude total foi de 48 ticks, e a regiao
+    mostrando ~7 minutos em vez dos 20 que o operador pediu.
+
+    Contar negocios encolhe a janela no tempo justamente quando o mercado
+    acelera. Aqui: MUITOS negocios num range apertado nos ultimos segundos,
+    depois de um deslocamento largo dentro dos 20 minutos. Se a janela contasse
+    negocios, o rajada final expulsaria o deslocamento e o tijolo desabaria.
+    """
+
+    renko = Renko(WDO_GRID, ConfigRenko())
+    # deslocamento largo (100 ticks) no inicio da janela de 20 min
+    renko.registrar(1 * SEG, 100_000)
+    renko.registrar(2 * SEG, 100_100)
+    # rajada de 5.000 negocios num range de 2 ticks, tudo dentro dos 20 min
+    for i in range(5_000):
+        renko.registrar((3 * SEG) + i, 100_100 + (i % 3))
+
+    # amplitude vista = ~102 ticks -> 12% -> ~12 ticks, MUITO acima do piso
+    assert renko.tamanho_tijolo_ticks > 1, (
+        "a rajada recente expulsou o deslocamento: janela voltou a contar "
+        "negocios em vez de tempo"
+    )
+
+
+def test_preco_mais_velho_que_a_janela_sai_do_calculo():
+    """O outro lado: o que passou dos 20 minutos NAO pode continuar inflando o
+    tijolo, senao a amplitude so cresce e o tijolo nunca volta a encolher."""
+
+    cfg = ConfigRenko(janela_amplitude_s=60.0)
+    renko = Renko(WDO_GRID, cfg)
+    renko.registrar(1 * SEG, 100_000)
+    renko.registrar(2 * SEG, 100_500)  # amplitude enorme
+    grande = renko.tamanho_tijolo_ticks
+
+    # passa muito depois da janela, num range apertado. Precisa passar de
+    # `precos_sem_tijolo_para_destravar` — abaixo disso a regiao ainda nao
+    # conta como travada e o tamanho fica (de proposito) intocado.
+    for i in range(2 * cfg.precos_sem_tijolo_para_destravar):
+        renko.registrar((500 + i) * SEG, 100_500 + (i % 2))
+    assert renko.tamanho_tijolo_ticks < grande, (
+        "amplitude velha continuou pesando: a janela nao expira por tempo"
+    )
