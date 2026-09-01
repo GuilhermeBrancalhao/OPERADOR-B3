@@ -55,6 +55,11 @@ class LeituraNexoAI:
     procedencia: str
     formula: str
     divergente: bool
+    mercado: str = ""
+    """Leitura de DIRECAO DE MERCADO do nucleo (`nexo/nucleo.py`) — o que o
+    fluxo esta fazendo AGORA, mesmo sem o filtro decidir. Vazio quando nao ha
+    leitura. Existe porque `titulo` responde outra pergunta: ele e a DECISAO
+    do filtro, e cai em "AGUARDAR" na maior parte do pregao por construcao."""
 
 
 def _finito(valor: object) -> float | None:
@@ -77,6 +82,15 @@ def forca_publicada(snapshot) -> float | None:
     return max(-1.0, min(1.0, sum(valores) / len(valores))) if valores else None
 
 
+def _rotulo_mercado(estado: EstadoNexo, direcao) -> str:
+    """Texto da leitura do nucleo (MERCADO COMPRADOR/VENDEDOR/LATERAL,
+    ALTO RISCO, ULTRA...) — a MESMA funcao pura do layout classico, para as
+    duas telas nunca discordarem sobre o que o mercado esta fazendo."""
+
+    leitura = nucleo.leitura_do_nucleo(estado, direcao)
+    return nucleo._ROTULO_LEITURA.get(leitura, "")
+
+
 def compor(estado: EstadoNexo) -> LeituraNexoAI:
     """Projeta o mesmo snapshot em três cards, sem promover Maker ao placar."""
     s = estado.snapshot
@@ -87,7 +101,7 @@ def compor(estado: EstadoNexo) -> LeituraNexoAI:
             condicoes=(), progresso=None, confianca="—", nivel_confianca=None,
             confianca_feed="—", cobertura="SEM DADOS", niveis_componentes=(),
             forca=None, maker=None, historico=(), janela_s=None,
-            procedencia="SEM FONTE", formula="—", divergente=False,
+            procedencia="SEM FONTE", formula="—", divergente=False, mercado="",
         )
     dados, decisao = s.dados, s.decisao
     operacional = s.estado_operacional
@@ -143,6 +157,7 @@ def compor(estado: EstadoNexo) -> LeituraNexoAI:
         None if forca is None else max(-1.0, min(1.0, forca)), maker,
         historico, janela, decisao.procedencia.value, s.processamento.versao,
         bool(forca is not None and maker is not None and forca * maker < 0),
+        _rotulo_mercado(estado, decisao.direcao) if saudavel else "",
     )
 
 
@@ -168,11 +183,33 @@ def retangulos_internos(rect: QRect) -> dict[str, QRect]:
     gap = 8
     altura_card = max(62, round((area.height() - cab - rodape) * .17))
     topo_cards = area.bottom() - rodape - altura_card * 3 - gap * 2 + 1
+
+    # A ANALISE DE MERCADO (Claude) mora entre a arte do nucleo e os cards.
+    # Ate 31/08/2026 este layout pulava as regioes `nucleo` e `vies`
+    # (ver `asg.desenhar`), e com elas sumiam da tela as duas leituras que o
+    # operador pediu: a analise do Claude e a DIRECAO DE MERCADO. As duas
+    # continuavam calculadas e so apareciam no layout classico (F7).
+    #
+    # O espaco sai da arte, que e cenografia e escala sozinha: em 720p a
+    # arte perde ~110px de lado e continua legivel; abaixo de 240px de
+    # espaco a analise nao entra, para nao espremer o reator a nada.
+    espaco_nucleo = max(10, topo_cards - area.top() - cab - gap)
+    altura_analise = 112 if espaco_nucleo >= 250 else 0
+    if altura_analise:
+        espaco_nucleo -= altura_analise + gap
+
+    caixas_extra = {}
+    if altura_analise:
+        caixas_extra["analise"] = QRect(
+            area.left() + 8, area.top() + cab + espaco_nucleo + gap,
+            area.width() - 16, altura_analise)
+
     return {
+        **caixas_extra,
         "moldura": area,
         "titulo": QRect(area.left(), area.top(), area.width(), cab),
         "nucleo": QRect(area.left() + 8, area.top() + cab, area.width() - 16,
-                        max(10, topo_cards - area.top() - cab - gap)),
+                        espaco_nucleo),
         "estado": QRect(area.left() + 8, topo_cards, area.width() - 16, altura_card),
         "confianca": QRect(area.left() + 8, topo_cards + altura_card + gap,
                             area.width() - 16, altura_card),
@@ -190,14 +227,20 @@ def _fonte(px: int, bold: bool = False) -> QFont:
 
 
 def _texto(p: QPainter, r: QRect, texto: str, px: int = 11, cor=TEXTO,
-           bold: bool = False, centro: bool = False) -> None:
+           bold: bool = False, centro: bool = False,
+           alinhamento_direita: bool = False) -> None:
     if r.width() < 2 or r.height() < 2:
         return
     p.setFont(_fonte(px, bold))
     p.setPen(cor)
     texto = p.fontMetrics().elidedText(texto, Qt.TextElideMode.ElideRight, r.width())
-    p.drawText(r, Qt.AlignmentFlag.AlignVCenter |
-               (Qt.AlignmentFlag.AlignHCenter if centro else Qt.AlignmentFlag.AlignLeft), texto)
+    if centro:
+        horizontal = Qt.AlignmentFlag.AlignHCenter
+    elif alinhamento_direita:
+        horizontal = Qt.AlignmentFlag.AlignRight
+    else:
+        horizontal = Qt.AlignmentFlag.AlignLeft
+    p.drawText(r, Qt.AlignmentFlag.AlignVCenter | horizontal, texto)
 
 
 def _quadro(p: QPainter, rect: QRect, cor=CIANO) -> None:
@@ -317,6 +360,16 @@ def _desenhar_conteudo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         _texto(p, status_rect, f"{modelo.fonte} · {modelo.estado_feed}", 11,
                CIANO if modelo.saudavel else AMBAR, centro=True)
 
+        # ANALISE DE MERCADO (Claude) — trazida do layout classico em
+        # 31/08/2026 (ver `retangulos_internos`). O desenho e o MESMO
+        # modulo que o classico usa: uma leitura, um renderizador.
+        caixa_analise = caixas.get("analise")
+        if caixa_analise is not None:
+            from fluxopro.ui.paineis.nexo import analise as _analise_ui
+
+            _analise_ui.desenhar_analise(p, caixa_analise,
+                                         getattr(estado, "analise_ia", None))
+
         compacto = rect.width() < 320 or rect.height() < 670
         cor_estado = (tema_asg.NEXO_VERDE if modelo.titulo == "COMPRA" else
                       tema_asg.NEXO_ROSA if modelo.titulo == "VENDA" else AMBAR)
@@ -331,7 +384,21 @@ def _desenhar_conteudo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
         w = r.right() - direita - 10
         _texto(p, QRect(direita, r.top() + 7, w, 26), modelo.titulo,
                20 if compacto else 23, cor_estado, True)
-        _texto(p, QRect(direita, r.top() + 34, w, 16), modelo.fase, 10, SECUNDARIO)
+        # A DIRECAO DE MERCADO ao lado da fase do filtro. Sao leituras
+        # diferentes e o card precisava dizer as duas: `titulo` e a DECISAO
+        # (que fica em AGUARDAR quase o pregao inteiro, por construcao do
+        # filtro) e `mercado` e o que o fluxo esta fazendo AGORA. Ate
+        # 31/08/2026 este layout mostrava so a primeira, e o operador via
+        # "AGUARDAR" com o mercado claramente direcional.
+        cor_mercado = (tema_asg.NEXO_VERDE if "COMPRADOR" in modelo.mercado else
+                       tema_asg.NEXO_ROSA if "VENDEDOR" in modelo.mercado else
+                       AMBAR if "RISCO" in modelo.mercado else SECUNDARIO)
+        if modelo.mercado and modelo.mercado != modelo.titulo:
+            _texto(p, QRect(direita, r.top() + 34, w, 16), modelo.fase, 10, SECUNDARIO)
+            _texto(p, QRect(direita, r.top() + 34, w, 16), modelo.mercado, 10,
+                   cor_mercado, alinhamento_direita=True)
+        else:
+            _texto(p, QRect(direita, r.top() + 34, w, 16), modelo.fase, 10, SECUNDARIO)
         if modelo.progresso is not None:
             p.fillRect(QRect(direita, r.top() + 52, w, 3), BORDA)
             p.fillRect(QRect(direita, r.top() + 52, round(w * modelo.progresso), 3), cor_estado)
