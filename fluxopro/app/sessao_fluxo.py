@@ -96,7 +96,7 @@ from fluxopro.asg import (
 )
 from fluxopro.core.barramento import Barramento
 from fluxopro.core.estado_mercado import EstadoMercado
-from fluxopro.core.eventos import BookDelta, BookSnapshot, Trade
+from fluxopro.core.eventos import BookDelta, BookSnapshot, Side, Trade
 from fluxopro.dados.feed_observavel import FeedQualityMonitor, FeedQualityObserver
 from fluxopro.dados.qualidade import (
     AggressorQuality,
@@ -839,7 +839,9 @@ class SessaoFluxo:
         with self._lock_retrato_asg:
             return self._retrato_asg
 
-    def _regiao_operacional(self, trade: Trade, maker: MakerProxySnapshot) -> RegiaoOperacional:
+    def _regiao_operacional(
+        self, trade: Trade, maker: MakerProxySnapshot, direcao_contextual: Side | None = None
+    ) -> RegiaoOperacional:
         area = self.motor.regiao_atual(trade.timestamp_ns) if self.motor is not None else None
         if area is None:
             return RegiaoOperacional(
@@ -855,8 +857,9 @@ class SessaoFluxo:
             )
         val, vah = area
         invalidacao = None
-        if maker.direcao is not None:
-            invalidacao = val if maker.direcao.value == "BUY" else vah
+        direcao = direcao_contextual or maker.direcao
+        if direcao is not None:
+            invalidacao = val if direcao is Side.BUY else vah
         return RegiaoOperacional(
             symbol=trade.symbol,
             timestamp_ns=trade.timestamp_ns,
@@ -899,6 +902,57 @@ class SessaoFluxo:
             else {"timestamp_ns": trade.timestamp_ns, "symbol": trade.symbol}
         )
         metodo_map.setdefault("symbol", trade.symbol)
+        macro_map: dict[str, object] = {}
+        micro_map: dict[str, object] = {}
+        placar_map: dict[str, object] = {}
+        if metodo is not None:
+            macro = metodo.macro_micro.macro
+            micro = metodo.macro_micro.micro
+            macro_map = {
+                "timestamp_ns": trade.timestamp_ns,
+                "symbol": trade.symbol,
+                "valor": macro.valor,
+                "lado": macro.sentido,
+                "sentido": macro.sentido,
+                "janela_ns": macro.janela_ns,
+                "amostras": macro.amostras,
+                # Mantem a forma legada consumida por `_linhas_da_matriz_asg`
+                # sem perder as chaves planas usadas pelo motor contextual.
+                "macro": {
+                    "valor": macro.valor,
+                    "lado": macro.sentido,
+                    "sentido": macro.sentido,
+                    "janela_ns": macro.janela_ns,
+                    "amostras": macro.amostras,
+                },
+            }
+            micro_map = {
+                "timestamp_ns": trade.timestamp_ns,
+                "symbol": trade.symbol,
+                "valor": micro.valor,
+                "lado": micro.sentido,
+                "sentido": micro.sentido,
+                "comanda": metodo.macro_micro.comanda,
+                "janela_ns": micro.janela_ns,
+                "amostras": micro.amostras,
+                "micro": {
+                    "valor": micro.valor,
+                    "lado": micro.sentido,
+                    "sentido": micro.sentido,
+                    "comanda": metodo.macro_micro.comanda,
+                    "janela_ns": micro.janela_ns,
+                    "amostras": micro.amostras,
+                },
+            }
+            placar_map = {
+                **asdict(metodo.placar),
+                "timestamp_ns": trade.timestamp_ns,
+                "symbol": trade.symbol,
+                "lado": metodo.placar.lado,
+            }
+            metodo_map["macro"] = macro_map
+            metodo_map["micro"] = micro_map
+            metodo_map["placar"] = placar_map
         sinal = self._sinal_corrente
         sinal_map = (
             asdict(sinal)
@@ -920,6 +974,9 @@ class SessaoFluxo:
             metodo=metodo_map,
             sinal=sinal_map,
             feed_quality=feed_map,
+            macro=macro_map,
+            micro=micro_map,
+            placar=placar_map,
             divergencias=tuple(divergencias),
             provenance=(
                 "maker:proxy-independente",
@@ -927,7 +984,14 @@ class SessaoFluxo:
                 f"feed:{feed.source.value}/{feed.book_kind.value}",
             ),
         )
-        regiao = self._regiao_operacional(trade, maker)
+        direcao_contextual = (
+            metodo.macro_micro.comanda
+            if metodo is not None and metodo.macro_micro.comanda is not None
+            else metodo.placar.lado
+            if metodo is not None
+            else maker.direcao
+        )
+        regiao = self._regiao_operacional(trade, maker, direcao_contextual)
         decisao = self.motor_decisao_asg.avaliar(leitura, regiao, trade.price)
         retrato = RetratoASG(
             timestamp_ns=trade.timestamp_ns,

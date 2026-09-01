@@ -15,7 +15,7 @@ from typing import Any
 from fluxopro.core.eventos import Side
 
 MAKER_FORMULA_VERSION = "maker-proxy-independent-v2"
-DECISION_FORMULA_VERSION = "operator-b3-consultive-v2"
+DECISION_FORMULA_VERSION = "operator-b3-consultive-v3-context-primary"
 
 
 @unique

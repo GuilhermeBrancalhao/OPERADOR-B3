@@ -407,12 +407,14 @@ def _desenhar_conteudo(p: QPainter, rect: QRect, estado: EstadoNexo) -> None:
             p.fillRect(QRect(direita, r.top() + 52, w, 3), BORDA)
             p.fillRect(QRect(direita, r.top() + 52, round(w * modelo.progresso), 3), cor_estado)
         else:
-            # Quatro lampadas = quatro condições REAIS, não porcentagem.
+            # As lampadas representam somente gates do ULTRA; Renko continua
+            # no grafico/contexto, mas nao e condicao de acionamento.
             for i, (nome, _, passou, bloqueada) in enumerate(modelo.condicoes):
-                cell = QRect(direita + i * w // 4, r.bottom() - 21, w // 4, 14)
+                quantidade = max(1, len(modelo.condicoes))
+                cell = QRect(direita + i * w // quantidade, r.bottom() - 21,
+                             w // quantidade, 14)
                 # "·" = nem chegou a ser avaliada (pre-requisito apagado);
-                # "−" = avaliada e nao atendida. Sem esta distincao as quatro
-                # lampadas mentiam sobre quanto falta — ver `bloqueada_por`.
+                # "−" = avaliada e nao atendida.
                 marca = "+" if passou else ("·" if bloqueada else "−")
                 _texto(p, cell, marca + nome[:3], 9,
                        CIANO if passou else SECUNDARIO)

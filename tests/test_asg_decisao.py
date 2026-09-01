@@ -61,6 +61,7 @@ def _regiao(
 
 def _leitura(maker: MakerProxySnapshot | None = None, *, placar: object | None = None) -> LeituraASG:
     maker = maker or _maker()
+    lado = maker.direcao.value if maker.direcao is not None else None
     return LeituraASG.do_maker(
         maker,
         placar=placar or {"timestamp_ns": maker.timestamp_ns, "comprador": 4, "vendedor": 1},
@@ -68,9 +69,9 @@ def _leitura(maker: MakerProxySnapshot | None = None, *, placar: object | None =
             "timestamp_ns": maker.timestamp_ns, "symbol": SYMBOL,
             "source": maker.source, "book_kind": maker.book_kind,
         },
-        macro={"timestamp_ns": maker.timestamp_ns, "lado": "BUY"},
-        micro={"timestamp_ns": maker.timestamp_ns, "lado": "BUY"},
-        linha_azul={"timestamp_ns": maker.timestamp_ns, "lado": "BUY"},
+        macro={"timestamp_ns": maker.timestamp_ns, "lado": lado},
+        micro={"timestamp_ns": maker.timestamp_ns, "lado": lado},
+        linha_azul={"timestamp_ns": maker.timestamp_ns, "lado": lado},
         regime={"timestamp_ns": maker.timestamp_ns, "nome": "ALTA"},
         velocimetro={"timestamp_ns": maker.timestamp_ns, "estado": "ACELERANDO"},
         divergencias=("maker_preco",) if maker.estado is EstadoMaker.DIVERGENTE else (),
@@ -104,7 +105,9 @@ def test_regiao_invalida_inconsistente_ou_sem_qualidade_nao_confirma(regiao, blo
 
 def test_pre_sinal_sem_confirmacao_por_confianca_baixa():
     maker = _maker(estado=EstadoMaker.AJUSTANDO, confidence=0.50)
-    decisao = MotorDecisaoASG().avaliar(_leitura(maker), _regiao(), 101)
+    decisao = MotorDecisaoASG(ConfigMotorDecisaoASG(exigir_maker_como_gate=True)).avaliar(
+        _leitura(maker), _regiao(), 101
+    )
     assert decisao.pre_sinal is True
     assert decisao.confirmacao is False
     assert "CONFIANCA_BAIXA" in decisao.bloqueios
@@ -121,7 +124,8 @@ def test_pre_sinal_sem_confirmacao_por_confianca_baixa():
     ],
 )
 def test_confirmacao_bloqueada_por_feed_book_persistencia_ou_relevancia(maker, bloqueio):
-    decisao = MotorDecisaoASG().avaliar(_leitura(maker), _regiao(), 101)
+    config = ConfigMotorDecisaoASG(exigir_maker_como_gate=True)
+    decisao = MotorDecisaoASG(config).avaliar(_leitura(maker), _regiao(), 101)
     assert decisao.confirmacao is False
     assert bloqueio in decisao.bloqueios
 
@@ -171,7 +175,9 @@ def test_placar_antigo_sem_maker_permanece_visivel_sem_confirmar():
         feed_quality=0,
     )
     leitura = _leitura(maker, placar={"timestamp_ns": maker.timestamp_ns, "legado": "3x1"})
-    decisao = MotorDecisaoASG().avaliar(leitura, _regiao(), 101)
+    decisao = MotorDecisaoASG(ConfigMotorDecisaoASG(exigir_maker_como_gate=True)).avaliar(
+        leitura, _regiao(), 101
+    )
     assert decisao.placar["legado"] == "3x1"
     assert not decisao.confirmacao
     assert "SEM_DADOS" in decisao.bloqueios

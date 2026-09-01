@@ -357,6 +357,10 @@ class LinhaMatrizASG:
     procedencia: ProcedenciaASG
     evidencias: int = 0
     detalhe: str = ""
+    # Valor bruto preservado para filtros que possuem limiar próprio (como o
+    # ULTRA). O enum ``confianca`` continua sendo o rótulo visual geral; não
+    # se deve obrigar um motor específico a duplicar esse corte fixo de 0,75.
+    confianca_numerica: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -476,7 +480,15 @@ class DecisaoASGSnapshot:
         leitura = getattr(snapshot, "leitura")
         maker = getattr(leitura, "maker", leitura)
         nivel = _valor_enum(getattr(snapshot, "nivel", "AGUARDAR")).upper()
-        estado = _estado_do_maker(maker)
+        feed = getattr(leitura, "feed_quality", {})
+        feed_estado = _valor_enum(feed.get("state", "")) if hasattr(feed, "get") else ""
+        feed_fonte = _valor_enum(feed.get("source", "other")) if hasattr(feed, "get") else "other"
+        feed_book = _valor_enum(feed.get("book_kind", "none")) if hasattr(feed, "get") else "none"
+        estado = (
+            _estado_do_feed(feed_estado, feed_fonte, feed_book)
+            if feed_estado
+            else _estado_do_maker(maker)
+        )
         direcao = _direcao_externa(getattr(snapshot, "direcao", None))
         if estado not in {EstadoASG.AO_VIVO, EstadoASG.REPLAY}:
             direcao = DirecaoASG.AGUARDAR
@@ -491,11 +503,17 @@ class DecisaoASGSnapshot:
             for i, motivo in enumerate(motivos)
         )
         proposta = getattr(snapshot, "proposta_risco", None)
+        # A decisao contextual pode existir no nucleo mesmo quando a borda
+        # esta sem book/atrasada. A superficie legada, porem, nao pode
+        # publicar STOP/A1/A2/A3 com estado operacional bloqueado.
+        proposta_exibivel = (
+            proposta if estado in {EstadoASG.AO_VIVO, EstadoASG.REPLAY} else None
+        )
 
         def nivel_ticks(nome: str) -> str:
-            if proposta is None:
+            if proposta_exibivel is None:
                 return "—"
-            valor = getattr(proposta, nome, None)
+            valor = getattr(proposta_exibivel, nome, None)
             return "—" if valor is None else f"{int(valor)}t"
 
         procedencias = tuple(str(item) for item in getattr(snapshot, "procedencia", ()))
@@ -2256,7 +2274,21 @@ class PainelNexoMercadoASG(_PainelASG):
             **entrada,
         )
 
-    def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
+    def aplicar(
+        self,
+        snapshot: WorkspaceASGSnapshot,
+        *,
+        alimentar_contexto: bool = True,
+    ) -> None:
+        """Publica o snapshot e, opcionalmente, alimenta o contexto bruto.
+
+        O uso direto historico continua com ``alimentar_contexto=True``.
+        A janela principal, porem, ja possui o mesmo ``Instantaneo`` e o
+        entrega em ``aplicar_mercado`` logo depois. Nesse caminho ela passa
+        ``False`` para que Renko, candles e VAP nao recebam os negocios duas
+        vezes e para que o ULTRA seja avaliado somente depois de os negocios
+        do quadro atual terem entrado no Renko.
+        """
         self._snapshot = snapshot
         from fluxopro.ui.paineis.nexo.assistente import forca_publicada
 
@@ -2277,34 +2309,48 @@ class PainelNexoMercadoASG(_PainelASG):
             # O volante INTEGRA o tempo: so pode andar quando chega snapshot
             # novo. O caminho de pintura (`_forca_maker_suavizada`) so LE.
             self._volante_maker.avancar(linha_maker_bruta.forca, snapshot.timestamp_ns)
-        contexto = snapshot.contexto_bruto
-        negocios = () if contexto is None else tuple(contexto.negocios)
-        for negocio in sorted(negocios, key=lambda item: item.timestamp_ns):
-            self._registrar_amostra(
-                negocio.timestamp_ns,
-                negocio.preco,
-                self._forca_atual(),
-                negocio.quantidade,
-                _agressor_de_int(negocio.agressor),
-            )
-        if not negocios and contexto is not None and contexto.ultimo_preco is not None:
-            self._registrar_amostra(
-                snapshot.timestamp_ns,
-                int(contexto.ultimo_preco),
-                self._forca_atual(),
-                0,
-            )
-        self._atualizar_sinal_ultra(snapshot.timestamp_ns)
+        if alimentar_contexto:
+            contexto = snapshot.contexto_bruto
+            negocios = () if contexto is None else tuple(contexto.negocios)
+            for negocio in sorted(negocios, key=lambda item: item.timestamp_ns):
+                self._registrar_amostra(
+                    negocio.timestamp_ns,
+                    negocio.preco,
+                    self._forca_atual(),
+                    negocio.quantidade,
+                    _agressor_de_int(negocio.agressor),
+                )
+            if not negocios and contexto is not None and contexto.ultimo_preco is not None:
+                self._registrar_amostra(
+                    snapshot.timestamp_ns,
+                    int(contexto.ultimo_preco),
+                    self._forca_atual(),
+                    0,
+                )
+            # Compatibilidade para consumidores que chamam somente aplicar().
+            # A janela principal chama isto depois, em aplicar_mercado(),
+            # quando os negocios do Instantaneo ja foram registrados.
+            self._atualizar_sinal_ultra(snapshot.timestamp_ns)
         self.marcar_tudo_sujo()
 
     def _atualizar_sinal_ultra(self, timestamp_ns: int) -> None:
         """Alimenta o `MotorSinalUltra` com o retrato JA calculado deste
-        quadro (decisao confirmada + Renko + MakerProxy suavizado) — nunca
-        lookahead, so o que a UI ja tem em maos neste instante."""
+        quadro (decisao/contexto confirmados + MakerProxy auxiliar; Renko e
+        apenas contexto visual) — nunca lookahead, so o que a UI ja tem em
+        maos neste instante."""
 
         if timestamp_ns <= 0:
             return
-        direcao_decisao = _direcao_ultra_de(self._snapshot.decisao.direcao)
+        # `DecisaoASGSnapshot.direcao` pode continuar direcional durante um
+        # pre-sinal para a matriz mostrar o lado estudado. Isso nao e uma
+        # confirmacao e nao pode alimentar o Ultra. O nivel A1/A2/A3 e a
+        # marca visual do `DecisionSnapshot.confirmacao` neste adaptador.
+        titulo_decisao = str(getattr(self._snapshot.decisao, "titulo", ""))
+        confirmada = titulo_decisao.upper().startswith(("A1 ", "A2 ", "A3 "))
+        direcao_decisao = (
+            _direcao_ultra_de(self._snapshot.decisao.direcao)
+            if confirmada else DirecaoUltra.NENHUMA
+        )
         tijolos = self._renko.tijolos
         direcao_renko = DirecaoUltra.NENHUMA
         if tijolos:
@@ -2312,7 +2358,47 @@ class PainelNexoMercadoASG(_PainelASG):
             direcao_renko = DirecaoUltra.COMPRA if ultimo > 0 else DirecaoUltra.VENDA
         linha_maker = self._linha_maker()
         forca_maker = 0.0 if linha_maker is None else linha_maker.forca
-        confianca_alta = linha_maker is not None and linha_maker.confianca is ConfiancaASG.ALTA
+        confianca_maker = (
+            None if linha_maker is None else linha_maker.confianca_numerica
+        )
+        confianca_alta = (
+            linha_maker is not None
+            and (
+                (
+                    confianca_maker is not None
+                    and confianca_maker >= self._sinal_ultra.config.confianca_maker_alta_minima
+                )
+                # Compatibilidade com snapshots legados que só carregavam o
+                # enum visual. Snapshots produzidos pelo caminho atual sempre
+                # preservam ``confianca_numerica``.
+                or (
+                    confianca_maker is None
+                    and linha_maker.confianca is ConfiancaASG.ALTA
+                )
+            )
+        )
+        # O Ultra exige a confluencia qualitativa que a fonte descreve:
+        # Macro e Micro precisam apontar para a direcao confirmada. A leitura
+        # vem do mesmo snapshot congelado que a tela desenha; nao reconsulta
+        # acumuladores vivos nem usa Renko como substituto.
+        contexto_alinhado = True
+        linhas = tuple(getattr(self._snapshot.matriz, "linhas", ()) or ())
+        if linhas:
+            por_nome = {str(getattr(item, "componente", "")).upper(): item for item in linhas}
+            macro = por_nome.get("MACRO")
+            micro = por_nome.get("MICRO")
+            esperado = (
+                DirecaoASG.COMPRA if direcao_decisao is DirecaoUltra.COMPRA
+                else DirecaoASG.VENDA if direcao_decisao is DirecaoUltra.VENDA
+                else None
+            )
+            contexto_alinhado = (
+                esperado is not None
+                and macro is not None
+                and micro is not None
+                and macro.direcao is esperado
+                and micro.direcao is esperado
+            )
         self._ultimo_sinal_ultra = self._sinal_ultra.atualizar(
             EntradaSinalUltra(
                 timestamp_ns=timestamp_ns,
@@ -2321,6 +2407,7 @@ class PainelNexoMercadoASG(_PainelASG):
                 direcao_renko=direcao_renko,
                 forca_maker=forca_maker,
                 confianca_maker_alta=confianca_alta,
+                contexto_alinhado=contexto_alinhado,
             )
         )
         nova_direcao = self._ultimo_sinal_ultra.direcao
@@ -2365,6 +2452,13 @@ class PainelNexoMercadoASG(_PainelASG):
                 self._forca_atual(),
                 0,
             )
+        # O ULTRA depende do Renko do MESMO quadro. Este ponto precisa ficar
+        # depois do registro dos negocios; avaliar em aplicar() fazia a
+        # decisao enxergar o Renko do quadro anterior e, no caminho normal,
+        # ainda duplicava os negocios quando aplicar() tambem consumia o
+        # contexto bruto.
+        if self._snapshot.timestamp_ns > 0:
+            self._atualizar_sinal_ultra(self._snapshot.timestamp_ns)
         self.marcar_tudo_sujo()
 
     def _registrar_amostra(
@@ -3450,13 +3544,24 @@ class WorkspaceASG(QWidget):
         # capaz de redimensionar permanentemente a janela hospedeira.
         return QSize(0, 0)
 
-    def aplicar(self, snapshot: WorkspaceASGSnapshot) -> None:
-        """Aplica exatamente um snapshot tipado e coerente por quadro."""
+    def aplicar(
+        self,
+        snapshot: WorkspaceASGSnapshot,
+        *,
+        alimentar_contexto: bool = True,
+    ) -> None:
+        """Aplica exatamente um snapshot tipado e coerente por quadro.
+
+        ``alimentar_contexto=False`` e usado pela janela quando o mesmo
+        ``Instantaneo`` sera entregue em ``aplicar_mercado`` logo depois.
+        Os demais paineis continuam recebendo o snapshot normalmente; a
+        opcao controla somente os agregadores de mercado do Nexo.
+        """
 
         if not isinstance(snapshot, WorkspaceASGSnapshot):
             raise TypeError("WorkspaceASG.aplicar exige WorkspaceASGSnapshot tipado")
         self._snapshot = snapshot
-        self.nexo.aplicar(snapshot)
+        self.nexo.aplicar(snapshot, alimentar_contexto=alimentar_contexto)
         self.cockpit.aplicar(snapshot)
         self.placar_visual.aplicar(snapshot)
         self.marca_operador.aplicar(snapshot)
@@ -3890,6 +3995,7 @@ def _linhas_da_matriz_asg(
             confianca=_confianca_numerica(maker_conf),
             procedencia=_procedencia_do_maker(getattr(maker, "procedencia", "")),
             evidencias=len(tuple(getattr(maker, "evidence", ()))),
+            confianca_numerica=maker_conf,
             detalhe=(
                 _ranking_componentes_maker(maker)
                 or f"PERSIST {int(getattr(maker, 'persistence_ns', 0)) / 1e9:.1f}s"

@@ -1,0 +1,2599 @@
+{
+  "dia": "2026-08-31",
+  "simbolo": "WDOU26",
+  "trades": 35902,
+  "formula_ultra": "decision-confirmada + macro/micro alinhados + persistencia 5s; Maker auxiliar; Renko fora do gate",
+  "quadros": 20796,
+  "retratos": 20796,
+  "pre_sinais": 12253,
+  "confirmacoes": 10565,
+  "confirmados_contexto_alinhado": 5400,
+  "ultra_episodes": 66,
+  "episodes_by_side": {
+    "venda": 13,
+    "compra": 53
+  },
+  "episode_duration_s": {
+    "n": 66,
+    "mean": 41.4935,
+    "median": 38.6365,
+    "min": 8.423,
+    "max": 177.778
+  },
+  "horizons_signed_ticks": {
+    "1": {
+      "n": 66,
+      "mean": 0.0455,
+      "median": 0.0,
+      "min": -2.0,
+      "max": 4.0,
+      "positive": 16,
+      "negative": 17,
+      "zero": 33,
+      "positive_pct": 24.24
+    },
+    "3": {
+      "n": 66,
+      "mean": 0.197,
+      "median": 0.0,
+      "min": -2.0,
+      "max": 6.0,
+      "positive": 22,
+      "negative": 17,
+      "zero": 27,
+      "positive_pct": 33.33
+    },
+    "5": {
+      "n": 66,
+      "mean": 0.2727,
+      "median": 0.0,
+      "min": -2.0,
+      "max": 4.0,
+      "positive": 27,
+      "negative": 17,
+      "zero": 22,
+      "positive_pct": 40.91
+    },
+    "15": {
+      "n": 66,
+      "mean": 0.5455,
+      "median": 0.0,
+      "min": -5.0,
+      "max": 18.0,
+      "positive": 29,
+      "negative": 23,
+      "zero": 14,
+      "positive_pct": 43.94
+    }
+  },
+  "episode_details": [
+    {
+      "start_ts": 1788166869084000000,
+      "side": "venda",
+      "start_price": 10370,
+      "maker_percent": -28.2282,
+      "maker_confidence": 0.405,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788166952505000000,
+      "duration_s": 83.421,
+      "horizons": {
+        "1": {
+          "signed_ticks": 4,
+          "raw_ticks": -4,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 6,
+          "raw_ticks": -6,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 4,
+          "raw_ticks": -4,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 18,
+          "raw_ticks": -18,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788166957605000000,
+      "side": "compra",
+      "start_price": 10353,
+      "maker_percent": -16.6667,
+      "maker_confidence": 0.405,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788166993653000000,
+      "duration_s": 36.048,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788167004140000000,
+      "side": "compra",
+      "start_price": 10355,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.115,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167046643000000,
+      "duration_s": 42.503,
+      "horizons": {
+        "1": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -5,
+          "raw_ticks": -5,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788167297132000000,
+      "side": "venda",
+      "start_price": 10341,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.1384,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167346403000000,
+      "duration_s": 49.271,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": 1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788167375050000000,
+      "side": "venda",
+      "start_price": 10347,
+      "maker_percent": 13.3333,
+      "maker_confidence": 0.0567,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167384121000000,
+      "duration_s": 9.071,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": -1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 5,
+          "raw_ticks": -5,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788167389871000000,
+      "side": "compra",
+      "start_price": 10343,
+      "maker_percent": 28.0,
+      "maker_confidence": 0.2663,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167408909000000,
+      "duration_s": 19.038,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788167419255000000,
+      "side": "compra",
+      "start_price": 10343,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.0048,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167428376000000,
+      "duration_s": 9.121,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788167441466000000,
+      "side": "compra",
+      "start_price": 10345,
+      "maker_percent": 33.3333,
+      "maker_confidence": 0.1584,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167503032000000,
+      "duration_s": 61.566,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788167819898000000,
+      "side": "compra",
+      "start_price": 10335,
+      "maker_percent": -40.0,
+      "maker_confidence": 0.2212,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167839508000000,
+      "duration_s": 19.61,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -4,
+          "raw_ticks": -4,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788167845001000000,
+      "side": "venda",
+      "start_price": 10331,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.3352,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167866091000000,
+      "duration_s": 21.09,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": 1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": 1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -2,
+          "raw_ticks": 2,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -2,
+          "raw_ticks": 2,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788167871985000000,
+      "side": "compra",
+      "start_price": 10336,
+      "maker_percent": -33.3333,
+      "maker_confidence": 0.405,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167922817000000,
+      "duration_s": 50.832,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788167944112000000,
+      "side": "compra",
+      "start_price": 10333,
+      "maker_percent": -20.0,
+      "maker_confidence": 0.3375,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788167999832000000,
+      "duration_s": 55.72,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788168052346000000,
+      "side": "compra",
+      "start_price": 10333,
+      "maker_percent": -20.0,
+      "maker_confidence": 0.22,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168174316000000,
+      "duration_s": 121.97,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788168226169000000,
+      "side": "compra",
+      "start_price": 10331,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.3375,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168261183000000,
+      "duration_s": 35.014,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 3,
+          "raw_ticks": 3,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788168266806000000,
+      "side": "compra",
+      "start_price": 10332,
+      "maker_percent": 100.0,
+      "maker_confidence": 0.0024,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168280179000000,
+      "duration_s": 13.373,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788168341105000000,
+      "side": "compra",
+      "start_price": 10337,
+      "maker_percent": -5.4545,
+      "maker_confidence": 0.0268,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168380363000000,
+      "duration_s": 39.258,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788168386711000000,
+      "side": "compra",
+      "start_price": 10338,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.1709,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168415263000000,
+      "duration_s": 28.552,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788168479796000000,
+      "side": "venda",
+      "start_price": 10337,
+      "maker_percent": 20.0,
+      "maker_confidence": 0.0028,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168539160000000,
+      "duration_s": 59.364,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": 1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": 1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788168551698000000,
+      "side": "venda",
+      "start_price": 10339,
+      "maker_percent": -20.0,
+      "maker_confidence": 0.2025,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168588326000000,
+      "duration_s": 36.628,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": -1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": -1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788168641945000000,
+      "side": "venda",
+      "start_price": 10338,
+      "maker_percent": -33.3333,
+      "maker_confidence": 0.3245,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168694145000000,
+      "duration_s": 52.2,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": 1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 2,
+          "raw_ticks": -2,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 3,
+          "raw_ticks": -3,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788168760606000000,
+      "side": "venda",
+      "start_price": 10337,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.0953,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168821152000000,
+      "duration_s": 60.546,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": -1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 3,
+          "raw_ticks": -3,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 3,
+          "raw_ticks": -3,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788168859451000000,
+      "side": "venda",
+      "start_price": 10337,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.1765,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168882967000000,
+      "duration_s": 23.516,
+      "horizons": {
+        "1": {
+          "signed_ticks": 2,
+          "raw_ticks": -2,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 2,
+          "raw_ticks": -2,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 2,
+          "raw_ticks": -2,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": -1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788168889331000000,
+      "side": "venda",
+      "start_price": 10332,
+      "maker_percent": -20.0,
+      "maker_confidence": 0.3375,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788168913210000000,
+      "duration_s": 23.879,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": -1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": 1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": -1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788169014498000000,
+      "side": "venda",
+      "start_price": 10337,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.135,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788169068204000000,
+      "duration_s": 53.706,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": 1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788169073476000000,
+      "side": "compra",
+      "start_price": 10339,
+      "maker_percent": -33.3333,
+      "maker_confidence": 0.0586,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788169125829000000,
+      "duration_s": 52.353,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788169132914000000,
+      "side": "compra",
+      "start_price": 10343,
+      "maker_percent": -40.0,
+      "maker_confidence": 0.2328,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788169184081000000,
+      "duration_s": 51.167,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 3,
+          "raw_ticks": 3,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788169352712000000,
+      "side": "compra",
+      "start_price": 10350,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.0,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788169370451000000,
+      "duration_s": 17.739,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788169386731000000,
+      "side": "compra",
+      "start_price": 10350,
+      "maker_percent": -33.3333,
+      "maker_confidence": 0.0742,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788169405346000000,
+      "duration_s": 18.615,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788169941544000000,
+      "side": "compra",
+      "start_price": 10348,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.0,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788169989066000000,
+      "duration_s": 47.522,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788170029434000000,
+      "side": "compra",
+      "start_price": 10348,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.0013,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788170078689000000,
+      "duration_s": 49.255,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788170086979000000,
+      "side": "compra",
+      "start_price": 10349,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.2025,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788170124994000000,
+      "duration_s": 38.015,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788170137069000000,
+      "side": "compra",
+      "start_price": 10349,
+      "maker_percent": 50.0,
+      "maker_confidence": 0.049,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788170177949000000,
+      "duration_s": 40.88,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788170330414000000,
+      "side": "compra",
+      "start_price": 10352,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.0,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788170378729000000,
+      "duration_s": 48.315,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 3,
+          "raw_ticks": 3,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 4,
+          "raw_ticks": 4,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788170581875000000,
+      "side": "compra",
+      "start_price": 10358,
+      "maker_percent": -40.0,
+      "maker_confidence": 0.1175,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788170647053000000,
+      "duration_s": 65.178,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788170700009000000,
+      "side": "compra",
+      "start_price": 10357,
+      "maker_percent": 60.0,
+      "maker_confidence": 0.1668,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788170713286000000,
+      "duration_s": 13.277,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788170934036000000,
+      "side": "compra",
+      "start_price": 10348,
+      "maker_percent": 24.0,
+      "maker_confidence": 0.0896,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171021494000000,
+      "duration_s": 87.458,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788171038040000000,
+      "side": "compra",
+      "start_price": 10350,
+      "maker_percent": 46.6667,
+      "maker_confidence": 0.185,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171060734000000,
+      "duration_s": 22.694,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 6,
+          "raw_ticks": 6,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788171123589000000,
+      "side": "compra",
+      "start_price": 10353,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.0012,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171140326000000,
+      "duration_s": 16.737,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788171223206000000,
+      "side": "compra",
+      "start_price": 10352,
+      "maker_percent": 100.0,
+      "maker_confidence": 0.0937,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171274521000000,
+      "duration_s": 51.315,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788171295344000000,
+      "side": "compra",
+      "start_price": 10353,
+      "maker_percent": 20.0,
+      "maker_confidence": 0.1796,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171314322000000,
+      "duration_s": 18.978,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788171328453000000,
+      "side": "compra",
+      "start_price": 10353,
+      "maker_percent": 60.0,
+      "maker_confidence": 0.2592,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171374297000000,
+      "duration_s": 45.844,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788171392662000000,
+      "side": "compra",
+      "start_price": 10353,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.2672,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171469100000000,
+      "duration_s": 76.438,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788171487344000000,
+      "side": "compra",
+      "start_price": 10355,
+      "maker_percent": -33.3333,
+      "maker_confidence": 0.2025,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171503179000000,
+      "duration_s": 15.835,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788171546152000000,
+      "side": "compra",
+      "start_price": 10354,
+      "maker_percent": -33.3333,
+      "maker_confidence": 0.1605,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171601735000000,
+      "duration_s": 55.583,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788171658755000000,
+      "side": "compra",
+      "start_price": 10352,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.1215,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171669649000000,
+      "duration_s": 10.894,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788171733634000000,
+      "side": "compra",
+      "start_price": 10353,
+      "maker_percent": -33.3333,
+      "maker_confidence": 0.0152,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171786695000000,
+      "duration_s": 53.061,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788171796285000000,
+      "side": "compra",
+      "start_price": 10353,
+      "maker_percent": -50.0,
+      "maker_confidence": 0.1924,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171846848000000,
+      "duration_s": 50.563,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788171860165000000,
+      "side": "compra",
+      "start_price": 10352,
+      "maker_percent": 33.3333,
+      "maker_confidence": 0.0198,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171869301000000,
+      "duration_s": 9.136,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788171904916000000,
+      "side": "compra",
+      "start_price": 10353,
+      "maker_percent": -25.0,
+      "maker_confidence": 0.0457,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788171949809000000,
+      "duration_s": 44.893,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788172036823000000,
+      "side": "compra",
+      "start_price": 10349,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.1215,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172059175000000,
+      "duration_s": 22.352,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -3,
+          "raw_ticks": -3,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788172106924000000,
+      "side": "compra",
+      "start_price": 10343,
+      "maker_percent": 40.0,
+      "maker_confidence": 0.2061,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172125271000000,
+      "duration_s": 18.347,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788172133899000000,
+      "side": "venda",
+      "start_price": 10343,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.1717,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172189872000000,
+      "duration_s": 55.973,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 2,
+          "raw_ticks": -2,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 2,
+          "raw_ticks": -2,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788172225712000000,
+      "side": "venda",
+      "start_price": 10338,
+      "maker_percent": 28.0,
+      "maker_confidence": 0.0821,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172240073000000,
+      "duration_s": 14.361,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": -1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 2,
+          "raw_ticks": -2,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788172337219000000,
+      "side": "compra",
+      "start_price": 10338,
+      "maker_percent": -70.0,
+      "maker_confidence": 0.3375,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172396626000000,
+      "duration_s": 59.407,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 4,
+          "raw_ticks": 4,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788172491397000000,
+      "side": "compra",
+      "start_price": 10338,
+      "maker_percent": -33.3333,
+      "maker_confidence": 0.1293,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172512394000000,
+      "duration_s": 20.997,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -3,
+          "raw_ticks": -3,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788172657338000000,
+      "side": "compra",
+      "start_price": 10338,
+      "maker_percent": -20.0,
+      "maker_confidence": 0.1974,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172679139000000,
+      "duration_s": 21.801,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -2,
+          "raw_ticks": -2,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788172833242000000,
+      "side": "compra",
+      "start_price": 10336,
+      "maker_percent": -14.2857,
+      "maker_confidence": 0.3043,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172881223000000,
+      "duration_s": 47.981,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788172927929000000,
+      "side": "compra",
+      "start_price": 10333,
+      "maker_percent": -100.0,
+      "maker_confidence": 0.2025,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172937302000000,
+      "duration_s": 9.373,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788172973840000000,
+      "side": "compra",
+      "start_price": 10335,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.0259,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788172994106000000,
+      "duration_s": 20.266,
+      "horizons": {
+        "1": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 2,
+          "raw_ticks": 2,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 3,
+          "raw_ticks": 3,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788173028755000000,
+      "side": "compra",
+      "start_price": 10337,
+      "maker_percent": 100.0,
+      "maker_confidence": 0.1736,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788173206533000000,
+      "duration_s": 177.778,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788173233527000000,
+      "side": "compra",
+      "start_price": 10344,
+      "maker_percent": 100.0,
+      "maker_confidence": 0.1308,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788173271042000000,
+      "duration_s": 37.515,
+      "horizons": {
+        "1": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788173312284000000,
+      "side": "compra",
+      "start_price": 10340,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.0,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788173378897000000,
+      "duration_s": 66.613,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788173385277000000,
+      "side": "compra",
+      "start_price": 10342,
+      "maker_percent": -33.3333,
+      "maker_confidence": 0.0711,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788173487357000000,
+      "duration_s": 102.08,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788173526871000000,
+      "side": "compra",
+      "start_price": 10349,
+      "maker_percent": 100.0,
+      "maker_confidence": 0.2025,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788173538675000000,
+      "duration_s": 11.804,
+      "horizons": {
+        "1": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    },
+    {
+      "start_ts": 1788173549975000000,
+      "side": "compra",
+      "start_price": 10347,
+      "maker_percent": 0.0,
+      "maker_confidence": 0.1063,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788173558398000000,
+      "duration_s": 8.423,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "5": {
+          "signed_ticks": 1,
+          "raw_ticks": 1,
+          "positive": true
+        },
+        "15": {
+          "signed_ticks": 3,
+          "raw_ticks": 3,
+          "positive": true
+        }
+      }
+    },
+    {
+      "start_ts": 1788173569149000000,
+      "side": "compra",
+      "start_price": 10351,
+      "maker_percent": -40.0,
+      "maker_confidence": 0.0884,
+      "maker_feed_quality": 0.675,
+      "feed_state": "connected",
+      "book_kind": "mbp",
+      "decision_confidence": 0.9,
+      "region_valid": true,
+      "context_aligned": true,
+      "blocks": [],
+      "end_ts": 1788173605607000000,
+      "duration_s": 36.458,
+      "horizons": {
+        "1": {
+          "signed_ticks": 0,
+          "raw_ticks": 0,
+          "positive": false
+        },
+        "3": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "5": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        },
+        "15": {
+          "signed_ticks": -1,
+          "raw_ticks": -1,
+          "positive": false
+        }
+      }
+    }
+  ],
+  "maker_feed_quality_at_activation": {
+    "n": 66,
+    "mean": 0.675,
+    "median": 0.675,
+    "min": 0.675,
+    "max": 0.675
+  },
+  "maker_percent_at_activation": {
+    "n": 66,
+    "mean": -15.348,
+    "median": -20.0,
+    "min": -100.0,
+    "max": 100.0
+  },
+  "feed_states_at_activation": {
+    "connected": 66
+  },
+  "book_kinds_at_activation": {
+    "mbp": 66
+  }
+}
