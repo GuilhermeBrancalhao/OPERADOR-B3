@@ -6,8 +6,8 @@
     "2. python scripts/manifesto_dados.py --arquivo dados/ --verificar",
     "3. se os hashes baterem: python scripts/estudo_pregoes.py --arquivo dados/ --simbolo <sym>"
   ],
-  "n_dias": 38,
-  "n_eventos_total": 9941953,
+  "n_dias": 39,
+  "n_eventos_total": 9941956,
   "dias": [
     {
       "symbol": "WDOU26",
@@ -745,6 +745,24 @@
         "book_snapshots.csv": 526602,
         "book_deltas.csv": 134404,
         "falhas.csv": 283
+      }
+    },
+    {
+      "symbol": "WDOU26",
+      "data": "2026-09-01",
+      "schema_versao": 1,
+      "contagens": {
+        "FalhaCaptura": 3
+      },
+      "n_eventos_total": 3,
+      "inicio_utc": "2026-09-01T00:38:20.902586+00:00",
+      "fim_utc": "2026-09-01T02:18:42.178267+00:00",
+      "parcial": false,
+      "hashes_sha256": {
+        "falhas.csv": "9581ddb07abc3410ce7c512f94e490c3ba290dcf39fc5008d4d1b1f6374766a0"
+      },
+      "n_linhas_hasheadas": {
+        "falhas.csv": 3
       }
     }
   ]
