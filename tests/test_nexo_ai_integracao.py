@@ -600,7 +600,11 @@ def test_renko_nao_aparece_como_gate_da_decisao():
         estado.snapshot, decisao=replace(estado.snapshot.decisao,
                                          direcao=DirecaoASG.AGUARDAR)))
     cond = _nucleo._condicoes_ultra(estado, DirecaoASG.AGUARDAR)
-    assert [item.rotulo for item in cond] == ["DECISAO", "CONTEXTO", "PERSISTENCIA"]
+    # 02/09/2026: DECISAO e CONTEXTO sairam do painel (eram o mesmo booleano
+    # e ficavam acesas 100,00% do tempo). Sem direcao, elas voltam como a
+    # UNICA linha BASE — que e quando de fato informam alguma coisa.
+    assert [item.rotulo for item in cond] == ["BASE", "PERSISTENCIA"]
+    assert not cond[0].atendida
 
 
 def test_renko_contrario_nao_bloqueia_confluencia():
@@ -609,18 +613,31 @@ def test_renko_contrario_nao_bloqueia_confluencia():
 
     estado = estado_controlado(lado=Side.BUY)
     cond = _nucleo._condicoes_ultra(estado, DirecaoASG.COMPRA)
-    assert [item.rotulo for item in cond] == ["DECISAO", "CONTEXTO", "PERSISTENCIA"]
-    assert cond[0].atendida and cond[1].atendida
-    assert not cond[2].atendida  # persistencia ainda e o gate restante
+    # Base satisfeita: sobra so o que varia. O Renko contrario nao acrescenta
+    # linha nenhuma, que e exatamente o ponto — ele nao e gate.
+    assert [item.rotulo for item in cond] == ["PERSISTENCIA"]
+    assert not cond[0].atendida  # persistencia ainda e o gate restante
 
 
-def test_o_modelo_do_layout_novo_carrega_a_marca_de_bloqueio():
-    """Os dois layouts leem a MESMA funcao pura; o modelo do layout novo tem
-    de propagar a distincao, senao a correcao para na fronteira."""
+def test_o_painel_so_mostra_o_que_VARIA_e_a_base_aparece_quando_falha():
+    """MEDIDO EM TEMPO DE MERCADO (426,3 min do replay de 31/08):
+    `DECISAO` e `CONTEXTO` acesas 100,00% do tempo, e ambas eram o MESMO
+    booleano. Condicao sempre verdadeira nao discrimina nada.
 
-    estado = estado_controlado(lado=Side.BUY)
-    estado = replace(estado, snapshot=replace(
-        estado.snapshot, decisao=replace(estado.snapshot.decisao,
-                                         direcao=DirecaoASG.AGUARDAR)))
-    m = assistente.compor(estado)
-    assert [c[0] for c in m.condicoes] == ["DECISAO", "CONTEXTO", "PERSISTENCIA"]
+    Elas nao foram apagadas: voltam como uma unica linha BASE quando deixam
+    de estar satisfeitas — que e quando viram informacao. Sumir com elas por
+    completo trocaria um painel que nao ensina nada por um painel cego.
+
+    Os dois layouts leem a MESMA funcao pura, entao o modelo do layout novo
+    tem de propagar isso, senao a mudanca para na fronteira.
+    """
+
+    base_ok = estado_controlado(lado=Side.BUY)
+    assert [c[0] for c in assistente.compor(base_ok).condicoes] == ["PERSISTENCIA"]
+
+    sem_direcao = replace(base_ok, snapshot=replace(
+        base_ok.snapshot, decisao=replace(base_ok.snapshot.decisao,
+                                          direcao=DirecaoASG.AGUARDAR)))
+    m = assistente.compor(sem_direcao)
+    assert [c[0] for c in m.condicoes] == ["BASE", "PERSISTENCIA"]
+    assert m.condicoes[0][2] is False, "BASE apareceu, mas marcada como atendida"

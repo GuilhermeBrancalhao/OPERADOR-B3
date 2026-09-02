@@ -490,19 +490,35 @@ def _condicoes_ultra(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> tuple[_C
             and getattr(ultra, "direcao", DirecaoUltra.NENHUMA)
                 is not DirecaoUltra.NENHUMA
         )
-        return (
-            _Condicao("DECISAO", direcao.value if confirmada else "SEM DIRECAO", confirmada),
-            _Condicao(
-                "CONTEXTO",
-                "REGIAO + MACRO/MICRO" if confirmada else "AGUARDANDO MATRIZ",
-                confirmada,
-            ),
+        # DECISAO e CONTEXTO SAIRAM DO PAINEL (02/09/2026, pedido do
+        # operador) — por duas razoes medidas, nao por gosto:
+        #
+        # 1. Eram O MESMO BOOLEANO. As duas liam `confirmada`; o painel
+        #    desenhava a mesma variavel duas vezes com nomes diferentes.
+        # 2. Ficavam acesas 100,00% do TEMPO DE MERCADO (426,3 min medidos no
+        #    replay de 31/08). Condicao sempre verdadeira nao discrimina nada
+        #    e nao ensina nada a quem olha: das tres lampadas, so
+        #    PERSISTENCIA variava, e a fracao dela (9,86%) era identica a do
+        #    ULTRA aceso.
+        #
+        # Elas NAO foram apagadas do codigo. Continuam sendo avaliadas e
+        # voltam a aparecer, como uma unica linha BASE, exatamente quando
+        # DEIXAM de estar satisfeitas — que e quando viram informacao (por
+        # exemplo, no aquecimento ou com feed degradado). Sumir com elas por
+        # completo trocaria um painel que nao ensina nada por um painel cego.
+        condicoes: list[_Condicao] = []
+        if not confirmada:
+            condicoes.append(
+                _Condicao("BASE", "AGUARDANDO DECISAO/MATRIZ", False)
+            )
+        condicoes.append(
             _Condicao(
                 "PERSISTENCIA",
                 "CONFIRMADA" if persistente else "ARMANDO",
                 persistente,
-            ),
+            )
         )
+        return tuple(condicoes)
 
     limiar = config_ultra.forca_maker_minima
     if alvo is DirecaoUltra.VENDA:
@@ -569,9 +585,13 @@ def _desenhar_condicoes(painter: QPainter, rect: QRect,
     # O cabecalho nao pode afirmar "todas" quando Maker e apenas evidencia.
     # A funcao recebe somente as condicoes prontas; o rotulo eh inferido pelo
     # conjunto publicado, sem ler estado vivo do feed.
+    # Indexar `condicoes[1]` quebrava desde que o conjunto padrao passou a ter
+    # tamanho VARIAVEL (1 ou 2 linhas, ver `_condicoes_ultra`): o modo estrito
+    # se reconhece pelo ROTULO presente, nunca pela posicao.
+    rotulos = {c.rotulo for c in condicoes}
     titulo = (
         "GATES DO FILTRO ULTRA · MODO ESTRITO"
-        if condicoes and condicoes[1].rotulo == "MAKER"
+        if "MAKER" in rotulos
         else "GATES DO FILTRO ULTRA · MAKER AUXILIAR"
     )
     painter.drawText(rect.adjusted(8, 1, -8, 0), Qt.AlignmentFlag.AlignLeft, titulo)

@@ -136,7 +136,11 @@ def test_todas_as_condicoes_acendem_na_confluencia_completa():
         ),
     )
     itens = nucleo._condicoes_ultra(estado, DirecaoASG.COMPRA)
-    assert [item.atendida for item in itens] == [True, True, True]
+    # 02/09/2026: no modo padrao o painel mostra so o que VARIA. DECISAO e
+    # CONTEXTO sairam (eram o mesmo booleano e ficavam acesas 100,00% do
+    # tempo de mercado), entao a confluencia completa e uma linha so.
+    assert [item.rotulo for item in itens] == ["PERSISTENCIA"]
+    assert all(item.atendida for item in itens)
 
 
 def test_ultra_usa_confianca_numerica_do_motor_em_mbp_parcial():
@@ -175,9 +179,11 @@ def test_renko_nao_e_gate_mesmo_em_direcao_contraria():
     a confluencia oficial do ULTRA."""
     itens = _condicoes(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [-1], 0.9,
                        ConfiancaASG.ALTA)
-    assert [item.rotulo for item in itens] == ["DECISAO", "CONTEXTO", "PERSISTENCIA"]
-    assert itens[0].atendida and itens[1].atendida
-    assert not itens[2].atendida
+    # Com a base satisfeita, o painel padrao mostra apenas PERSISTENCIA —
+    # ver `_condicoes_ultra`. O Renko contrario nao acrescenta linha nenhuma,
+    # que e justamente o ponto: ele nao e gate.
+    assert [item.rotulo for item in itens] == ["PERSISTENCIA"]
+    assert not itens[0].atendida
 
 
 def test_o_limiar_do_maker_e_LIDO_da_configuracao_do_motor():
@@ -386,11 +392,29 @@ def test_a_janela_EXIBIDA_sai_do_motor_e_nao_de_um_default_da_UI():
     assert snap.config.forca_maker_minima == 0.8
     # E o limiar do painel de condicoes segue esse mesmo objeto: com 0,8 uma
     # forca de 0,7 deixa de atender, embora atendesse sob o padrao de 0,5.
-    estado = _estado_rico(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1], 0.7,
-                          ConfiancaASG.ALTA)
+    # Os DOIS lados da comparacao no MESMO modo (estrito), que e onde a
+    # lampada MAKER existe: o que muda entre eles e so o limiar vindo do
+    # motor. Ate 02/09/2026 o baseline caia no modo padrao e a comparacao era
+    # entre modos diferentes — passava por acidente.
+    padrao = MotorSinalUltra(
+        ConfigSinalUltra(exigir_maker_como_gate=True)
+    ).atualizar(_entrada(0))
+    estado = dataclasses.replace(
+        _estado_rico(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1], 0.7,
+                     ConfiancaASG.ALTA),
+        sinal_ultra=padrao,
+    )
     estado_custom = dataclasses.replace(estado, sinal_ultra=snap)
-    assert nucleo._condicoes_ultra(estado, DirecaoASG.COMPRA)[1].atendida is True
-    assert nucleo._condicoes_ultra(estado_custom, DirecaoASG.COMPRA)[1].atendida is False
+
+    # Busca por ROTULO, nunca por posicao: o conjunto padrao tem tamanho
+    # variavel desde 02/09/2026, e indexar `[1]` foi o que quebrou aqui.
+    def _maker(est, direcao=DirecaoASG.COMPRA):
+        itens = nucleo._condicoes_ultra(est, direcao)
+        return next(i for i in itens if i.rotulo == "MAKER")
+
+    assert padrao.config.forca_maker_minima == 0.5, "premissa do teste mudou"
+    assert _maker(estado).atendida is True
+    assert _maker(estado_custom).atendida is False
 
 
 def test_desenha_a_barra_de_confirmacao_sem_excecao(qapp):
