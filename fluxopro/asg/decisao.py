@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Mapping
 
 from fluxopro.core.eventos import Side
 
@@ -42,6 +43,14 @@ class ConfigMotorDecisaoASG:
     alvo_a1_r: int = 1
     alvo_a2_r: int = 2
     alvo_a3_r: int = 3
+    exigir_maker_como_gate: bool = False
+    """Quando `True`, preserva o modo estrito legado.
+
+    No modo padrao, a direcao da decisao vem da matriz contextual
+    Macro/Micro/Placar e o MakerProxy e evidencia auxiliar. Isso evita
+    contar a mesma evidencia duas vezes: a fonte publica descreve o Maker
+    como leitura complementar, nao como pre-requisito universal da entrada.
+    """
     formula_version: str = DECISION_FORMULA_VERSION
 
     def __post_init__(self) -> None:
@@ -64,6 +73,66 @@ class ConfigMotorDecisaoASG:
                 raise ValueError(f"{nome} deve ser inteiro >= 1")
         if not self.alvo_a1_r < self.alvo_a2_r < self.alvo_a3_r:
             raise ValueError("alvos A1/A2/A3 devem ser crescentes")
+        if not isinstance(self.exigir_maker_como_gate, bool):
+            raise TypeError("exigir_maker_como_gate deve ser bool")
+
+
+def _valor_mapeado(mapa: Mapping[str, object], *chaves: str) -> object | None:
+    for chave in chaves:
+        if chave in mapa and mapa[chave] is not None:
+            return mapa[chave]
+    return None
+
+
+def _lado(valor: object | None) -> Side | None:
+    if isinstance(valor, Side):
+        return valor
+    texto = str(getattr(valor, "value", valor) or "").upper()
+    if texto in {"BUY", "COMPRA", "COMPRADOR", "POSITIVE", "POSITIVO", "UP"}:
+        return Side.BUY
+    if texto in {"SELL", "VENDA", "VENDEDOR", "NEGATIVE", "NEGATIVO", "DOWN"}:
+        return Side.SELL
+    return None
+
+
+def _lado_contextual(leitura: LeituraASG) -> tuple[Side | None, bool]:
+    """Retorna (lado, encontrou_contexto), priorizando a micro.
+
+    `encontrou_contexto` distingue um snapshot realmente sem matriz de um
+    snapshot antigo que só carregava MakerProxy. O fallback Maker existe
+    apenas para consumidores legados que ainda constroem `LeituraASG` sem as
+    partes contextuais.
+    """
+    mapas = (leitura.micro, leitura.placar, leitura.macro, leitura.sinal)
+    encontrou = False
+    for mapa in mapas:
+        if not isinstance(mapa, Mapping):
+            continue
+        if any(chave in mapa for chave in ("comanda", "lado", "sentido", "direcao", "valor")):
+            encontrou = True
+        lado = _lado(_valor_mapeado(mapa, "comanda", "lado", "sentido", "direcao"))
+        if lado is not None:
+            return lado, True
+    # Um mapa contextual presente mas sem lado (por exemplo, micro zerada)
+    # nao pode cair silenciosamente no Maker: isso reintroduziria a
+    # circularidade que esta camada esta removendo.
+    return (None, True) if encontrou else (leitura.maker.direcao, False)
+
+
+def _confianca_contextual(leitura: LeituraASG, lado: Side | None) -> float:
+    """Confiança conservadora da matriz, sem inventar precisão do feed."""
+    for mapa in (leitura.micro, leitura.placar, leitura.macro):
+        if isinstance(mapa, Mapping):
+            valor = mapa.get("confianca")
+            if isinstance(valor, (int, float)) and not isinstance(valor, bool):
+                return max(0.0, min(1.0, float(valor)))
+    macro = _lado(_valor_mapeado(leitura.macro, "lado", "sentido", "direcao"))
+    micro = _lado(_valor_mapeado(leitura.micro, "comanda", "lado", "sentido", "direcao"))
+    if macro is not None and micro is not None:
+        return 0.90 if macro is micro else 0.50
+    if lado is not None:
+        return 0.60
+    return leitura.maker.confianca
 
 
 class MotorDecisaoASG:
@@ -155,8 +224,16 @@ class MotorDecisaoASG:
         if not regiao.contem(entrada_ticks):
             bloqueios.append("PRECO_FORA_DA_REGIAO")
 
-        direcao = maker.direcao
-        relevante = abs(maker.percent or 0.0) >= self.config.relevancia_minima * 100.0
+        direcao, encontrou_contexto = _lado_contextual(leitura)
+        relevante = (
+            (
+                encontrou_contexto
+                if encontrou_contexto
+                else abs(maker.percent or 0.0) >= self.config.relevancia_minima * 100.0
+            )
+            if not self.config.exigir_maker_como_gate
+            else abs(maker.percent or 0.0) >= self.config.relevancia_minima * 100.0
+        )
         regiao_ok = (
             regiao_temporalmente_valida and regiao.valida
             and regiao.confianca >= self.config.confianca_regiao_minima
@@ -166,28 +243,43 @@ class MotorDecisaoASG:
 
         if direcao is None:
             bloqueios.append("DIRECAO_INDISPONIVEL")
-        if maker.estado is EstadoMaker.SEM_DADOS:
-            bloqueios.append("SEM_DADOS")
-        if maker.book_kind == "NONE" or maker.estado is EstadoMaker.SEM_BOOK:
-            bloqueios.append("SEM_BOOK")
-        if maker.book_delayed:
-            bloqueios.append("BOOK_ATRASADO")
         if maker.feed_quality <= 0.0:
             bloqueios.append("FEED_NAO_SAUDAVEL")
         if maker.feed_quality < self.config.confianca_minima:
             bloqueios.append("QUALIDADE_FEED_BAIXA")
-        if maker.confianca < self.config.confianca_minima:
-            bloqueios.append("CONFIANCA_BAIXA")
-        if maker.persistence_ns < self.config.persistencia_minima_ns:
-            bloqueios.append("PERSISTENCIA_INSUFICIENTE")
-        if not relevante:
-            bloqueios.append("EVIDENCIA_IRRELEVANTE")
-        if maker.estado not in {
-            EstadoMaker.COMPRADOR, EstadoMaker.VENDEDOR, EstadoMaker.DIVERGENTE
-        }:
-            bloqueios.append("MAKER_NAO_CONFIRMADO")
-        if maker.estado is EstadoMaker.DIVERGENTE:
+        if not self.config.exigir_maker_como_gate:
+            # Diagnostico de qualidade continua visivel, mas so a saude do
+            # feed bloqueia. Assim `SEM_BOOK` nao apaga uma leitura
+            # Macro/Micro valida, enquanto feed inexistente continua seguro.
+            if maker.feed_quality < self.config.confianca_minima and maker.estado is EstadoMaker.SEM_DADOS:
+                bloqueios.append("SEM_DADOS")
+            if maker.feed_quality < self.config.confianca_minima and (
+                maker.book_kind == "NONE" or maker.estado is EstadoMaker.SEM_BOOK
+            ):
+                bloqueios.append("SEM_BOOK")
+            if maker.feed_quality < self.config.confianca_minima and maker.book_delayed:
+                bloqueios.append("BOOK_ATRASADO")
+        if self.config.exigir_maker_como_gate:
+            if maker.estado is EstadoMaker.SEM_DADOS:
+                bloqueios.append("SEM_DADOS")
+            if maker.book_kind == "NONE" or maker.estado is EstadoMaker.SEM_BOOK:
+                bloqueios.append("SEM_BOOK")
+            if maker.book_delayed:
+                bloqueios.append("BOOK_ATRASADO")
+            if maker.confianca < self.config.confianca_minima:
+                bloqueios.append("CONFIANCA_BAIXA")
+            if maker.persistence_ns < self.config.persistencia_minima_ns:
+                bloqueios.append("PERSISTENCIA_INSUFICIENTE")
+            if not relevante:
+                bloqueios.append("EVIDENCIA_IRRELEVANTE")
+            if maker.estado not in {
+                EstadoMaker.COMPRADOR, EstadoMaker.VENDEDOR, EstadoMaker.DIVERGENTE
+            }:
+                bloqueios.append("MAKER_NAO_CONFIRMADO")
+        elif maker.estado is EstadoMaker.DIVERGENTE:
             motivos.append("ALERTA: MakerProxy divergente; nao e veto automatico")
+        else:
+            motivos.append("MakerProxy auxiliar; nao usado como gate da decisao")
 
         if direcao is not None:
             margem = self.config.stop_fora_regiao_ticks
@@ -232,7 +324,12 @@ class MotorDecisaoASG:
             f"decision_formula:{self.config.formula_version}",
             "regra:REGRA DO OPERADOR B3",
         )
-        confianca = min(maker.confianca, regiao.confianca)
+        confianca_contextual = (
+            maker.confianca
+            if self.config.exigir_maker_como_gate
+            else _confianca_contextual(leitura, direcao)
+        )
+        confianca = min(confianca_contextual, regiao.confianca)
         return DecisionSnapshot(
             timestamp_ns=leitura.timestamp_ns,
             symbol=leitura.symbol,

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import FrozenInstanceError, replace
 import math
+from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QRect, Qt
@@ -315,6 +316,57 @@ def test_historico_48_congelado_dedup_e_formula_consistente(qapp):
         painel.deleteLater()
 
 
+def test_ultra_so_e_avaliado_depois_do_mercado_do_quadro(qapp, monkeypatch):
+    """O filtro precisa enxergar o Renko alimentado pelo Instantaneo atual.
+
+    A janela hidrata o snapshot ASG e, em seguida, distribui o mesmo retrato
+    bruto aos agregadores de mercado. Avaliar entre essas duas etapas deixa o
+    ULTRA sempre um quadro atrasado; alimentar o contexto duas vezes também
+    distorce candles/VAP. O teste observa a ordem real, sem fabricar um
+    snapshot Ultra pronto.
+    """
+
+    painel = PainelNexoMercadoASG()
+    chamadas = []
+    original = PainelNexoMercadoASG._atualizar_sinal_ultra
+
+    def observar(self, timestamp_ns):
+        chamadas.append((timestamp_ns, len(self._renko.tijolos)))
+        original(self, timestamp_ns)
+
+    monkeypatch.setattr(PainelNexoMercadoASG, "_atualizar_sinal_ultra", observar)
+    try:
+        ts = TS + 10 * S
+        snapshot = estado_controlado(ts=ts).snapshot
+        painel.aplicar(snapshot, alimentar_contexto=False)
+        assert chamadas == []
+
+        negocios = tuple(
+            SimpleNamespace(
+                timestamp_ns=ts + indice * 1_000_000,
+                price=10000 + indice * 4,
+                qty=1,
+                aggressor=1,
+                agressor=1,
+            )
+            for indice in range(5)
+        )
+        painel.aplicar_mercado(
+            SimpleNamespace(
+                novos_trades=negocios,
+                ultimo_preco=negocios[-1].price,
+                ultimo_evento_ns=negocios[-1].timestamp_ns,
+            )
+        )
+
+        assert chamadas[-1][0] == ts
+        assert chamadas[-1][1] > 0, "ULTRA foi avaliado antes do Renko atual"
+        assert painel.total_itens() == len(negocios)
+    finally:
+        painel.close()
+        painel.deleteLater()
+
+
 @pytest.mark.parametrize("tamanho", [(280, 510), (380, 790), (490, 950)])
 def test_render_deterministico_e_fora_do_recorte_intacto(qapp, tamanho):
     e = replace(estado_controlado(), sinal_ultra=ultra_pendente())
@@ -538,16 +590,9 @@ def test_degradacao_no_caminho_real_ate_modelo_do_card(qapp, estado):
         fechar_cenario(janela, sessao)
 
 
-# ===== RENKO e FILHA de DECISAO: a tela nao pode mentir sobre quanto falta
-def test_RENKO_aparece_como_BLOQUEADA_quando_DECISAO_esta_apagada():
-    """MEDIDO NO PREGAO INTEIRO DE 31/08 (01/09/2026): DECISAO, RENKO e
-    CONFIANCA em ZERO nos 3.276 quadros; so MAKER acendeu (713).
-
-    Mas RENKO em zero NAO era leitura de mercado: `renko_ok` exige
-    `confirmada`, entao com DECISAO apagada ele e falso POR CONSTRUCAO, mesmo
-    com o Renko em TENDENCIA na tela. As quatro lampadas tinham o mesmo peso
-    e o operador concluia que faltavam tres coisas quando faltava UMA.
-    """
+# ===== RENKO e FILHA de DECISAO: Renko e contexto, nao gate
+def test_renko_nao_aparece_como_gate_da_decisao():
+    """Mesmo sem direcao, somente os gates reais aparecem no diagnostico."""
     from fluxopro.ui.paineis.nexo import nucleo as _nucleo
 
     estado = estado_controlado(lado=Side.BUY)
@@ -555,28 +600,18 @@ def test_RENKO_aparece_como_BLOQUEADA_quando_DECISAO_esta_apagada():
         estado.snapshot, decisao=replace(estado.snapshot.decisao,
                                          direcao=DirecaoASG.AGUARDAR)))
     cond = _nucleo._condicoes_ultra(estado, DirecaoASG.AGUARDAR)
-    por_nome = {c.rotulo: c for c in cond}
-
-    assert not por_nome["DECISAO"].atendida
-    assert por_nome["RENKO"].bloqueada_por == "DECISAO", (
-        "RENKO tem de se declarar bloqueada por DECISAO — senao a tela mostra "
-        "duas lampadas apagadas como se fossem dois portoes independentes"
-    )
-    # as independentes NAO podem ser marcadas como bloqueadas
-    assert por_nome["MAKER"].bloqueada_por is None
-    assert por_nome["CONFIANCA"].bloqueada_por is None
+    assert [item.rotulo for item in cond] == ["DECISAO", "CONTEXTO", "PERSISTENCIA"]
 
 
-def test_com_DECISAO_confirmada_o_RENKO_volta_a_ser_avaliado():
-    """O outro lado: confirmada a decisao, RENKO deixa de ser bloqueada e
-    passa a valer como leitura de verdade."""
+def test_renko_contrario_nao_bloqueia_confluencia():
+    """Renko contrario continua sendo contexto e nao bloqueia o filtro."""
     from fluxopro.ui.paineis.nexo import nucleo as _nucleo
 
     estado = estado_controlado(lado=Side.BUY)
     cond = _nucleo._condicoes_ultra(estado, DirecaoASG.COMPRA)
-    por_nome = {c.rotulo: c for c in cond}
-    assert por_nome["DECISAO"].atendida
-    assert por_nome["RENKO"].bloqueada_por is None
+    assert [item.rotulo for item in cond] == ["DECISAO", "CONTEXTO", "PERSISTENCIA"]
+    assert cond[0].atendida and cond[1].atendida
+    assert not cond[2].atendida  # persistencia ainda e o gate restante
 
 
 def test_o_modelo_do_layout_novo_carrega_a_marca_de_bloqueio():
@@ -588,6 +623,4 @@ def test_o_modelo_do_layout_novo_carrega_a_marca_de_bloqueio():
         estado.snapshot, decisao=replace(estado.snapshot.decisao,
                                          direcao=DirecaoASG.AGUARDAR)))
     m = assistente.compor(estado)
-    por_nome = {c[0]: c for c in m.condicoes}
-    assert por_nome["RENKO"][3] is True, "marca de bloqueio nao chegou ao modelo"
-    assert por_nome["MAKER"][3] is False
+    assert [c[0] for c in m.condicoes] == ["DECISAO", "CONTEXTO", "PERSISTENCIA"]

@@ -199,6 +199,43 @@ def test_replay_historico_separa_tempos_e_nao_inventa_latencia() -> None:
     assert snap.state is FeedState.STOPPED
 
 
+def test_replay_promove_agressor_observado_de_desconhecido_para_parcial() -> None:
+    """A gravação pode não declarar a qualidade na abertura, mas o Trade
+    reproduzido já traz BUY/SELL. Isso deve retirar a penalidade de UNKNOWN
+    sem alegar que o lado é nativo da fonte.
+    """
+    m = FeedQualityMonitor(
+        source=FeedSource.REPLAY,
+        book_kind=BookKind.NONE,
+        aggressor_quality=AggressorQuality.UNKNOWN,
+        symbol="WDOV26",
+        clock_ns=lambda: 0,
+    )
+    m.connected("replay")
+
+    observado = m.observe(trade(100, "T1", AgressorSide.BUY), received_ns=100)
+
+    assert observado.aggressor_quality is AggressorQuality.PARTIAL
+    assert observado.unknown_aggressors == 0
+
+
+def test_replay_mantem_parcial_quando_um_trade_posterior_nao_tem_lado() -> None:
+    m = FeedQualityMonitor(
+        source=FeedSource.REPLAY,
+        book_kind=BookKind.NONE,
+        aggressor_quality=AggressorQuality.UNKNOWN,
+        symbol="WDOV26",
+        clock_ns=lambda: 0,
+    )
+    m.connected("replay")
+
+    m.observe(trade(100, "T1", AgressorSide.BUY), received_ns=100)
+    posterior = m.observe(trade(101, "T2", AgressorSide.UNKNOWN), received_ns=101)
+
+    assert posterior.aggressor_quality is AggressorQuality.PARTIAL
+    assert posterior.unknown_aggressors == 1
+
+
 def test_dedup_de_sequencia_isola_fonte_e_simbolo() -> None:
     m = monitor()
     wdo = trade(100, "W1")

@@ -17,16 +17,18 @@ O que esta regiao passa a mostrar, sem tocar na semantica do motor:
    (sombra projetada, corpo em degrade vertical, brilho de bisel no topo,
    halo interno na cor da direcao) e o glifo EXTRUDADO em tres camadas, a
    mesma linguagem do prisma 3D do MakerProxy na regiao vizinha.
-2. **O painel de CONDICOES do filtro ULTRA** — as quatro condicoes de
-   `fluxopro.asg.sinal_ultra` (decisao confirmada, Renko em TENDENCIA na
-   mesma direcao, MakerProxy forte, confianca do Maker ALTA), cada uma com
-   sua lampada e o valor medido ao lado. Sao os "padroes bem definidos" que
+2. **O painel de CONDICOES do filtro ULTRA** — no modo padrao, decisao,
+   contexto e persistencia, cada uma com sua lampada e o valor medido ao
+   lado. O MakerProxy fica visivel no cartao como evidencia auxiliar e o
+   modo estrito opcional ainda pode exibi-lo como gate. O Renko continua no
+   grafico e no contexto, mas nao e gate do ULTRA.
+   Sao os "padroes bem definidos" que
    o operador pediu, tornados visiveis: quando o Ultra nao acende, a tela
    diz QUAL condicao faltou.
 3. **A faixa de estado do ULTRA** — tres leituras distintas, nunca duas:
-   ``ULTRA <direcao>`` (ligado, apos a histerese), ``CONFLUENCIA 4/4 ·
+   ``ULTRA <direcao>`` (ligado, apos a histerese), ``CONFLUENCIA 3/3 ·
    CONFIRMANDO`` (a confluencia crua fecha agora mas ainda nao cumpriu a
-   janela de persistencia) e ``ULTRA INATIVO · k/4``. A distincao entre a
+   janela de persistencia) e ``ULTRA INATIVO · k/3``. A distincao entre a
    segunda e a primeira e exatamente a histerese que existe para o Ultra
    "nao acender toda hora" — mostra-la e o que faz a raridade parecer
    projeto em vez de defeito.
@@ -143,7 +145,7 @@ VAO_CARTAO = 3
 ALTURA_CABECALHO = 14
 
 # Painel de condicoes do Ultra: uma linha por condicao, mais o cabecalho.
-LINHAS_CONDICAO = 4
+LINHAS_CONDICAO = 3
 ALTURA_LINHA_CONDICAO = 20
 ALTURA_TITULO_CONDICOES = 16
 
@@ -364,16 +366,10 @@ class _Condicao:
         self.bloqueada_por = bloqueada_por
         """Nome da condicao PRE-REQUISITO que impede esta de ser avaliada.
 
-        MEDIDO NO PREGAO INTEIRO DE 31/08 (01/09/2026): DECISAO, RENKO e
-        CONFIANCA ficaram em ZERO nos 3.276 quadros; so MAKER acendeu (713).
-        Mas RENKO estar em zero nao era leitura de mercado — `renko_ok` exige
-        `confirmada`, entao com DECISAO apagada ele e FALSO POR CONSTRUCAO,
-        mesmo com o Renko em TENDENCIA na tela.
-
-        As quatro lampadas tinham o mesmo peso visual, e o operador concluia
-        que faltavam tres coisas quando faltava UMA. Este campo existe para a
-        tela poder distinguir "avaliado e nao atendido" de "nem chegou a ser
-        avaliado"."""
+        O Renko nao e uma condicao deste conjunto. Ele continua sendo
+        calculado, desenhado e auditavel no grafico, mas nao bloqueia o
+        filtro ULTRA. Este campo existe para marcar apenas pre-requisitos
+        reais da confluencia atual."""
 
 
 def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
@@ -435,7 +431,7 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 # Condicoes do filtro Ultra
 # ==========================================================================
 def _condicoes_ultra(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> tuple[_Condicao, ...]:
-    """As quatro condicoes de `sinal_ultra._confluencia`, avaliadas do MESMO
+    """As tres condicoes de `sinal_ultra._confluencia`, avaliadas do MESMO
     estado que alimenta o motor.
 
     Nao e uma reimplementacao paralela do motor: a decisao oficial de ligar
@@ -445,6 +441,11 @@ def _condicoes_ultra(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> tuple[_C
     `EntradaSinalUltra`. Sao os mesmos numeros porque sao os mesmos objetos
     (`estado.maker` e literalmente a linha que o motor recebeu, ja suavizada).
 
+    No modo padrao, o Maker nao e gate. As tres linhas passam a ser
+    DECISAO, CONTEXTO e PERSISTENCIA, deixando explicito por que um Ultra
+    ainda esta armando. O modo estrito, caso configurado no snapshot do
+    motor, preserva DECISAO, MAKER e CONFIANCA para diagnostico comparativo.
+
     Rotulo: IMPRECISO — os limiares vem de `ConfigSinalUltra`, que e proxy
     proprio deste projeto e nao regra da fonte.
     """
@@ -452,29 +453,58 @@ def _condicoes_ultra(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> tuple[_C
     alvo = _direcao_ultra_de(direcao)
     confirmada = alvo is not DirecaoUltra.NENHUMA
 
-    fase = estado.fase_renko
-    tijolos = estado.tijolos_renko
-    direcao_renko = DirecaoUltra.NENHUMA
-    if tijolos:
-        ultimo = getattr(tijolos[-1], "direcao", 0)
-        direcao_renko = DirecaoUltra.COMPRA if ultimo > 0 else DirecaoUltra.VENDA
-    renko_ok = (
-        fase is FaseRenko.TENDENCIA
-        and confirmada
-        and direcao_renko is alvo
-    )
-    if fase is None:
-        texto_renko = "—"
-    elif fase is FaseRenko.TENDENCIA:
-        texto_renko = "TENDENCIA " + _sigla_ultra(direcao_renko)
-    else:
-        texto_renko = str(getattr(fase, "value", fase)).upper().replace("_", " ")
-
     maker = estado.maker
     forca = float(getattr(maker, "forca", 0.0) or 0.0)
     confianca = getattr(maker, "confianca", None)
-    conf_alta = confianca is _asg.ConfiancaASG.ALTA
-    limiar = _config_do_quadro(estado.sinal_ultra).forca_maker_minima
+    config_ultra = _config_do_quadro(estado.sinal_ultra)
+    confianca_numerica = getattr(maker, "confianca_numerica", None)
+    conf_alta = (
+        confianca is not _asg.ConfiancaASG.INDISPONIVEL
+        and (
+            (
+                confianca_numerica is not None
+                and float(confianca_numerica) >= config_ultra.confianca_maker_alta_minima
+            )
+            # Snapshots de consumidores antigos não tinham o valor bruto;
+            # o rótulo ALTA continua sendo o fallback compatível.
+            or (
+                confianca_numerica is None
+                and confianca is _asg.ConfiancaASG.ALTA
+            )
+        )
+    )
+    if not config_ultra.exigir_maker_como_gate:
+        ultra = estado.sinal_ultra
+        janela_ns = int(getattr(ultra, "janela_alvo_ns", 0) or 0) if ultra is not None else 0
+        pendente_desde = int(getattr(ultra, "pendente_desde_ns", 0) or 0) if ultra is not None else 0
+        timestamp_ns = int(getattr(estado.snapshot, "timestamp_ns", 0) or 0)
+        decorrido_ns = max(0, timestamp_ns - pendente_desde) if pendente_desde else 0
+        persistente = (
+            ultra is not None
+            and getattr(ultra, "confluencia_no_instante", DirecaoUltra.NENHUMA)
+                is not DirecaoUltra.NENHUMA
+            and janela_ns > 0
+            and decorrido_ns >= janela_ns
+        ) or (
+            ultra is not None
+            and getattr(ultra, "direcao", DirecaoUltra.NENHUMA)
+                is not DirecaoUltra.NENHUMA
+        )
+        return (
+            _Condicao("DECISAO", direcao.value if confirmada else "SEM DIRECAO", confirmada),
+            _Condicao(
+                "CONTEXTO",
+                "REGIAO + MACRO/MICRO" if confirmada else "AGUARDANDO MATRIZ",
+                confirmada,
+            ),
+            _Condicao(
+                "PERSISTENCIA",
+                "CONFIRMADA" if persistente else "ARMANDO",
+                persistente,
+            ),
+        )
+
+    limiar = config_ultra.forca_maker_minima
     if alvo is DirecaoUltra.VENDA:
         forca_ok = forca <= -limiar
     elif alvo is DirecaoUltra.COMPRA:
@@ -484,8 +514,6 @@ def _condicoes_ultra(estado: EstadoNexo, direcao: "_asg.DirecaoASG") -> tuple[_C
 
     return (
         _Condicao("DECISAO", direcao.value if confirmada else "SEM DIRECAO", confirmada),
-        _Condicao("RENKO", texto_renko, renko_ok,
-                  bloqueada_por=None if confirmada else "DECISAO"),
         _Condicao(
             "MAKER",
             "%s / %s" % (formato.formatar_sinalizado(forca, 2),
@@ -538,8 +566,15 @@ def _desenhar_condicoes(painter: QPainter, rect: QRect,
 
     painter.setFont(tokens.fonte_rotulo(6))
     painter.setPen(tema_asg.NEXO_MUTED)
-    painter.drawText(rect.adjusted(8, 1, -8, 0), Qt.AlignmentFlag.AlignLeft,
-                     "CONDICOES DO FILTRO ULTRA · TODAS AO MESMO TEMPO")
+    # O cabecalho nao pode afirmar "todas" quando Maker e apenas evidencia.
+    # A funcao recebe somente as condicoes prontas; o rotulo eh inferido pelo
+    # conjunto publicado, sem ler estado vivo do feed.
+    titulo = (
+        "GATES DO FILTRO ULTRA · MODO ESTRITO"
+        if condicoes and condicoes[1].rotulo == "MAKER"
+        else "GATES DO FILTRO ULTRA · MAKER AUXILIAR"
+    )
+    painter.drawText(rect.adjusted(8, 1, -8, 0), Qt.AlignmentFlag.AlignLeft, titulo)
 
     y = rect.top() + ALTURA_TITULO_CONDICOES
     for item in condicoes:
@@ -584,10 +619,10 @@ def _lampada(painter: QPainter, centro: QPoint, raio: int, cor, cheia: bool) -> 
 # ==========================================================================
 def _desenhar_faixa_ultra(painter: QPainter, rect: QRect, ultra,
                           atendidas: int, total: int, timestamp_ns: int) -> None:
-    """A leitura grande do Ultra, com QUATRO estados distintos.
+    """A leitura grande do Ultra, com estados distintos.
 
     Antes havia dois (aceso/apagado) e por isso "nunca aparecia nada": o
-    apagado nao distinguia "faltam tres condicoes" de "as quatro fecharam
+    apagado nao distinguia "faltam condicoes" de "todas fecharam
     agora e falta so a janela de persistencia". Sao situacoes muito
     diferentes para o operador e agora tem leituras diferentes.
 

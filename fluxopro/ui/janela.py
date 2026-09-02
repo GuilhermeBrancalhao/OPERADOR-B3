@@ -2310,7 +2310,11 @@ class JanelaFluxo(QMainWindow):
                         detalhe="AGUARDANDO RETRATO BRUTO DO MESMO QUADRO",
                     )
                 ),
-            )
+            ),
+            # O mesmo Instantaneo sera consumido logo abaixo por
+            # aplicar_mercado(). Evita duplicar os negocios no Renko/candles/
+            # VAP e faz o ULTRA ser atualizado depois do quadro de mercado.
+            alimentar_contexto=False,
         )
         if instantaneo is not None:
             layout = self.asg.layout()

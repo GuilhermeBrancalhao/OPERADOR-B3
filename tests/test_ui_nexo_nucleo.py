@@ -10,7 +10,7 @@ from PySide6.QtCore import QRect
 import dataclasses
 from PySide6.QtGui import QPainter, QPixmap
 
-from fluxopro.asg.sinal_ultra import DirecaoUltra, SinalUltraSnapshot
+from fluxopro.asg.sinal_ultra import ConfigSinalUltra, DirecaoUltra, SinalUltraSnapshot
 from fluxopro.ui.paineis.asg import DecisaoASGSnapshot, MatrizASGSnapshot, WorkspaceASGSnapshot
 from fluxopro.ui.paineis.nexo import EstadoNexo
 from fluxopro.ui.paineis.nexo import nucleo
@@ -102,22 +102,23 @@ class _Tijolo:
         self.direcao = direcao
 
 
-def _linha(componente, direcao, valor, forca, confianca):
+def _linha(componente, direcao, valor, forca, confianca, confianca_numerica=None):
     return LinhaMatrizASG(
         componente=componente, direcao=direcao, valor=valor, forca=forca,
         confianca=confianca, procedencia=ProcedenciaASG.DERIVADO,
-        detalhe="ESTRUTURA DO DIA",
+        detalhe="ESTRUTURA DO DIA", confianca_numerica=confianca_numerica,
     )
 
 
-def _estado_rico(direcao, fase, tijolos, forca, confianca_maker, regime=None):
+def _estado_rico(direcao, fase, tijolos, forca, confianca_maker, regime=None,
+                 sinal_ultra=None):
     base = _estado(None)
     return EstadoNexo(
         snapshot=base.snapshot, serie=(), grid=None, paleta=None,
         maker=_linha("MAKERPROXY", direcao, "x", forca, confianca_maker),
         leituras=(), largura=440, altura=430,
         tijolos_renko=tuple(_Tijolo(t) for t in tijolos), fase_renko=fase,
-        regime=regime,
+        regime=regime, sinal_ultra=sinal_ultra,
     )
 
 
@@ -127,60 +128,115 @@ def _condicoes(direcao, fase, tijolos, forca, confianca_maker):
 
 
 def test_todas_as_condicoes_acendem_na_confluencia_completa():
-    itens = _condicoes(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1, 1], 0.9,
-                       ConfiancaASG.ALTA)
-    assert [item.atendida for item in itens] == [True, True, True, True]
+    estado = _estado_rico(
+        DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1, 1], 0.9, ConfiancaASG.ALTA,
+        sinal_ultra=SinalUltraSnapshot(
+            timestamp_ns=0, direcao=DirecaoUltra.COMPRA,
+            confluencia_no_instante=DirecaoUltra.COMPRA, ligado_desde_ns=0,
+        ),
+    )
+    itens = nucleo._condicoes_ultra(estado, DirecaoASG.COMPRA)
+    assert [item.atendida for item in itens] == [True, True, True]
+
+
+def test_ultra_usa_confianca_numerica_do_motor_em_mbp_parcial():
+    """A classificação visual MEDIA não pode desligar o ULTRA quando o
+    valor bruto atingiu o limiar próprio configurado pelo motor."""
+    estado = _estado_rico(
+        DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1, 1], 0.9,
+        ConfiancaASG.MEDIA,
+        sinal_ultra=SinalUltraSnapshot(
+            timestamp_ns=0, direcao=DirecaoUltra.NENHUMA,
+            confluencia_no_instante=DirecaoUltra.COMPRA, ligado_desde_ns=None,
+            config=ConfigSinalUltra(exigir_maker_como_gate=True),
+        ),
+    )
+    estado = dataclasses.replace(
+        estado,
+        maker=_linha(
+            "MAKERPROXY", DirecaoASG.COMPRA, "x", 0.9,
+            ConfiancaASG.MEDIA, confianca_numerica=0.60,
+        ),
+    )
+    itens = nucleo._condicoes_ultra(estado, DirecaoASG.COMPRA)
+    assert itens[2].atendida is True
 
 
 def test_sem_decisao_nenhuma_condicao_direcional_acende():
-    """AGUARDAR nao e direcao confirmada — e a condicao 1 do motor cai, o que
-    derruba a de Renko junto (ela exige a MESMA direcao)."""
+    """AGUARDAR nao e direcao confirmada."""
     itens = _condicoes(DirecaoASG.AGUARDAR, FaseRenko.TENDENCIA, [1, 1], 0.9,
                        ConfiancaASG.ALTA)
     assert itens[0].atendida is False
     assert itens[1].atendida is False
 
 
-def test_renko_na_direcao_CONTRARIA_nao_conta():
-    """O defeito que uma leitura so de fase deixaria passar: Renko em
-    TENDENCIA, mas tendencia de VENDA sob uma decisao de COMPRA."""
+def test_renko_nao_e_gate_mesmo_em_direcao_contraria():
+    """Renko contrario continua sendo mostrado no grafico, mas nao bloqueia
+    a confluencia oficial do ULTRA."""
     itens = _condicoes(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [-1], 0.9,
                        ConfiancaASG.ALTA)
-    assert itens[1].atendida is False
+    assert [item.rotulo for item in itens] == ["DECISAO", "CONTEXTO", "PERSISTENCIA"]
+    assert itens[0].atendida and itens[1].atendida
+    assert not itens[2].atendida
 
 
 def test_o_limiar_do_maker_e_LIDO_da_configuracao_do_motor():
     """Nao ha numero redigitado no desenho: o limiar exibido e comparado sai
     de `ConfigSinalUltra`. Mutar a configuracao muda a leitura da tela."""
-    from fluxopro.asg.sinal_ultra import ConfigSinalUltra
-
     limiar = ConfigSinalUltra().forca_maker_minima
     # Sem snapshot do motor no quadro (montagem antiga/teste) a regiao cai no
     # padrao — e ele tem de ser o padrao do MOTOR, nao um numero proprio. O
     # caso COM snapshot, que e o que roda em producao, esta amarrado por
     # mutacao em `test_a_janela_EXIBIDA_sai_do_motor_e_nao_de_um_default_da_UI`.
     assert nucleo._CONFIG_PADRAO.forca_maker_minima == limiar
-    abaixo = _condicoes(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1],
-                        limiar - 0.01, ConfiancaASG.ALTA)
-    acima = _condicoes(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1],
-                       limiar + 0.01, ConfiancaASG.ALTA)
-    assert abaixo[2].atendida is False
-    assert acima[2].atendida is True
+    strict = SinalUltraSnapshot(
+        timestamp_ns=0, direcao=DirecaoUltra.NENHUMA,
+        confluencia_no_instante=DirecaoUltra.NENHUMA, ligado_desde_ns=None,
+        config=ConfigSinalUltra(exigir_maker_como_gate=True),
+    )
+    abaixo = nucleo._condicoes_ultra(
+        _estado_rico(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1], limiar - 0.01,
+                     ConfiancaASG.ALTA, sinal_ultra=strict), DirecaoASG.COMPRA
+    )
+    acima = nucleo._condicoes_ultra(
+        _estado_rico(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1], limiar + 0.01,
+                     ConfiancaASG.ALTA, sinal_ultra=strict), DirecaoASG.COMPRA
+    )
+    assert abaixo[1].atendida is False
+    assert acima[1].atendida is True
 
 
 def test_forca_positiva_nao_atende_a_condicao_de_VENDA():
     """Solidariedade de sinal: sob decisao de VENDA a condicao pede forca
     NEGATIVA. Comparar so a grandeza deixaria um Maker comprador acender a
     lampada de uma confluencia vendedora."""
-    itens = _condicoes(DirecaoASG.VENDA, FaseRenko.TENDENCIA, [-1], 0.9,
-                       ConfiancaASG.ALTA)
-    assert itens[2].atendida is False
+    itens = nucleo._condicoes_ultra(
+        _estado_rico(DirecaoASG.VENDA, FaseRenko.TENDENCIA, [-1], 0.9,
+                     ConfiancaASG.ALTA,
+                     sinal_ultra=SinalUltraSnapshot(
+                         timestamp_ns=0, direcao=DirecaoUltra.NENHUMA,
+                         confluencia_no_instante=DirecaoUltra.NENHUMA,
+                         ligado_desde_ns=None,
+                         config=ConfigSinalUltra(exigir_maker_como_gate=True),
+                     )),
+        DirecaoASG.VENDA,
+    )
+    assert itens[1].atendida is False
 
 
 def test_confianca_media_do_maker_nao_conta_como_alta():
-    itens = _condicoes(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1], 0.9,
-                       ConfiancaASG.MEDIA)
-    assert itens[3].atendida is False
+    itens = nucleo._condicoes_ultra(
+        _estado_rico(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1], 0.9,
+                     ConfiancaASG.MEDIA,
+                     sinal_ultra=SinalUltraSnapshot(
+                         timestamp_ns=0, direcao=DirecaoUltra.NENHUMA,
+                         confluencia_no_instante=DirecaoUltra.NENHUMA,
+                         ligado_desde_ns=None,
+                         config=ConfigSinalUltra(exigir_maker_como_gate=True),
+                     )),
+        DirecaoASG.COMPRA,
+    )
+    assert itens[2].atendida is False
 
 
 def test_o_cartao_REGIME_nao_tem_cor_propria(qapp):
@@ -321,7 +377,8 @@ def test_a_janela_EXIBIDA_sai_do_motor_e_nao_de_um_default_da_UI():
     Como o numero vem de `SinalUltraSnapshot`, mudar a configuracao DO MOTOR
     muda a leitura."""
     custom = ConfigSinalUltra(persistencia_minima_ns=12 * _S,
-                              forca_maker_minima=0.8)
+                              forca_maker_minima=0.8,
+                              exigir_maker_como_gate=True)
     motor = MotorSinalUltra(custom)
     snap = motor.atualizar(_entrada(0))
     assert snap.janela_alvo_ns == 12 * _S
@@ -332,8 +389,8 @@ def test_a_janela_EXIBIDA_sai_do_motor_e_nao_de_um_default_da_UI():
     estado = _estado_rico(DirecaoASG.COMPRA, FaseRenko.TENDENCIA, [1], 0.7,
                           ConfiancaASG.ALTA)
     estado_custom = dataclasses.replace(estado, sinal_ultra=snap)
-    assert nucleo._condicoes_ultra(estado, DirecaoASG.COMPRA)[2].atendida is True
-    assert nucleo._condicoes_ultra(estado_custom, DirecaoASG.COMPRA)[2].atendida is False
+    assert nucleo._condicoes_ultra(estado, DirecaoASG.COMPRA)[1].atendida is True
+    assert nucleo._condicoes_ultra(estado_custom, DirecaoASG.COMPRA)[1].atendida is False
 
 
 def test_desenha_a_barra_de_confirmacao_sem_excecao(qapp):

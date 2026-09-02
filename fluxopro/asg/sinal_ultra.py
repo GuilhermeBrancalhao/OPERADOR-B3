@@ -21,15 +21,19 @@ condicoes abaixo sao verdadeiras ao MESMO TEMPO (confluencia, nao maioria):
      confirmou a MESMA direcao. Ultra e um filtro A MAIS sobre o sinal que ja
      passou pelos gates existentes — nunca um sinal paralelo independente que
      possa contradizer o motor principal.
-  2. O Renko 4R (`fluxopro.analytics.renko.Renko`) esta em
-     `FaseRenko.TENDENCIA` (tijolos seguidos na mesma direcao, ver
-     `ConfigRenko.tijolos_para_tendencia`) NA MESMA direcao da decisao.
-  3. O MakerProxy — score ja suavizado (ver
+  2. O MakerProxy — score ja suavizado (ver
      `fluxopro.ui.paineis.asg._forca_maker_suavizada`, SMA-5 sobre o mesmo
-     score que alimenta o gauge EQUILIBRIO) — esta forte e na mesma direcao:
+     score que alimenta o gauge EQUILIBRIO) — e evidencia auxiliar no modo
+     padrao. No modo estrito, ele precisa estar forte e na mesma direcao:
      `|forca| >= forca_maker_minima` E confianca alta.
-  4. Essa confluencia persiste por `>= persistencia_minima_ns` CONTINUOS
+  3. Essa confluencia persiste por `>= persistencia_minima_ns` CONTINUOS
      antes de ligar (debounce — evita ligar num unico trade de ruido).
+
+O Renko continua sendo calculado e exibido como contexto independente, mas
+nao bloqueia nem confirma o ULTRA no modo padrao. A decisao usa
+DECISAO + CONTEXTO + PERSISTENCIA; o modo estrito opcional acrescenta MAKER
+e CONFIANCA. Isso evita que uma visualizacao de tendencia com tijolos
+grandes esconda uma confluencia real do fluxo.
 
 Uma vez ligado, so desliga quando a confluencia quebra por
 `>= tempo_para_desligar_ns` continuos: histerese assimetrica, liga so depois
@@ -68,9 +72,16 @@ class ConfigSinalUltra:
     original (o Ultra da fonte e AUSENTE_NA_FONTE). 0.5 = metade da escala
     [-1, 1] do MakerProxy ja suavizado."""
 
-    confianca_maker_alta_minima: float = 0.75
-    """Confianca minima do MakerProxy (0-1) para contar como "confianca alta"
-    nesta confluencia."""
+    confianca_maker_alta_minima: float = 0.60
+    """Confianca minima do MakerProxy (0-1) nesta confluencia.
+
+    ``0,75`` era um portao inalcancavel para MBP/inferido: a penalidade de
+    procedencia limita o melhor feed a ``0,6375`` antes mesmo de considerar a
+    cobertura dos componentes. ``0,60`` e o piso de confirmacao da decisao
+    consultiva; o ULTRA continua exigindo, simultaneamente, direcao,
+    tendencia Renko, forca Maker e persistencia. O nome historico do campo e
+    preservado por compatibilidade, mas este limiar e uma regra propria do
+    Operador B3, nao a classificacao visual geral ``ConfiancaASG.ALTA``."""
 
     persistencia_minima_ns: int = 5_000_000_000
     """5s: quanto tempo a confluencia completa precisa se manter ANTES do
@@ -81,6 +92,14 @@ class ConfigSinalUltra:
     desligar, depois de ja estar ligado. Histerese assimetrica deliberada —
     ver docstring do modulo."""
 
+    exigir_maker_como_gate: bool = False
+    """Modo estrito opcional para estudos de sensibilidade.
+
+    No modo padrao, decisao/contexto confirmado e persistente sustentam o
+    Ultra. O MakerProxy continua exposto como evidencia auditavel, mas nao
+    bloqueia sozinho uma confirmacao contextual.
+    """
+
     def __post_init__(self) -> None:
         if not 0.0 <= self.forca_maker_minima <= 1.0:
             raise ValueError("forca_maker_minima deve estar entre 0 e 1")
@@ -88,6 +107,8 @@ class ConfigSinalUltra:
             raise ValueError("confianca_maker_alta_minima deve estar entre 0 e 1")
         if self.persistencia_minima_ns < 0 or self.tempo_para_desligar_ns < 0:
             raise ValueError("tempos de histerese devem ser >= 0")
+        if not isinstance(self.exigir_maker_como_gate, bool):
+            raise TypeError("exigir_maker_como_gate deve ser bool")
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,9 +121,10 @@ class EntradaSinalUltra:
     agora (ver `MotorDecisaoASG.avaliar`, campo de confirmacao)."""
 
     fase_renko: FaseRenko
+    """Contexto legado/informativo. Nao participa da regra do ULTRA."""
+
     direcao_renko: DirecaoUltra
-    """Direcao do ultimo tijolo Renko FECHADO. NENHUMA se ainda nao houver
-    tijolo (`Renko.tijolos` vazio)."""
+    """Direcao do ultimo tijolo fechado, apenas para diagnostico/UI."""
 
     forca_maker: float
     """Score do MakerProxy JA SUAVIZADO (mesmo numero do gauge EQUILIBRIO
@@ -112,6 +134,14 @@ class EntradaSinalUltra:
     """`confianca_maker >= ConfigSinalUltra.confianca_maker_alta_minima`,
     decidido pelo chamador (o motor nao conhece a escala de confianca do
     MakerProxy diretamente, para nao duplicar essa constante em dois lugares)."""
+
+    contexto_alinhado: bool = True
+    """Macro e Micro apontam para a direcao confirmada neste instante.
+
+    O default `True` preserva consumidores antigos que ainda nao publicam a
+    matriz contextual. A interface atual sempre preenche o valor a partir do
+    snapshot; Ultra nao deve depender de Renko para representar contexto.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,10 +219,10 @@ class MotorSinalUltra:
         alvo = entrada.direcao_decisao_confirmada
         if alvo is DirecaoUltra.NENHUMA:
             return DirecaoUltra.NENHUMA
-        if entrada.fase_renko is not FaseRenko.TENDENCIA:
+        if not entrada.contexto_alinhado:
             return DirecaoUltra.NENHUMA
-        if entrada.direcao_renko is not alvo:
-            return DirecaoUltra.NENHUMA
+        if not self.config.exigir_maker_como_gate:
+            return alvo
         if not entrada.confianca_maker_alta:
             return DirecaoUltra.NENHUMA
         if alvo is DirecaoUltra.COMPRA and entrada.forca_maker >= self.config.forca_maker_minima:

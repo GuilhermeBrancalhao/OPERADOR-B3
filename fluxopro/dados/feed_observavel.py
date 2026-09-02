@@ -467,12 +467,25 @@ class FeedQualityMonitor:
         elif isinstance(event, BookDelta):
             self._book_kind = BookKind.MBP
             self._mark_book_live_locked(event.timestamp_ns, ingress_ns)
-        if isinstance(event, Trade) and event.side_agressor is AgressorSide.UNKNOWN:
-            self._unknown_aggressors += 1
-            if self._declared_aggressor_quality not in (
-                AggressorQuality.UNKNOWN,
-                AggressorQuality.PARTIAL,
-            ):
+        if isinstance(event, Trade):
+            if event.side_agressor is AgressorSide.UNKNOWN:
+                self._unknown_aggressors += 1
+                if self._declared_aggressor_quality not in (
+                    AggressorQuality.UNKNOWN,
+                    AggressorQuality.PARTIAL,
+                ):
+                    self._aggressor_quality = AggressorQuality.PARTIAL
+            elif self._declared_aggressor_quality is AggressorQuality.UNKNOWN:
+                # Algumas fontes (principalmente replay de gravação) não
+                # conseguem declarar a qualidade do agressor na abertura,
+                # embora cada Trade já carregue BUY/SELL. Permanecer em
+                # UNKNOWN aqui aplica a penalidade de 50% ao feed por toda a
+                # sessão e torna a decisão/ULTRA inalcançável mesmo quando a
+                # evidência observada é utilizável. Promover apenas para
+                # PARTIAL é deliberadamente conservador: o lado foi visto no
+                # payload, mas a fonte não provou a cadeia nativa que
+                # justificaria NATIVE. Se um negócio posterior vier sem lado,
+                # o estado continua PARTIAL e o contador deixa a perda visível.
                 self._aggressor_quality = AggressorQuality.PARTIAL
 
     def _mark_book_live_locked(self, market_ns: int, ingress_ns: int) -> None:
