@@ -276,3 +276,108 @@ Com a sonda que espia `MotorDecisaoASG.avaliar` e conta
 `snapshot.bloqueios` (a sonda usada vive no scratchpad da sessao; o essencial
 e monkeypatch de `avaliar` + `collections.Counter` sobre `bloqueios`,
 `pre_sinal` e `confirmacao`).
+
+---
+
+## Seletividade em TEMPO DE MERCADO — 02/09/2026
+
+Pergunta do operador: *"investiga o Renko em TENDENCIA nunca coincidir com
+confirmação"*.
+
+### 1. A pergunta partia de uma premissa errada
+
+A frase "o Renko atingiu TENDENCIA em 4.243 leituras, mas nenhuma coincidiu
+com uma confirmação" sugere uma relação (anticorrelação) entre duas
+variáveis. Medindo as duas do **MESMO `EstadoNexo`, no mesmo instante** —
+para "nunca coincide" não poder ser artefato de bases diferentes:
+
+| fase do Renko | confirmada | não confirmada |
+|---|---:|---:|
+| TENDENCIA | **250** | 0 |
+| PERDENDO_FORCA | 1.446 | 0 |
+| POSSIVEL_INVERSAO | 452 | 0 |
+| INDEFINIDA | 1 | 3 |
+
+**Sobreposição observada: 250. Esperada sob independência: 249,65.**
+
+Não há anticorrelação alguma. O que havia antes era uma variável
+constante-zero: a confirmação não ocorria (`AGUARDAR` em 1.601 de 1.601
+quadros). **Não é possível haver sobreposição com um evento que não
+acontece** — o Renko nunca teve participação nisso. A correção de contexto
+primário resolveu, e o Renko era espectador.
+
+Nota de ferramenta: `scripts/auditoria_ultra_pregao.py` passa
+`fase_renko=FaseRenko.INDEFINIDA` cravado ao motor. Ele não pode observar
+esta coincidência — não é defeito (o Renko deixou de ser gate), mas o script
+não serve para estudar esta pergunta.
+
+### 2. O que a medição encontrou no caminho
+
+Replay de 31/08 no caminho real, **426,3 min de tempo de mercado cobertos**
+(~59% da sessão), 4.918 quadros. Cada quadro pesa o `dt` de tempo de MERCADO
+até o quadro seguinte — quadro de UI não é amostra uniforme de tempo, e
+lacunas acima de 60 s são descartadas.
+
+| medida | valor |
+|---|---:|
+| fração do tempo com ULTRA aceso | **9,86%** |
+| ULTRA comprador / vendedor | 8,10% / 1,76% |
+| episódios (`NENHUMA -> lado`) | **57** |
+| duração mediana do episódio | **41,08 s** |
+| tempo com `DECISAO` acesa | **100,00%** |
+| tempo com `CONTEXTO` acesa | **100,00%** |
+| tempo com `PERSISTENCIA` acesa | 9,86% |
+
+**Validação cruzada:** a auditoria independente do operador
+(`ULTRA_PREGAO_COMPLETO_20260831.md`, contagem por negócio na sessão
+inteira) achou 66 episódios com mediana de 38,637 s. Aqui, 57 episódios com
+mediana de 41,08 s em 59% da sessão. Duas medições independentes, por
+caminhos diferentes, convergindo — a taxa de disparo do ULTRA é confiável.
+
+### 3. O achado: duas das três lâmpadas são decorativas
+
+`DECISAO` e `CONTEXTO` ficam acesas **100,00% do tempo de mercado**. Uma
+condição sempre verdadeira não filtra nada e não carrega informação: o
+operador nunca aprende nada olhando para essas duas lâmpadas. Na prática a
+confluência de três condições é **uma só** — persistência, cuja fração
+(9,86%) é idêntica à do ULTRA aceso.
+
+É o defeito anterior com o sinal trocado. Antes, três das quatro condições
+estavam apagadas por construção (`RENKO` era filha de `DECISAO`, e `DECISAO`
+nunca confirmava). Agora, duas das três estão acesas por construção. Em
+ambos os casos o painel promete mais discriminação do que entrega.
+
+**A taxa de disparo em si não é o problema.** 9,86% do pregão, com episódios
+de ~41 s de mediana, é compatível com a fonte ("não é uma sinalização
+constante"). O problema é o painel afirmar três portões quando só um decide.
+
+### 4. Correção de uma medida minha, antes de qualquer conclusão
+
+Na primeira passada eu reportei "ULTRA aceso em 33% dos quadros". Isso era
+contagem por QUADRO DE UI, que não é amostra uniforme de tempo. Em tempo de
+mercado são **9,86%** — a diferença é o viés de amostragem, não uma mudança
+no produto. A ressalva foi declarada antes de medir e se confirmou.
+
+### 5. Próximo passo sugerido
+
+Não é reduzir limiar. É decidir o que as três lâmpadas devem significar:
+
+- se `DECISAO` e `CONTEXTO` são pré-requisitos sempre satisfeitos no regime
+  atual, elas deveriam sair do painel de confluência (ou virar um único selo
+  de "base pronta"), deixando visível o que de fato varia;
+- ou os limiares de `DECISAO`/`CONTEXTO` deveriam voltar a discriminar, e aí
+  a pergunta é qual evidência eles deveriam exigir — decisão a ser tomada com
+  a fonte na mão, não calibrando para um alvo de disparo.
+
+### Como reproduzir
+
+Sonda que espia `assistente.desenhar_resumo` e acumula, por quadro, o `dt` de
+`snapshot.timestamp_ns` até o quadro seguinte, atribuindo esse tempo ao estado
+de `sinal_ultra.direcao` e às condições de `nucleo._condicoes_ultra`. Lacunas
+acima de 60 s são descartadas. Episódios são contados por transição
+`NENHUMA -> COMPRA/VENDA`, a mesma unidade da auditoria por negócio.
+
+```bash
+python scripts/painel.py --fonte replay --arquivo dados --data 2026-08-31 \
+    --velocidade max --duracao 900 --simbolo WDOU26
+```
