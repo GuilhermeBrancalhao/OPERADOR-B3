@@ -502,7 +502,26 @@ def test_tooltip_dos_raios_usa_regiao_real_do_compositor(cenario, qapp, monkeypa
     assert textos and "Pilhas separadas" in textos[-1]
 
 
-def test_f7_preserva_objetos_candles_renko_snapshot_e_pixels_direitos(cenario, qapp):
+def test_f7_preserva_objetos_candles_renko_snapshot_e_pixels_direitos(
+        cenario, qapp, monkeypatch):
+    # RELOGIO CONGELADO — este teste compara PIXELS do painel inteiro antes e
+    # depois de F7, e a regiao da analise desenha "HA n S", cuja fonte e
+    # `MotorAnaliseClaude.idade_s` -> `time.monotonic()`. Se a execucao cruza
+    # a virada de um segundo entre os dois renders, o texto muda e a
+    # comparacao falha por uma variavel que nao tem nada a ver com F7.
+    #
+    # Foi assim que ele falhou tres vezes em 02-03/09/2026, sempre com CPU
+    # disputada (app aberto, sondas de replay), e sempre passando com a
+    # maquina livre. Provado desligando o motor de analise: com
+    # `FLUXOPRO_ANALISE_IA=0` passa sob a mesma carga.
+    #
+    # Congelar a idade nao enfraquece o teste: o que ele afirma e que F7 nao
+    # altera pixel: manter constante o que F7 nao controla e o que torna a
+    # afirmacao mensuravel.
+    from fluxopro.analytics.analise_claude import MotorAnaliseClaude
+
+    monkeypatch.setattr(MotorAnaliseClaude, "idade_s", lambda self, agora_s=None: 12.0)
+
     janela, sessao, _ = cenario
     historia = enriquecer_historia(janela, sessao)
     painel = janela.asg.nexo

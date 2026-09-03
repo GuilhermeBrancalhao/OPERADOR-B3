@@ -289,7 +289,26 @@ def main(argv: list[str] | None = None) -> int:
         pass  # SIGTERM pode nao existir/ser configuravel em algumas plataformas
 
     if args.duracao:
-        threading.Timer(args.duracao, lambda: _parar(f"--duracao {args.duracao}s")).start()
+        # `daemon=True` NAO e detalhe: `threading.Timer` nasce NAO-daemon, e
+        # um thread nao-daemon segura o interpretador vivo depois de `main()`
+        # retornar.
+        #
+        # PREGAO PERDIDO EM 02/09/2026 POR CAUSA DISTO. A fonte MT5 falhou as
+        # 09:00:03 (`mt5.initialize() falhou: (-6, 'Terminal: Authorization
+        # failed')`), `main()` devolveu codigo 1 em 2 segundos — e o processo
+        # ficou de pe ate as 18:30 esperando este timer de 34.199 s. Para o
+        # supervisor, um processo morto as 09:00 pareceu saudavel o dia
+        # inteiro: `0 reconexao(oes)`, `fim normal do dia`, tarefa do Windows
+        # com resultado 0. Nenhum sinal de falha em lugar nenhum, e o dia
+        # inteiro sem gravacao.
+        #
+        # Com `daemon=True` o processo morre junto com a falha, o supervisor
+        # ve o codigo 1 na hora e reconecta — que e o circuito que ele existe
+        # para fazer.
+        cronometro = threading.Timer(args.duracao,
+                                     lambda: _parar(f"--duracao {args.duracao}s"))
+        cronometro.daemon = True
+        cronometro.start()
 
     if args.status_a_cada > 0:
         def _status() -> None:

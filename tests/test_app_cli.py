@@ -348,3 +348,41 @@ def test_duracao_encerra_sozinha(capsys):
     saida = capsys.readouterr().out
     assert "RESUMO DA SESSAO" in saida
     assert "eventos processados : 0" not in saida
+
+
+def test_cronometro_de_duracao_NAO_segura_o_processo_vivo(monkeypatch):
+    """PREGAO PERDIDO EM 02/09/2026, e a causa foi uma linha.
+
+    `threading.Timer` nasce NAO-daemon, e thread nao-daemon segura o
+    interpretador vivo depois de `main()` retornar. A fonte MT5 falhou as
+    09:00:03 (`Authorization failed`), `main()` devolveu codigo 1 em 2
+    segundos — e o processo ficou de pe ate as 18:30 esperando o timer de
+    34.199 s. O supervisor viu processo vivo o dia inteiro (`0 reconexoes`,
+    `fim normal do dia`) e a tarefa do Windows reportou resultado 0. Um dia
+    inteiro sem gravacao, sem um unico sinal de falha.
+
+    Este teste amarra a unica coisa que impede a repeticao: o cronometro tem
+    de ser DAEMON, para o processo morrer junto com a falha e o supervisor
+    poder reconectar.
+    """
+    import threading
+
+    criados = []
+    original = threading.Timer
+
+    class TimerEspiao(original):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            criados.append(self)
+
+    monkeypatch.setattr(threading, "Timer", TimerEspiao)
+    operar.main(
+        ["--fonte", "simulador", "--simbolo", "WDOV26", "--duracao", "0.3",
+         "--status-a-cada", "0"]
+    )
+    assert criados, "nenhum cronometro foi criado com --duracao"
+    for t in criados:
+        assert t.daemon is True, (
+            "cronometro NAO-daemon: uma falha na fonte deixaria o processo "
+            "vivo ate o fim da janela e esconderia o dia perdido"
+        )
