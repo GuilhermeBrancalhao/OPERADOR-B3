@@ -208,3 +208,133 @@ def test_dia_finalizado_le_o_mesmo_marcador_que_o_gravador_escreve(tmp_path):
 
     (pasta / "trades.csv.gz").write_bytes(b"\x1f\x8b")
     assert dia_finalizado(base, "WDOU26", dia) is True
+
+
+# ==================================================================== 03/09/2026
+# DOIS PREGOES PERDIDOS COM A TAREFA REPORTANDO SUCESSO:
+#   02/09 — `mt5.initialize()` falhou as 09:00:03; o processo ficou vivo ate
+#           as 18:30 por causa de um `threading.Timer` nao-daemon, e o
+#           supervisor viu "fim normal do dia" com 0 reconexoes;
+#   01/09 — MT5 conectou e entregou 1 negocio o dia INTEIRO; nada caiu, nada
+#           reclamou, e o arquivo do dia saiu sem `trades.csv.gz`.
+#
+# O supervisor so olhava para o CODIGO DE SAIDA. Estes testes cobrem as duas
+# coisas que passaram a olhar para o RESULTADO.
+import gzip
+
+from scripts.supervisionar_gravacao import (  # noqa: E402
+    caminho_trades, fluxo_parado, negocios_gravados,
+)
+
+_CABECALHO = "timestamp_ns,symbol,price,qty,side_agressor,trade_id\n"
+
+
+def _gravar(base, symbol, dia, linhas, *, fechado=False):
+    pasta = base / symbol / dia.isoformat()
+    pasta.mkdir(parents=True, exist_ok=True)
+    conteudo = _CABECALHO + "".join(
+        f"{i},{symbol},10000,1,BUY,t{i}\n" for i in range(linhas)
+    )
+    alvo = pasta / "trades.csv"
+    if fechado:
+        with gzip.open(alvo.with_suffix(".csv.gz"), "wt", encoding="utf-8") as fh:
+            fh.write(conteudo)
+    else:
+        alvo.write_text(conteudo, encoding="utf-8")
+
+
+def test_conta_negocios_do_arquivo_AO_VIVO_e_do_FECHADO(tmp_path):
+    """A vigia le durante o pregao (`.csv`) e o portao le depois de fechado
+    (`.csv.gz`) — a mesma contagem tem de valer nos dois."""
+    dia = dt.date(2026, 9, 3)
+    _gravar(tmp_path, "WDOU26", dia, 7)
+    assert negocios_gravados(tmp_path, "WDOU26", dia) == 7
+
+    _gravar(tmp_path, "WDOX26", dia, 4, fechado=True)
+    assert negocios_gravados(tmp_path, "WDOX26", dia) == 4
+
+
+def test_dia_sem_arquivo_e_dia_so_com_cabecalho_contam_ZERO(tmp_path):
+    """O caso de 02/09 (pasta nem existiu) e o caso de arquivo aberto e nunca
+    preenchido tem de dar o MESMO veredito: zero."""
+    dia = dt.date(2026, 9, 3)
+    assert negocios_gravados(tmp_path, "WDOU26", dia) == 0
+
+    pasta = tmp_path / "WDOU26" / dia.isoformat()
+    pasta.mkdir(parents=True)
+    (pasta / "trades.csv").write_text(_CABECALHO, encoding="utf-8")
+    assert negocios_gravados(tmp_path, "WDOU26", dia) == 0
+
+
+def test_caminho_trades_aponta_para_o_csv_do_dia(tmp_path):
+    dia = dt.date(2026, 9, 3)
+    assert caminho_trades(tmp_path, "WDOU26", dia).name == "trades.csv"
+    assert caminho_trades(tmp_path, "WDOU26", dia).parent.name == "2026-09-03"
+
+
+# ------------------------------------------------------------------ vigia
+def test_fluxo_parado_so_dispara_com_a_JANELA_CHEIA_de_observacao():
+    """Um pregao tem minutos legitimamente sem negocio (leilao, abertura
+    lenta). Derrubar a fonte por causa disso trocaria um problema por outro,
+    entao a vigia exige a janela inteira sem crescimento."""
+    # 5 min parados, paciencia de 10 min: ainda NAO
+    amostras = [(0.0, 100), (120.0, 100), (300.0, 100)]
+    assert fluxo_parado(amostras, paciencia_s=600) is False
+    # 10 min parados: dispara
+    amostras += [(660.0, 100)]
+    assert fluxo_parado(amostras, paciencia_s=600) is True
+
+
+def test_fluxo_que_CRESCEU_na_janela_nao_dispara():
+    """O caso normal: negocio chegando. Um unico negocio novo dentro da janela
+    ja prova que a fonte esta viva."""
+    amostras = [(0.0, 100), (300.0, 100), (660.0, 101)]
+    assert fluxo_parado(amostras, paciencia_s=600) is False
+
+
+def test_vigia_nao_opina_com_uma_amostra_so():
+    """Sem duas leituras nao existe 'nao cresceu' — so existe 'nao sei'."""
+    assert fluxo_parado([], paciencia_s=600) is False
+    assert fluxo_parado([(0.0, 0)], paciencia_s=600) is False
+
+
+def test_fluxo_zerado_desde_o_inicio_dispara_igual():
+    """O caso de 01/09: a contagem nunca saiu do lugar. Zero parado e tao
+    morto quanto cem parado."""
+    amostras = [(0.0, 0), (300.0, 0), (660.0, 0)]
+    assert fluxo_parado(amostras, paciencia_s=600) is True
+
+
+# ------------------------------------------------- portao de fim de dia
+def test_main_FALHA_quando_o_dia_fecha_com_zero_negocios(tmp_path, monkeypatch, capsys):
+    """CRITERIO DO OPERADOR (03/09/2026): "falha se zero negocios".
+
+    Ate aqui `main` devolvia 0 SEMPRE — e foi por isso que a tarefa
+    `FluxoPro-GravarPregao` marcou resultado 0 em 01/09 e 02/09 sem ter
+    gravado pregao nenhum. Um dia sem um unico negocio nao e um dia gravado, e
+    a unica forma de isso aparecer para quem nao esta olhando o log e a rotina
+    FALHAR.
+    """
+    import scripts.supervisionar_gravacao as sup
+
+    monkeypatch.setattr(sup, "supervisionar", lambda **k: 0)
+    monkeypatch.setattr(sup, "_lancar_de_verdade", lambda **k: (lambda d: (0, 0.0)))
+
+    codigo = sup.main(["--simbolo", "WDOU26", "--gravar", str(tmp_path)])
+    assert codigo != 0, "dia sem negocio nenhum saiu como SUCESSO"
+    saida = capsys.readouterr().out
+    assert "ZERO negocios" in saida
+    assert "MetaTrader 5" in saida, "a mensagem tem de dizer onde olhar"
+
+
+def test_main_passa_quando_houve_negocio(tmp_path, monkeypatch, capsys):
+    """O outro lado: um dia gravado de verdade nao pode falhar, senao a
+    rotina vira alarme constante e o operador para de olhar."""
+    import scripts.supervisionar_gravacao as sup
+
+    monkeypatch.setattr(sup, "supervisionar", lambda **k: 0)
+    monkeypatch.setattr(sup, "_lancar_de_verdade", lambda **k: (lambda d: (0, 0.0)))
+    _gravar(tmp_path, "WDOU26", dt.date.today(), 1234)
+
+    assert sup.main(["--simbolo", "WDOU26", "--gravar", str(tmp_path)]) == 0
+    assert "1234 negocios gravados" in capsys.readouterr().out

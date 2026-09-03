@@ -44,5 +44,14 @@ python scripts\supervisionar_gravacao.py ^
   --fim 18:30 ^
   --status-a-cada 300 >> "%LOG%" 2>&1
 
-echo FIM %date% %time% (codigo %ERRORLEVEL%) >> "%LOG%"
-endlocal
+set CODIGO=%ERRORLEVEL%
+
+echo FIM %date% %time% (codigo %CODIGO%) >> "%LOG%"
+
+REM PROPAGA O CODIGO (03/09/2026). Ate aqui o .cmd so ESCREVIA o codigo no
+REM log: como o ultimo comando do lote era um `echo`, que sempre devolve 0, a
+REM tarefa do Windows marcava sucesso mesmo com o supervisor falhando. Foi
+REM assim que 01/09 e 02/09 apareceram como "resultado 0" sem ter gravado
+REM pregao nenhum. Sem este `exit /b`, o portao de zero negocios existiria e
+REM nao seria visto por ninguem.
+endlocal & exit /b %CODIGO%

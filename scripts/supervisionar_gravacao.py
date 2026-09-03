@@ -47,7 +47,9 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import subprocess
+import gzip
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Callable
@@ -58,6 +60,73 @@ from fluxopro.core.eventos import Trade  # noqa: E402
 from fluxopro.gravacao import formato  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent.parent
+
+
+# ============================================================ 03/09/2026
+# Dois pregoes seguidos foram perdidos com a tarefa do Windows reportando
+# sucesso (02/09: `mt5.initialize()` falhou as 09:00:03; 01/09: MT5 conectou e
+# entregou 1 negocio o dia inteiro). O supervisor so olhava para o CODIGO DE
+# SAIDA do processo — e processo vivo com fonte morta e indistinguivel de
+# processo saudavel. As duas funcoes abaixo olham para o RESULTADO.
+
+_NOME_TRADES = "trades.csv"
+
+
+def caminho_trades(base: Path, symbol: str, dia: dt.date) -> Path:
+    """CSV ao vivo do dia. O gravador so comprime para `.csv.gz` ao fechar
+    (ver `gravador._fechar_dia`), entao durante o pregao e este que cresce."""
+
+    return base / symbol / dia.isoformat() / _NOME_TRADES
+
+
+def negocios_gravados(base: Path, symbol: str, dia: dt.date) -> int:
+    """Quantos negocios existem no arquivo do dia — ao vivo ou ja fechado.
+
+    Conta LINHAS DE DADOS (descontando o cabecalho). Nao carrega o arquivo
+    inteiro em memoria: um pregao cheio passa de 30 mil linhas.
+    """
+
+    vivo = caminho_trades(base, symbol, dia)
+    fechado = vivo.with_suffix(".csv.gz")
+    if fechado.exists():
+        abrir = lambda: gzip.open(fechado, "rt", encoding="utf-8", newline="")
+    elif vivo.exists():
+        abrir = lambda: vivo.open("r", encoding="utf-8", newline="")
+    else:
+        return 0
+    try:
+        with abrir() as fh:
+            return max(0, sum(1 for _ in fh) - 1)
+    except OSError:
+        # Arquivo em escrita concorrente pode falhar uma leitura isolada; a
+        # vigia tenta de novo no proximo ciclo, e o portao de fim de dia roda
+        # com o arquivo ja fechado.
+        return 0
+
+
+def fluxo_parado(
+    amostras: "list[tuple[float, int]]", *, paciencia_s: float
+) -> bool:
+    """`True` quando a contagem de negocios NAO cresce ha `paciencia_s`.
+
+    Funcao pura de proposito: a decisao de "o fluxo morreu" e testavel sem
+    relogio, sem arquivo e sem subprocesso. `amostras` e uma lista de
+    `(instante_monotonico, negocios)` em ordem cronologica.
+
+    Nao dispara sem uma janela cheia de observacao: um pregao pode ter minutos
+    legitimamente sem negocio (leilao, abertura lenta), e derrubar a fonte por
+    causa disso trocaria um problema por outro.
+    """
+
+    if len(amostras) < 2:
+        return False
+    fim_t, fim_n = amostras[-1]
+    for t, n in reversed(amostras):
+        if fim_t - t < paciencia_s:
+            continue
+        return n == fim_n
+    return False
+
 
 _MARGEM_FIM_PADRAO_S = 5.0
 """Folga contra jitter do relogio: o `--duracao` do `operar.py` termina por
@@ -157,11 +226,15 @@ def supervisionar(
 
 
 def _lancar_de_verdade(
-    *, symbol: str, saida: str, status_a_cada: float, fsync_a_cada: int
+    *, symbol: str, saida: str, status_a_cada: float, fsync_a_cada: int,
+    dia: dt.date, vigia_paciencia_s: float, vigia_intervalo_s: float,
+    logar: Callable[[str], None] = print,
 ) -> Callable[[float], "tuple[int, float]"]:
+    base = Path(saida)
+
     def _lancar(duracao_s: float) -> "tuple[int, float]":
         inicio = time.monotonic()
-        codigo = subprocess.call(
+        processo = subprocess.Popen(
             [
                 sys.executable,
                 str(RAIZ / "scripts" / "operar.py"),
@@ -173,6 +246,40 @@ def _lancar_de_verdade(
                 "--fsync-a-cada", str(fsync_a_cada),
             ]
         )
+
+        # VIGIA SILENCIOSA DE FLUXO (03/09/2026)
+        # Codigo de saida nao detecta fonte morta com processo vivo — foi
+        # assim que 01/09 gravou 1 negocio o dia inteiro e ninguem soube. Aqui
+        # a contagem de negocios do proprio arquivo do dia e amostrada; se ela
+        # nao cresce por `vigia_paciencia_s`, o processo e derrubado e o laco
+        # do supervisor reconecta, que e o circuito que ja existe.
+        #
+        # Silenciosa: so escreve no log quando AGE. Um vigia que fala a cada
+        # ciclo vira ruido e some no meio do log do pregao.
+        parar = threading.Event()
+
+        def _vigiar() -> None:
+            amostras: list[tuple[float, int]] = []
+            while not parar.wait(vigia_intervalo_s):
+                amostras.append((time.monotonic(), negocios_gravados(base, symbol, dia)))
+                # Mantem so a janela util de observacao.
+                corte = time.monotonic() - (vigia_paciencia_s * 2)
+                amostras = [a for a in amostras if a[0] >= corte] or amostras[-2:]
+                if fluxo_parado(amostras, paciencia_s=vigia_paciencia_s):
+                    logar(
+                        f"[vigia] {dt.datetime.now():%H:%M:%S} nenhum negocio novo ha "
+                        f"{vigia_paciencia_s:.0f}s (total {amostras[-1][1]}) — "
+                        "derrubando operar.py para o supervisor reconectar"
+                    )
+                    processo.terminate()
+                    return
+
+        vigia = threading.Thread(target=_vigiar, name="vigia-fluxo", daemon=True)
+        vigia.start()
+        try:
+            codigo = processo.wait()
+        finally:
+            parar.set()
         return codigo, time.monotonic() - inicio
 
     return _lancar
@@ -188,6 +295,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-quedas-rapidas", type=int, default=60, dest="max_quedas_rapidas")
     p.add_argument("--status-a-cada", type=float, default=300.0, dest="status_a_cada")
     p.add_argument("--fsync-a-cada", type=int, default=200, dest="fsync_a_cada")
+    p.add_argument(
+        "--vigia-paciencia-s", type=float, default=600.0, dest="vigia_paciencia_s",
+        help=(
+            "quanto tempo sem NENHUM negocio novo antes de derrubar a fonte e "
+            "reconectar (default 600 = 10 min). Um pregao tem minutos "
+            "legitimamente parados (leilao, abertura lenta); 10 min e folgado o "
+            "bastante para nao brigar com isso e curto o bastante para nao "
+            "perder o dia. 0 desliga a vigia."
+        ),
+    )
+    p.add_argument(
+        "--vigia-intervalo-s", type=float, default=60.0, dest="vigia_intervalo_s",
+        help="de quanto em quanto tempo a vigia conta os negocios (default 60)",
+    )
     args = p.parse_args(argv)
 
     hoje = dt.date.today()
@@ -201,6 +322,9 @@ def main(argv: list[str] | None = None) -> int:
             saida=args.gravar,
             status_a_cada=args.status_a_cada,
             fsync_a_cada=args.fsync_a_cada,
+            dia=hoje,
+            vigia_paciencia_s=args.vigia_paciencia_s,
+            vigia_intervalo_s=args.vigia_intervalo_s,
         ),
         dia_ja_finalizado=lambda: dia_finalizado(base, args.simbolo, hoje),
         cooldown_s=args.cooldown_s,
@@ -208,6 +332,23 @@ def main(argv: list[str] | None = None) -> int:
         max_quedas_rapidas=args.max_quedas_rapidas,
     )
     print(f"[supervisor] encerrado — {reconexoes} reconexao(oes) nesta passada")
+
+    # PORTAO DE FIM DE DIA (03/09/2026, criterio do operador: "falha se zero
+    # negocios"). Ate aqui `main` devolvia 0 SEMPRE, e por isso a tarefa do
+    # Windows marcou sucesso nos dois dias em que nao gravou nada. Um dia sem
+    # um unico negocio nao e um dia gravado — e a unica forma de isso aparecer
+    # e a rotina FALHAR.
+    negocios = negocios_gravados(base, args.simbolo, hoje)
+    if negocios <= 0:
+        print(
+            f"[supervisor] FALHA: {hoje} fechou com ZERO negocios gravados em "
+            f"{caminho_trades(base, args.simbolo, hoje).parent}. "
+            "O pregao NAO foi gravado. Conferir se o terminal MetaTrader 5 "
+            "estava aberto e LOGADO (uma tarefa agendada nao digita senha) e "
+            "o log do dia em logs/."
+        )
+        return 2
+    print(f"[supervisor] {hoje}: {negocios} negocios gravados")
     return 0
 
 
