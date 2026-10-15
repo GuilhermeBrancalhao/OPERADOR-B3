@@ -319,6 +319,18 @@ class EstadoNexo:
     serie_forca_ai: tuple[tuple[int, float], ...] = ()
     """Até 48 snapshots de força disponíveis, sem Maker e sem interpolação."""
 
+    candles_analiticos: tuple[object, ...] | None = None
+    """Base M5 fixa dos motores; não muda com zoom/timeframe de exibição.
+
+    None conserva a compatibilidade com estados legados. Tupla vazia é
+    ausência real de histórico analítico, não autorização para substituí-lo.
+    """
+
+
+def candles_de_analise(estado: EstadoNexo) -> tuple:
+    base = estado.candles_analiticos
+    return tuple(estado.candles_m15 or ()) if base is None else tuple(base)
+
 
 def retangulos(quadro: QRect) -> dict[str, QRect]:
     """Traduz o mapa de fracoes em retangulos inteiros dentro de ``quadro``.

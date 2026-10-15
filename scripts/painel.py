@@ -703,7 +703,8 @@ def _parser():
         "--largura", type=int, default=1480, help="largura da janela (default 1480)"
     )
     g.add_argument(
-        "--altura", type=int, default=900, help="altura da janela (default 900)"
+        "--altura", type=int, default=None,
+        help="altura da janela (625 no OPERADOR B3; 900 nos demais workspaces)"
     )
     g.add_argument(
         "--gil-switch",
@@ -721,6 +722,8 @@ def _parser():
 def main(argv: list[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.altura is None:
+        args.altura = 625 if args.workspace == 'OPERADOR B3' else 900
     if args.retrato_workspaces and args.retrato_estados_asg:
         parser.error("use apenas um entre --retrato-workspaces e --retrato-estados-asg")
     logging.basicConfig(

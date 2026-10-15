@@ -409,27 +409,18 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     # quando o motor determinístico publica um composto válido (LIVE ou
     # REPLAY), o placar BUY/SELL vem DELE — Q6, arredondamento half-away-
     # from-zero, histerese ULTRA — em vez do blend simples 70/30 antigo.
-    # Sem leitura válida (STALE/GAP/RECOVERING/UNAVAILABLE), a região
-    # degrada para o proxy antigo em vez de travar — mesma regra de
-    # honestidade do resto do NEXO: nunca mostrar um placar quebrado, mas
-    # também nunca sumir com o único número que a região sempre teve.
-    snapshot_dominancia = estado.dominancia_snapshot
-    if snapshot_dominancia is not None and snapshot_dominancia.composite is not None:
-        score = snapshot_dominancia.composite
-        compra = int(round(snapshot_dominancia.buy_percent))
-        venda = 100 - compra
-        estado_dominancia_txt = _dominancia_ui.rotulo_estado(snapshot_dominancia.estado)
-    else:
-        score = pressao_composta(forca_maker, forca_ritmo)
-        compra = int(max(0.0, min(100.0, 50.0 + score * 50.0)))
-        venda = 100 - compra
-        estado_dominancia_txt = None
-    tem_ritmo = any(nome == "RITMO" for nome, _ in estado.leituras)
-    tem_leitura_animais = (
-        snapshot_dominancia is not None and snapshot_dominancia.composite is not None
-    ) or maker is not None or tem_ritmo
+    # Motor STALE/GAP/RECOVERING/UNAVAILABLE publica N/D. O proxy auxiliar
+    # só existe quando o contrato legado não tem motor, sempre rotulado.
+    from . import analitica
+    leitura = analitica.pressao_do_snapshot(estado)
+    score = leitura.score if leitura.disponivel else 0.0
+    compra = leitura.compra if leitura.disponivel else 0.0
+    venda = leitura.venda if leitura.disponivel else 0.0
+    tem_leitura_animais = leitura.disponivel
     confianca = getattr(maker, "confianca", None) if maker is not None else None
     cor_status = _COR_CONFIANCA.get(confianca, tema_asg.CONFIANCA_INDISPONIVEL)
+    if not leitura.disponivel:
+        cor_status = tema_asg.CONFIANCA_INDISPONIVEL
 
     # A regiao encosta na borda direita do quadro: o texto precisa da propria
     # margem interna, senao o glifo final e cortado pelo limite da janela.
@@ -455,13 +446,13 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
     painter.drawText(
         QRect(coluna_pressao.left(), rect.top(), metade, altura_percentual),
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-        f"{compra:02d}%",
+        f"{compra:g}%" if leitura.disponivel else '—',
     )
     painter.setPen(tema_asg.NEXO_ROSA)
     painter.drawText(
         QRect(inicio_venda, rect.top(), largura_numero, altura_percentual),
         Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
-        f"{venda:02d}%",
+        f"{venda:g}%" if leitura.disponivel else '—',
     )
 
     # Os dois animais são uma segunda forma de ler EXATAMENTE o mesmo score
@@ -499,7 +490,11 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     y_trilho = rect.bottom() - ALTURA_RODAPE - ALTURA_SUBLINHADO
     trilho = QRect(coluna_pressao.left(), y_trilho, coluna_pressao.width(), ALTURA_SUBLINHADO)
-    _desenhar_trilho_pressao(painter, trilho, compra, venda, tema_asg.NEXO_VERDE, tema_asg.NEXO_ROSA)
+    if leitura.disponivel:
+        _desenhar_trilho_pressao(painter, trilho, compra, venda, tema_asg.NEXO_VERDE, tema_asg.NEXO_ROSA)
+    else:
+        painter.setPen(QPen(tema_asg.NEXO_MUTED,1,Qt.PenStyle.DashLine))
+        painter.drawLine(trilho.topLeft(),trilho.topRight())
 
     rodape = QRect(coluna_pressao.left(), rect.bottom() - ALTURA_RODAPE, coluna_pressao.width(), ALTURA_RODAPE)
     painter.setFont(tokens.fonte_rotulo(7))
@@ -511,13 +506,8 @@ def desenhar(painter: QPainter, rect: QRect, estado: EstadoNexo) -> None:
 
     compra_placar, venda_placar = pesos_por_lado(estado.leituras)
     coerencia = rotulo_coerencia(score, compra_placar - venda_placar)
-    if estado_dominancia_txt is not None:
-        rotulo_rodape = f"DOMINÂNCIA {estado_dominancia_txt} · {coerencia} · PROXY"
-    else:
-        rotulo_rodape = (
-            f"MAKER {PESO_MAKER_PRESSAO*100:.0f}% + RITMO {PESO_RITMO_PRESSAO*100:.0f}%"
-            f" · {coerencia} · {snapshot_dominancia.saude.estado.value if snapshot_dominancia else 'PROXY'}"
-        )
+    rotulo_rodape = (f'{leitura.origem} · {leitura.estado} · {coerencia}' if leitura.disponivel
+                    else f'{leitura.origem} · N/D · {leitura.motivo}')
     painter.drawText(rodape, Qt.AlignmentFlag.AlignCenter, rotulo_rodape)
 
     # --- bloco do instrumento ----------------------------------------------

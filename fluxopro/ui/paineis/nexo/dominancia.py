@@ -10,24 +10,22 @@ MESMA disciplina CONFIRMADO/IMPRECISO de
 são literalmente as MESMAS fontes, porque os dois motores descrevem o
 mesmo mercado por ângulos vizinhos — agressão, reposição, movimento):
 
-- **A (agressão)** — igual a `suporte_resistencia`: recuperado do ranking
-  já publicado em `maker.detalhe`.
-- **B (livro ponderado)** — AUSENTE NA FONTE (sem book L2 estruturado
-  nesta superfície); mesmo proxy declarado de `suporte_resistencia`:
-  delta/volume do último candle fechado.
+- **A (agressão)** — componente numérico canônico do Maker, sem arredondar.
+  O ranking textual é apenas compatibilidade com estados legados.
+- **B (livro ponderado)** — cinco níveis reais do contexto, pesos próprios
+  1/rank. Sem profundidade válida, mantém o proxy delta/volume legado.
 - **R (reposição)** — igual a `suporte_resistencia`.
 - **W (retirada de liquidez)** — AUSENTE NA FONTE: sem contagem de
   cancelamento/retirada por lado nesta superfície. Proxy declarado:
-  inverso do desequilíbrio de volume (`-B`) — retirada e agressão líquida
-  tendem a se mover em direções opostas quando o livro está sendo
-  varrido, mas isto é IMPRECISO por construção, não uma medição de
-  retirada de verdade.
+  inverso do desequilíbrio (`-B`). É uma aproximação de engenharia, não
+  uma medição de retirada/cancelamento nem intenção institucional.
 - **M (resposta de preço)** — CONFIRMADO: `(P1-P0)/moveScale`, o
   movimento real da janela de candles sobre uma escala calibrada no
   próprio histórico observado (nunca no intervalo avaliado).
 
 Read-only: nenhuma função aqui aceita ordem, credencial ou parâmetro de
-execução.
+execução. A base é M5 fixa: selecionar M15 ou ampliar o gráfico não muda
+o horizonte analítico. Janela nominal e cobertura observada são separadas.
 """
 
 from __future__ import annotations
@@ -37,11 +35,12 @@ from PySide6.QtGui import QFont, QPainter
 
 from fluxopro.analytics import dominancia as dom
 from fluxopro.ui import tema_asg, tokens
-from fluxopro.ui.paineis.nexo import EstadoNexo
+from fluxopro.ui.paineis.nexo import EstadoNexo, candles_de_analise
 from fluxopro.ui.paineis.nexo.suporte_resistencia import (
     componente_agressao,
     componente_reposicao,
     desequilibrio_de_candles,
+    desequilibrio_de_book,
 )
 
 __all__ = [
@@ -92,11 +91,13 @@ def _movimento(candles: tuple, janela: int) -> float:
 
 
 def componentes_micro(estado: EstadoNexo) -> dict[str, float]:
-    candles = tuple(estado.candles_m15 or ())
+    candles = candles_de_analise(estado)
     maker = estado.maker
     agressao = componente_agressao(maker)
     reposicao = componente_reposicao(maker)
-    desequilibrio = desequilibrio_de_candles(candles)
+    desequilibrio = desequilibrio_de_book(estado)
+    if desequilibrio is None:
+        desequilibrio = desequilibrio_de_candles(candles)
     return {
         "A": agressao, "B": desequilibrio, "R": reposicao,
         "W": dom.clamp(-desequilibrio), "M": _movimento(candles, JANELA_MOVIMENTO_MICRO),
@@ -104,11 +105,13 @@ def componentes_micro(estado: EstadoNexo) -> dict[str, float]:
 
 
 def componentes_macro(estado: EstadoNexo) -> dict[str, float]:
-    candles = tuple(estado.candles_m15 or ())
+    candles = candles_de_analise(estado)
     maker = estado.maker
     agressao = componente_agressao(maker)
     reposicao = componente_reposicao(maker)
-    desequilibrio = desequilibrio_de_candles(candles)
+    desequilibrio = desequilibrio_de_book(estado)
+    if desequilibrio is None:
+        desequilibrio = desequilibrio_de_candles(candles)
     return {
         "A": agressao, "B": desequilibrio, "R": reposicao,
         "W": dom.clamp(-desequilibrio), "M": _movimento(candles, JANELA_MOVIMENTO_MACRO),
@@ -119,7 +122,7 @@ def construir_entrada_dominancia(estado: EstadoNexo) -> dict:
     """Monta os argumentos de ``MotorDominancia.processar`` a partir de
     ``EstadoNexo`` — função pura, testável sem motor nem QPainter."""
 
-    candles = tuple(estado.candles_m15 or ())
+    candles = candles_de_analise(estado)
     tem_dados = len(candles) >= 2
     qualidade = dom.clamp(min(1.0, len(candles) / 12.0), 0.0, 1.0) if tem_dados else 0.0
     confianca = dom.clamp(min(1.0, len(candles) / 12.0), 0.0, 1.0) if tem_dados else 0.0
@@ -130,8 +133,19 @@ def construir_entrada_dominancia(estado: EstadoNexo) -> dict:
         "qualidade_micro": qualidade, "qualidade_macro": qualidade,
         "confianca_micro": confianca, "confianca_macro": confianca,
         "amostras_micro": len(candles), "amostras_macro": len(candles),
-        "cobertura_micro_ms": 0, "cobertura_macro_ms": 0,
+        "cobertura_micro_ms": _cobertura(candles[-JANELA_MOVIMENTO_MICRO:]),
+        "cobertura_macro_ms": _cobertura(candles[-JANELA_MOVIMENTO_MACRO:]),
+        "janela_micro_ms": JANELA_MOVIMENTO_MICRO*5*60_000,
+        "janela_macro_ms": JANELA_MOVIMENTO_MACRO*5*60_000,
     }
+
+
+def _cobertura(candles):
+    if len(candles)<2:
+        return 0
+    primeiro = getattr(candles[0],'timestamp_ns',0)
+    ultimo = getattr(candles[-1],'timestamp_ns',0)
+    return max(0,(ultimo-primeiro)//1_000_000)
 
 
 def rotulo_estado(estado: "dom.EstadoDominancia") -> str:

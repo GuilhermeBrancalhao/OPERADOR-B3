@@ -1,0 +1,7 @@
+# Relevo de pressão v2
+
+Ativo decorativo gerado pela ferramenta integrada imagegen em 15/10/2026. Referência visual: o pequeno relevo de animais do rodapé de `.gauntlet/2026-08-25-asg-real-b/bar/frame_038.jpg`. Não é extração exata dos recursos ASG, nem reprodução dos algoritmos da plataforma. Não contém logo, marca, números, gráficos ou sinais. PNG transparente; exibido discretamente em 62×30 unidades lógicas e carregado uma vez, não em cada tick.
+
+Prompt final aplicado:
+
+> Use case: background-extraction. Edit the supplied 640x270 screenshot ONLY to extract/reconstruct the tiny pair of dark gray sculptural animals visible in the lower-right footer, approximately source x422..483 and y232..261: the bull on the left facing right and the bear on the right facing left, pushing toward each other. Output ONLY this pair as a standalone high-resolution cutout on a genuinely transparent background, with tightly framed composition, both animals complete, and soft dark smoky lower edges. Retain the compact overlapping composition and the very dark low-contrast gray shaded, almost black stone/metal photographic sculptural relief texture of the reference. NOT neon, NOT wireframe, NOT polygon grid, NOT cartoon, NOT colorful. Gray highlights should be subtle with large shadow masses. No UI, no screenshot background, no charts, no text, no percentages, no branding, no logo, no watermark, no humanoid face. Do not include any other portion of the screenshot. This is a tiny decorative relief asset, not a financial chart or app screenshot.

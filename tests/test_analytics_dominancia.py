@@ -207,6 +207,24 @@ def test_modo_replay_chega_ao_snapshot_vivo_sem_excecao():
     assert snap.composite is not None
 
 
+@pytest.mark.parametrize('modo', ['LIVE', 'REPLAY'])
+def test_primeira_leitura_com_qualidade_baixa_nao_publica_percentuais(modo):
+    snap = _processar(dom.MotorDominancia('t'), 1, 1, .8, .8,
+                      qualidade=.79, modo=modo)
+    assert snap.saude.estado is dom.EstadoFeed.STALE
+    assert snap.composite is None and snap.buy_percent is None and snap.sell_percent is None
+    assert snap.estado is dom.EstadoDominancia.INDISPONIVEL
+
+
+def test_primeira_leitura_atrasada_e_rejeitada_mas_replay_usa_relogio_de_evento():
+    atrasada = _processar(dom.MotorDominancia('t'), 1, 1, .8, .8, idade_ms=751)
+    replay = _processar(dom.MotorDominancia('t'), 1, 1, .8, .8,
+                       idade_ms=100_000, modo='REPLAY')
+    assert atrasada.saude.estado is dom.EstadoFeed.STALE
+    assert atrasada.buy_percent is None
+    assert replay.saude.estado is dom.EstadoFeed.LIVE and replay.buy_percent is not None
+
+
 def test_buy_mantem_no_limiar_de_manutencao_exato():
     motor = dom.MotorDominancia("t")
     # Primeiro leva o estado a BUY (composite bem acima de 0.12).

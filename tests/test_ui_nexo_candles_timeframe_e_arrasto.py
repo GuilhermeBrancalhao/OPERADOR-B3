@@ -34,6 +34,7 @@ def _alimentar_negocios(painel, n, passo_ns=15_000_000_000, preco_inicial=100_00
 
 def _painel_pronto(qapp, n_negocios=400):
     painel = PainelNexoMercadoASG()
+    painel._nexo_ai_ativo = False  # Exercita os hitboxes do compositor clássico (F7).
     painel.resize(1200, 700)
     _alimentar_negocios(painel, n_negocios)
     return painel

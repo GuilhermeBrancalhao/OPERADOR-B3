@@ -36,6 +36,7 @@ def _painel(qapp, n=1700):
     # velas de 5M. Com menos que isso, uma coluna a 75% da largura cai num
     # slot de tempo ainda sem vela e o teste mediria o vazio, nao a leitura.
     painel = PainelNexoMercadoASG()
+    painel._nexo_ai_ativo = False  # Exercita os hitboxes do compositor clássico (F7).
     painel.resize(1600, 900)
     for i in range(n):
         # Rampa lenta: velas vizinhas tem OHLC diferente, entao mover o

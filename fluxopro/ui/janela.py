@@ -1828,6 +1828,7 @@ class JanelaFluxo(QMainWindow):
                 painel._quadro()
         self.trilho.setVisible(not eh_asg)
         self._workspace = alvo
+        self._sincronizar_cromo_asg()
         self.setWindowTitle(
             f"Operador B3 — NEXO consultivo — {self.simbolo}"
             if alvo.nome_exibicao == "OPERADOR B3"
@@ -1846,6 +1847,16 @@ class JanelaFluxo(QMainWindow):
                 "o workspace %s não cobre os quatro elos: o trilho vai se abster"
                 % alvo.nome,
             )
+
+    def _sincronizar_cromo_asg(self) -> None:
+        """A composição de referência inclui os próprios selos de fonte/feed."""
+        integrado = (self._workspace.nome_exibicao == 'OPERADOR B3'
+                     and self.asg.nexo._nexo_ai_ativo)
+        for widget in (self.topo, self.rodape, self.faixa, self.ressalva):
+            if widget is not None:
+                widget.setVisible(not integrado)
+                if isinstance(widget, PainelDenso):
+                    widget.marcar_tudo_sujo()
 
     def _estado_salvo(self, alvo: Workspace):
         if not self._persistir:

@@ -24,11 +24,10 @@ de `suporte_resistencia`).
 3. **Golden JSONL / replay gravado.** Mesma divergência já declarada em
    `suporte_resistencia.py`: testada a PROPRIEDADE de determinismo
    (mesma entrada, mesma saída), sem harness de gravação/replay dedicado.
-4. **Book de 5 níveis com decay.** Esta superfície não recebe profundidade
-   de livro L2 estruturada (ver `nexo/indisponivel.py`, estado SEM_BOOK) —
-   ``fluxopro/ui/paineis/nexo/dominancia.py`` mapeia B/W a partir de sinais
-   que o projeto já calcula (mesmo tipo de proxy declarado de
-   `suporte_resistencia`), nunca a partir de livro inventado.
+4. **Book de 5 níveis com decay.** O adaptador NEXO usa a profundidade
+   real já congelada quando disponível, com pesos próprios 1/rank. B só
+   usa proxy de fluxo no contrato legado sem profundidade. W=-B continua
+   proxy declarado e não comprova cancelamentos ou retirada de liquidez.
 5. **``ageMs`` no modo LIVE.** Só quem CHAMA este motor (o painel, que tem
    acesso ao relógio de parede legitimamente para medir staleness) calcula
    idade — o motor recebe ``idade_ms`` já pronta, nunca lê relógio.
@@ -519,6 +518,7 @@ class MotorDominancia:
         confianca_micro: float, confianca_macro: float,
         amostras_micro: int, amostras_macro: int,
         cobertura_micro_ms: int, cobertura_macro_ms: int,
+        janela_micro_ms: int = 3000, janela_macro_ms: int = 60000,
     ) -> DominanciaSnapshot:
         if event_id in self._cache:
             return self._cache[event_id]
@@ -550,7 +550,8 @@ class MotorDominancia:
         self._ultima_sequencia = sequencia
         self._ultimo_timestamp_ns = timestamp_ns
         qualidade = min(clamp(qualidade_micro, 0.0, 1.0), clamp(qualidade_macro, 0.0, 1.0))
-        saude_bruta = classificar_saude(idade_ms, qualidade) if modo != "REPLAY" else EstadoFeed.LIVE
+        # Replay ignora idade de parede, nunca qualidade/cobertura insuficiente.
+        saude_bruta = classificar_saude(0.0 if modo=='REPLAY' else idade_ms,qualidade)
 
         if self._recuperando:
             self._amostras_desde_gap += 1
@@ -578,13 +579,13 @@ class MotorDominancia:
             self._ultimo_valido = snapshot
             return snapshot
 
-        if saude_bruta is EstadoFeed.STALE and self._ultimo_valido is not None:
+        if saude_bruta is EstadoFeed.STALE:
             congelado = self._ultimo_valido
             snapshot = DominanciaSnapshot(
                 schema=DTO_SCHEMA, stream_id=self.stream_id, event_id=event_id,
                 state_seq=sequencia, timestamp_ns=timestamp_ns, instrumento=instrumento,
                 modo=modo, micro=None, macro=None, composite=None, buy_percent=None,
-                sell_percent=None, estado=congelado.estado, qualidade_agregada=None,
+                sell_percent=None, estado=congelado.estado if congelado else EstadoDominancia.INDISPONIVEL, qualidade_agregada=None,
                 confianca_agregada=None, confluencia=None, contra_giro=None,
                 saude=Saude(EstadoFeed.STALE, idade_ms, "idade_ou_qualidade_abaixo_do_minimo"),
             )
@@ -621,11 +622,11 @@ class MotorDominancia:
         snapshot = DominanciaSnapshot(
             schema=DTO_SCHEMA, stream_id=self.stream_id, event_id=event_id,
             state_seq=sequencia, timestamp_ns=timestamp_ns, instrumento=instrumento, modo=modo,
-            micro=DominanceHorizonte(3000, micro, quantizar_q6(qualidade_micro),
+            micro=DominanceHorizonte(janela_micro_ms, micro, quantizar_q6(qualidade_micro),
                                      quantizar_q6(confianca_micro), amostras_micro,
                                      cobertura_micro_ms,
                                      componentes_para_dto(componentes_micro, PESOS_MICRO)),
-            macro=DominanceHorizonte(60000, macro, quantizar_q6(qualidade_macro),
+            macro=DominanceHorizonte(janela_macro_ms, macro, quantizar_q6(qualidade_macro),
                                      quantizar_q6(confianca_macro), amostras_macro,
                                      cobertura_macro_ms,
                                      componentes_para_dto(componentes_macro, PESOS_MACRO)),

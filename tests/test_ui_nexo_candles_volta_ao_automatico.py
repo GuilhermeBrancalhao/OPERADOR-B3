@@ -30,6 +30,7 @@ class _EventoFake:
 
 def _painel(qapp, minutos=580, passo_s=20):
     painel = PainelNexoMercadoASG()
+    painel._nexo_ai_ativo = False  # Exercita os hitboxes do compositor clássico (F7).
     painel.resize(1920, 1080)
     for i in range(int(minutos * 60 / passo_s)):
         painel._registrar_amostra(

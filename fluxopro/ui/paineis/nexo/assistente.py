@@ -562,5 +562,7 @@ def texto_auditoria(estado: EstadoNexo) -> str:
     linhas += ["", "EVIDÊNCIAS:"]
     linhas += [f"{e.timestamp_ns} | {e.origem} | {e.evento} | {e.leitura} | {e.procedencia.value}"
                for e in estado.snapshot.evidencias.itens]
+    from . import analitica
+    linhas += ["",analitica.texto_auditoria(estado)]
     linhas += ["", "Arte holográfica decorativa. Sem processamento por LLM. Sem envio de ordens."]
     return "\n".join(linhas)

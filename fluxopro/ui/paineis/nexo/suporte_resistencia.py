@@ -11,18 +11,18 @@ puro, sem QPainter, com suíte própria. ESTE módulo faz só duas coisas:
    (A/B/R/J/P/D/E/T) é rotulado CONFIRMADO/IMPRECISO/AUSENTE, mesma
    convenção de ``fluxopro/analytics/renko.py``:
 
-   - **A (agressão)** — CONFIRMADO como fonte, IMPRECISO como extração:
-     recuperado do ranking já publicado em ``maker.detalhe``
+   - **A (agressão)** — componente canônico numérico do Maker, sem
+     arredondar. Apenas em snapshots legados é recuperado de ``maker.detalhe``
      ("1o AGRESSAO +70% giro 3"), porque a estrutura completa
-     (``MakerProxySnapshot.componentes``) não atravessa a fronteira até
-     `EstadoNexo` hoje. Sem o componente no ranking (só top-3 aparecem),
-     cai no score agregado do MakerProxy.
+     (``MakerProxySnapshot.componentes``) só faltava no contrato legado.
+     Sem o componente no ranking legado (só top-3 aparecem),
+     cai no score agregado do MakerProxy. Esse fallback não existe quando
+     o contrato canônico declara o componente indisponível.
    - **R (reposição/absorção)** — mesma extração, procurando REPOSICAO
      e, na ausência, ABSORCAO.
-   - **B (desequilíbrio de livro)** — AUSENTE NA FONTE: esta superfície
-     não recebe livro L2 (ver `nexo/indisponivel.py`, estado SEM_BOOK).
-     Proxy declarado: delta/volume do último candle fechado — é
-     desequilíbrio de FLUXO observado, não profundidade de livro.
+   - **B (desequilíbrio de livro)** — cinco níveis reais do contexto bruto,
+     ponderados por 1/rank (regra independente). Só na ausência desse dado
+     é usado delta/volume do último candle fechado como proxy legado.
    - **J (rejeição de preço)** — CONFIRMADO: geometria clássica de pavio
      (pavio inferior maior = defesa compradora; pavio superior maior =
      defesa vendedora) do último candle, dado que o candle já carrega.
@@ -41,9 +41,8 @@ puro, sem QPainter, com suíte própria. ESTE módulo faz só duas coisas:
 
    Candidatos de ZONA vêm de níveis que o projeto já calcula como preços
    de interesse estatístico: POC/VAL/VAH do Volume Profile
-   (`estado.vap_poc`/`vap_val`/`vap_vah`). `toques` fica em `0` (nenhuma
-   contagem de toque por nível existe nesta superfície hoje) — declarado,
-   nunca inventado.
+   (`estado.vap_poc`/`vap_val`/`vap_vah`). Testes e rejeições são medidos
+   pelas entradas/saídas reais da série na faixa, não pela quantidade de ticks.
 
 2. **Desenha** o resultado — selo SUPORTE/RESISTÊNCIA/NEUTRO, MICRO/MACRO,
    saúde do feed e a leitura completa do rodapé de contagem
@@ -51,7 +50,8 @@ puro, sem QPainter, com suíte própria. ESTE módulo faz só duas coisas:
 
 Read-only: nenhuma função aqui aceita ordem, credencial ou parâmetro de
 execução. Ver `fluxopro/analytics/suporte_resistencia.py` para os limites
-de segurança herdados do documento de referência.
+de segurança herdados do documento de referência. Motores usam a base M5
+fixa e não a seleção M5/M15 de exibição.
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ from PySide6.QtGui import QColor, QFont, QPainter, QPen, QPolygon
 from fluxopro.analytics import suporte_resistencia as sr
 from fluxopro.analytics.renko import FaseRenko
 from fluxopro.ui import tema_asg, tokens
-from fluxopro.ui.paineis.nexo import EstadoNexo
+from fluxopro.ui.paineis.nexo import EstadoNexo, candles_de_analise
 
 __all__ = [
     "TETO_CV_ESTABILIDADE",
@@ -100,9 +100,8 @@ def componentes_do_ranking_maker(detalhe: str) -> dict[str, float]:
     """Recupera ``{"AGRESSAO": 0.70, "REPOSICAO": -0.20, ...}`` do texto já
     publicado por ``asg._ranking_componentes_maker``. Não fabrica número:
     é o MESMO percentual que a tela do MakerProxy já mostra, só que
-    recuperado do texto formatado — a estrutura completa
-    (``MakerProxySnapshot.componentes``) não atravessa a fronteira até
-    `EstadoNexo`. Só os top-3 aparecem no texto; os demais ficam ausentes
+    recuperado do texto formatado no contrato legado, que não carregava
+    a estrutura completa. Só os top-3 aparecem no texto; os demais ficam ausentes
     do dicionário (nunca zero fingido)."""
 
     saida: dict[str, float] = {}
@@ -123,6 +122,9 @@ def _linha_por_apelido(leituras, apelido: str):
 def componente_agressao(maker) -> float:
     if maker is None:
         return 0.0
+    canonicos = _componentes_canonicos(maker)
+    if canonicos is not None:
+        return canonicos.get('AGRESSAO',0.0)
     return componentes_do_ranking_maker(getattr(maker, "detalhe", "")).get(
         "AGRESSAO", float(getattr(maker, "forca", 0.0))
     )
@@ -131,12 +133,30 @@ def componente_agressao(maker) -> float:
 def componente_reposicao(maker) -> float:
     if maker is None:
         return 0.0
+    canonicos = _componentes_canonicos(maker)
+    if canonicos is not None:
+        return canonicos.get('REPOSICAO',canonicos.get('ABSORCAO',0.0))
     componentes = componentes_do_ranking_maker(getattr(maker, "detalhe", ""))
     if "REPOSICAO" in componentes:
         return componentes["REPOSICAO"]
     if "ABSORCAO" in componentes:
         return componentes["ABSORCAO"]
     return float(getattr(maker, "forca", 0.0))
+
+
+def _componentes_canonicos(maker):
+    componentes = getattr(maker,'componentes_maker',None)
+    if componentes is None:
+        return None  # somente o contrato legado depende do ranking textual
+    saida = {}
+    for c in componentes:
+        if not getattr(c,'disponivel',False):
+            continue
+        valor = getattr(c,'pontuacao',None)
+        if isinstance(valor,(int,float)) and math.isfinite(valor):
+            nome = getattr(getattr(c,'componente',None),'value',str(getattr(c,'componente','')))
+            saida[str(nome).upper()] = sr.clamp(valor)
+    return saida
 
 
 def desequilibrio_de_candles(candles: tuple) -> float:
@@ -151,6 +171,25 @@ def desequilibrio_de_candles(candles: tuple) -> float:
     if volume <= 0:
         return 0.0
     return sr.clamp(getattr(fechado, "delta", 0) / volume)
+
+
+def desequilibrio_de_book(estado: EstadoNexo) -> float | None:
+    """B observado: cinco níveis reais, pesos 1/rank (regra própria).
+
+    Não mede cancelamentos, retirada ou intenção institucional. None indica
+    ausência de profundidade válida; só o caminho legado usa delta/volume.
+    """
+    contexto = getattr(estado.snapshot,'contexto_bruto',None)
+    if contexto is None:
+        return None
+    bids = sorted(contexto.bids,key=lambda n:n.preco,reverse=True)[:5]
+    asks = sorted(contexto.asks,key=lambda n:n.preco)[:5]
+    def volume(niveis):
+        return sum(max(0,n.quantidade)/i for i,n in enumerate(niveis,1))
+    compra,venda = volume(bids),volume(asks)
+    if compra<=0 or venda<=0:
+        return None
+    return sr.clamp((compra-venda)/(compra+venda))
 
 
 def _rejeicao_de_candle(candle) -> float:
@@ -399,13 +438,15 @@ def construir_entrada_sr(estado: EstadoNexo) -> dict:
     ``agora_ns`` (o motor é stateful e mora no painel, não aqui).
     """
 
-    candles = tuple(estado.candles_m15 or ())
+    candles = candles_de_analise(estado)
     leituras = estado.leituras
     maker = estado.maker
 
     agressao = componente_agressao(maker)
     reposicao = componente_reposicao(maker)
-    desequilibrio = desequilibrio_de_candles(candles)
+    desequilibrio = desequilibrio_de_book(estado)
+    if desequilibrio is None:
+        desequilibrio = desequilibrio_de_candles(candles)
     rejeicao = _rejeicao_de_candle(candles[-2] if len(candles) >= 2 else None)
     persistencia = _persistencia(leituras)
     delta = _delta_acumulado(candles)

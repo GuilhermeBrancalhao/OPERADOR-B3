@@ -361,6 +361,12 @@ class LinhaMatrizASG:
     # ULTRA). O enum ``confianca`` continua sendo o rótulo visual geral; não
     # se deve obrigar um motor específico a duplicar esse corte fixo de 0,75.
     confianca_numerica: float | None = None
+    componentes_maker: tuple[object, ...] | None = None
+    """Componentes canônicos, sem arredondar ou recuperar scores do texto."""
+
+    def __post_init__(self) -> None:
+        if self.componentes_maker is not None:
+            object.__setattr__(self,'componentes_maker',tuple(self.componentes_maker))
 
 
 @dataclass(frozen=True, slots=True)
@@ -2193,7 +2199,9 @@ class PainelNexoMercadoASG(_PainelASG):
         # de verdade; e a UNICA leitura desta funcao que consulta relogio,
         # e so para ISTO (saude de feed), nunca para decidir zona ou score.
         em_replay = getattr(self._snapshot, "estado_operacional", None) is EstadoASG.REPLAY
-        agora_ns = timestamp_ns if em_replay else time.time_ns()
+        fonte = str(getattr(getattr(self._snapshot,'dados',None),'fonte','')).upper()
+        relogio_mercado = em_replay or fonte in {'SIMULATOR','SIMULADOR','REPLAY'}
+        agora_ns = timestamp_ns if relogio_mercado else time.time_ns()
         return self._motor_sr.processar(
             event_id=f"sr-{timestamp_ns}",
             sequencia=self._sr_sequencia,
@@ -2262,8 +2270,10 @@ class PainelNexoMercadoASG(_PainelASG):
             self._dominancia_sequencia += 1
             self._dominancia_ultimo_ts = timestamp_ns
         em_replay = getattr(self._snapshot, "estado_operacional", None) is EstadoASG.REPLAY
-        agora_ns = timestamp_ns if em_replay else time.time_ns()
-        idade_ms = 0.0 if em_replay else max(0.0, (agora_ns - timestamp_ns) / 1_000_000.0)
+        fonte = str(getattr(getattr(self._snapshot,'dados',None),'fonte','')).upper()
+        relogio_mercado = em_replay or fonte in {'SIMULATOR','SIMULADOR','REPLAY'}
+        agora_ns = timestamp_ns if relogio_mercado else time.time_ns()
+        idade_ms = 0.0 if relogio_mercado else max(0.0, (agora_ns - timestamp_ns) / 1_000_000.0)
         return self._motor_dominancia.processar(
             event_id=f"dom-{timestamp_ns}",
             sequencia=self._dominancia_sequencia,
@@ -2648,7 +2658,7 @@ class PainelNexoMercadoASG(_PainelASG):
         janela_ns = self._vap_timeframe_min * 60 * 1_000_000_000
         if not self._trades_vap_recentes:
             return VolumeProfile()
-        agora_ns = self._trades_vap_recentes[-1][0]
+        agora_ns = max(self._trades_vap_recentes[-1][0],self._snapshot.timestamp_ns)
         limite = agora_ns - janela_ns
         trades = (
             Trade(timestamp_ns=ts, symbol="", price=preco, qty=qtd,
@@ -2692,6 +2702,9 @@ class PainelNexoMercadoASG(_PainelASG):
 
     def _alternar_nexo_ai(self) -> None:
         self._nexo_ai_ativo = not self._nexo_ai_ativo
+        sincronizar = getattr(self.window(), '_sincronizar_cromo_asg', None)
+        if sincronizar is not None:
+            sincronizar()
         self.marcar_tudo_sujo()
 
     def _abrir_detalhes_nexo_ai(self) -> None:
@@ -2725,6 +2738,9 @@ class PainelNexoMercadoASG(_PainelASG):
         if largura < 420 or altura < 180:
             return None
         quadro = QRect(0, 0, largura, max(1, altura - nexo.ALTURA_RESSALVA))
+        if self._nexo_ai_ativo:
+            from fluxopro.ui.paineis.nexo import referencia
+            return referencia.retangulos(self.rect())['candles']
         return nexo.retangulos(quadro).get("candles")
 
     def _retangulo_ladder(self) -> QRect | None:
@@ -2732,9 +2748,69 @@ class PainelNexoMercadoASG(_PainelASG):
         if largura < 420 or altura < 180:
             return None
         quadro = QRect(0, 0, largura, max(1, altura - nexo.ALTURA_RESSALVA))
+        if self._nexo_ai_ativo:
+            from fluxopro.ui.paineis.nexo import referencia
+            return referencia.retangulos(self.rect())['ladder']
         return nexo.retangulos(quadro).get("ladder")
 
+    def _interagir_referencia(self, evento, tipo: str) -> bool:
+        if not self._nexo_ai_ativo:
+            return False
+        from fluxopro.ui.paineis.nexo import referencia
+        caixas = referencia.retangulos(self.rect())
+        pos = evento.position().toPoint() if hasattr(evento, 'position') else evento.pos()
+        caixa = caixas['candles']
+        escala = referencia.viewport(self.rect())[1]
+        arrasto = getattr(self, '_arrasto_referencia', None)
+        if tipo=='press' and caixas['detalhes'].contains(pos) and evento.button()==Qt.MouseButton.LeftButton:
+            self._abrir_detalhes_nexo_ai()
+            evento.accept()
+            return True
+        if tipo == 'press' and caixa.contains(pos) and evento.button() == Qt.MouseButton.LeftButton:
+            if pos.y() >= caixa.bottom() - 6 * escala:
+                self._timeframe_candles_min = 15 if self._timeframe_candles_min == 5 else 5
+                self._candles_offset = 0
+            else:
+                modo = 'preco' if pos.x() >= caixa.right() - 24 * escala else 'tempo'
+                self._arrasto_referencia = (modo, pos.x(), pos.y(), self._candles_offset,
+                                            self._candles_zoom_preco)
+        elif tipo == 'move':
+            self._cursor_candles = (pos.x(), pos.y()) if caixa.contains(pos) else None
+            if arrasto is not None:
+                modo, x, y, offset, zoom = arrasto
+                if modo == 'preco':
+                    self._candles_zoom_preco = max(.2, min(12., zoom * math.exp((pos.y()-y)/120)))
+                else:
+                    passo = 156 * escala / max(24,self._candles_velas_visiveis or 36)
+                    total = len(self._agregador_candles_atual().candles_fechados) + 1
+                    self._candles_offset = max(0, min(max(0,total-1), offset+round((pos.x()-x)/passo)))
+            if any(caixas[n].contains(pos) for n in ('estatistica','pressao')):
+                texto = referencia.texto_tooltip(pos,self.rect(),self._estado_nexo())
+                if texto:
+                    QToolTip.showText(self.mapToGlobal(pos),texto,self)
+            else:
+                QToolTip.hideText()
+        elif tipo == 'release':
+            self._arrasto_referencia = None
+        elif tipo == 'double' and caixa.contains(pos):
+            self._candles_offset = 0
+            self._candles_zoom_preco = 1.0
+            self._candles_velas_visiveis = None
+        elif tipo == 'wheel' and caixa.contains(pos):
+            fator = 1.25 if evento.angleDelta().y() > 0 else .8
+            if pos.x() >= caixa.right()-24*escala:
+                self._candles_zoom_preco = max(.2,min(12.,self._candles_zoom_preco*fator))
+            else:
+                self._candles_velas_visiveis = max(10,min(256,round((self._candles_velas_visiveis or 36)/fator)))
+        elif tipo == 'press' and caixas['ladder'].contains(pos):
+            self._vap_timeframe_min = {0:5,5:15,15:0}[self._vap_timeframe_min]
+        self.marcar_tudo_sujo()
+        evento.accept()
+        return True
+
     def mousePressEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        if self._interagir_referencia(evento, 'press'):
+            return
         pos = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
 
         if self._nexo_ai_ativo:
@@ -2862,6 +2938,8 @@ class PainelNexoMercadoASG(_PainelASG):
         self.marcar_tudo_sujo()
 
     def mouseDoubleClickEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        if self._interagir_referencia(evento, 'double'):
+            return
         """Duplo-clique no eixo de preco volta a escala ao automatico — o
         mesmo gesto do grafico de referencia, para quem procura no eixo
         antes de procurar no chip."""
@@ -2923,6 +3001,8 @@ class PainelNexoMercadoASG(_PainelASG):
             self.marcar_tudo_sujo()
 
     def mouseMoveEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        if self._interagir_referencia(evento, 'move'):
+            return
         pos_fundo = evento.position().toPoint() if hasattr(evento, "position") else evento.pos()
         self._fundo_operador.alvo = (
             (pos_fundo.x()/max(1, self.width()) - .5)*12,
@@ -3019,6 +3099,8 @@ class PainelNexoMercadoASG(_PainelASG):
             QToolTip.hideText()
 
     def mouseReleaseEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        if self._interagir_referencia(evento, 'release'):
+            return
         if self._arrasto_escala is not None:
             self._arrasto_escala = None
             evento.accept()
@@ -3030,6 +3112,8 @@ class PainelNexoMercadoASG(_PainelASG):
         super().mouseReleaseEvent(evento)
 
     def wheelEvent(self, evento) -> None:  # noqa: N802 — assinatura do Qt
+        if self._interagir_referencia(evento, 'wheel'):
+            return
         """Roda do mouse = zoom. Sobre a calha do eixo de preco, ela mexe na
         escala VERTICAL; em qualquer outro ponto do grafico, no numero de
         velas da janela (escala HORIZONTAL). Fora da regiao de candles, o
@@ -3079,6 +3163,8 @@ class PainelNexoMercadoASG(_PainelASG):
             candles_m15=self._agregador_candles_atual().candles_fechados
             + ((self._agregador_candles_atual().candle_atual,)
                if self._agregador_candles_atual().candle_atual else ()),
+            candles_analiticos=self._candles_m15.candles_fechados
+            + ((self._candles_m15.candle_atual,) if self._candles_m15.candle_atual else ()),
             candles_timeframe_min=self._timeframe_candles_min,
             candles_offset=self._candles_offset,
             candles_cursor=self._cursor_candles,
@@ -3126,11 +3212,16 @@ class PainelNexoMercadoASG(_PainelASG):
             return
 
         estado = self._estado_nexo()
+        if self._nexo_ai_ativo:
+            from fluxopro.ui.paineis.nexo import referencia, indisponivel
+            aviso = getattr(self.window(), 'ressalva', None)
+            referencia.desenhar(painter, self.rect(), estado,
+                                f"{getattr(aviso, 'titulo', '')} {getattr(self.window(), '_modo', '')}",
+                                getattr(self.window(), 'simbolo', ''))
+            indisponivel.desenhar(painter, self.rect(), estado)
+            return
         quadro = QRect(0, 0, largura, max(1, altura - nexo.ALTURA_RESSALVA))
-        from fluxopro.ui.paineis.nexo import assistente
-
-        caixas = (assistente.caixas_integradas(quadro) if self._nexo_ai_ativo
-                  else nexo.retangulos(quadro))
+        caixas = nexo.retangulos(quadro)
 
         # Amarracao de escala entre duas regioes vizinhas: o Renko ("forca")
         # tem de desenhar na MESMA escala vertical do grafico de velas logo
@@ -3145,22 +3236,14 @@ class PainelNexoMercadoASG(_PainelASG):
                 caixas["candles"], estado),
         )
         for nome in nexo.ORDEM_DESENHO:
-            if self._nexo_ai_ativo and nome in {"nucleo", "vies"}:
-                continue
             painter.save()
             try:
                 # Isolar a região inclui a sangria de antialiasing: o núcleo
                 # clássico não pode alterar pixels do gráfico ao alternar F7.
                 painter.setClipRect(caixas[nome], Qt.ClipOperation.IntersectClip)
-                if self._nexo_ai_ativo and nome == "banner":
-                    assistente.desenhar_resumo(painter, caixas[nome], estado)
-                else:
-                    nexo.modulo(nome).desenhar(painter, caixas[nome], estado)
+                nexo.modulo(nome).desenhar(painter, caixas[nome], estado)
             finally:
                 painter.restore()
-
-        if self._nexo_ai_ativo:
-            assistente.desenhar(painter, caixas["assistente"], estado)
 
         # Camada de honestidade: no-op quando o quadro esta saudavel
         # (`diagnosticar` devolve None), e um veu+cartao nomeando o que
@@ -3996,6 +4079,7 @@ def _linhas_da_matriz_asg(
             procedencia=_procedencia_do_maker(getattr(maker, "procedencia", "")),
             evidencias=len(tuple(getattr(maker, "evidence", ()))),
             confianca_numerica=maker_conf,
+            componentes_maker=(tuple(maker.componentes) if getattr(maker,'componentes',None) is not None else None),
             detalhe=(
                 _ranking_componentes_maker(maker)
                 or f"PERSIST {int(getattr(maker, 'persistence_ns', 0)) / 1e9:.1f}s"

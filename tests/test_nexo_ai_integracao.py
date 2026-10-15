@@ -478,46 +478,34 @@ def test_ai_default_e_f6_teclado_abre_procedencia_congelada(cenario, qapp):
 
 
 def test_f6_area_clicavel_abre_dialogo_real(cenario, qapp):
+    from fluxopro.ui.paineis.nexo import referencia
     janela, _, _ = cenario
     painel = janela.asg.nexo
-    central = assistente.caixas_integradas(quadro_painel(painel))["assistente"]
-    pos = assistente.retangulos_internos(central)["detalhes"].center()
+    pos = referencia.retangulos(painel.rect())['detalhes'].center()
     QTest.mouseClick(painel, Qt.MouseButton.LeftButton, pos=pos)
     qapp.processEvents()
     assert painel._dialogo_nexo_ai is not None and painel._dialogo_nexo_ai.isVisible()
 
 
 def test_tooltip_dos_raios_usa_regiao_real_do_compositor(cenario, qapp, monkeypatch):
+    from fluxopro.ui.paineis.nexo import referencia
     from PySide6.QtWidgets import QToolTip
     janela, _, _ = cenario
     painel = janela.asg.nexo
-    regiao = assistente.caixas_integradas(quadro_painel(painel))["estatistica"]
-    pos = regiao.topRight()
-    pos.setX(pos.x() - 10)
-    pos.setY(pos.y() + 35)
+    regiao = referencia.retangulos(painel.rect())['estatistica']
+    pos = regiao.center()
     textos = []
     monkeypatch.setattr(QToolTip, "showText", lambda *args: textos.append(args[1]))
     QTest.mouseMove(painel, pos)
     qapp.processEvents()
-    assert textos and "Pilhas separadas" in textos[-1]
+    assert textos and 'FORÇA OBSERVADA' in textos[-1] and 'não são probabilidades' in textos[-1]
 
 
-def test_f7_preserva_objetos_candles_renko_snapshot_e_pixels_direitos(
+def test_f7_preserva_dados_e_analise_e_restaura_pixels_ao_voltar(
         cenario, qapp, monkeypatch):
-    # RELOGIO CONGELADO — este teste compara PIXELS do painel inteiro antes e
-    # depois de F7, e a regiao da analise desenha "HA n S", cuja fonte e
-    # `MotorAnaliseClaude.idade_s` -> `time.monotonic()`. Se a execucao cruza
-    # a virada de um segundo entre os dois renders, o texto muda e a
-    # comparacao falha por uma variavel que nao tem nada a ver com F7.
-    #
-    # Foi assim que ele falhou tres vezes em 02-03/09/2026, sempre com CPU
-    # disputada (app aberto, sondas de replay), e sempre passando com a
-    # maquina livre. Provado desligando o motor de analise: com
-    # `FLUXOPRO_ANALISE_IA=0` passa sob a mesma carga.
-    #
-    # Congelar a idade nao enfraquece o teste: o que ele afirma e que F7 nao
-    # altera pixel: manter constante o que F7 nao controla e o que torna a
-    # afirmacao mensuravel.
+    # F7 agora alterna composições deliberadamente distintas. Os dados e a
+    # análise devem ser iguais; os pixels se repetem ao VOLTAR ao mesmo skin.
+    from fluxopro.ui.paineis.nexo import analitica
     from fluxopro.analytics.analise_claude import MotorAnaliseClaude
 
     monkeypatch.setattr(MotorAnaliseClaude, "idade_s", lambda self, agora_s=None: 12.0)
@@ -530,26 +518,28 @@ def test_f7_preserva_objetos_candles_renko_snapshot_e_pixels_direitos(
     assert len(painel._candles_15m.candles_fechados) >= 23
     assert len(painel._renko.tijolos) > 10
     antes = identidade_dados(painel)
+    e = painel._estado_nexo()
+    analise_antes = (analitica.pressao_do_snapshot(e),analitica.niveis_do_snapshot(e),e.candles_analiticos)
     ai = render_painel(painel)
     tecla_real(janela, painel, Qt.Key.Key_F7)
     assert not painel._nexo_ai_ativo
     classico = render_painel(painel)
     assert identidade_dados(painel) == antes
-    for nome in ("forca", "candles", "pressao"):
-        r = nexo.retangulos(quadro_painel(painel))[nome]
-        assert ai.copy(r) == classico.copy(r), f"Pixels de {nome} mudaram com F7"
+    assert ai!=classico
+    e = painel._estado_nexo()
+    assert (analitica.pressao_do_snapshot(e),analitica.niveis_do_snapshot(e),e.candles_analiticos)==analise_antes
     tecla_real(janela, painel, Qt.Key.Key_F7)
     assert painel._nexo_ai_ativo and identidade_dados(painel) == antes
     assert render_painel(painel) == ai
 
 
 def test_candles_continuam_editaveis_pelo_mouse_com_ai(cenario, qapp):
+    from PySide6.QtCore import QPoint
     janela, _, _ = cenario
     painel = janela.asg.nexo
     ids = (id(painel._candles_m15), id(painel._candles_15m), id(painel._renko))
     caixa = painel._retangulo_candles()
-    barra = QRect(caixa.left(), caixa.top() + 14, caixa.width(), candles.ALTURA_BARRA_CONTROLES)
-    pos = candles.retangulos_controles(barra)["timeframe"].center()
+    pos = QPoint(caixa.right()-30,caixa.bottom()-2)
     for esperado in (15, 5):
         QTest.mouseClick(painel, Qt.MouseButton.LeftButton, pos=pos)
         qapp.processEvents()
